@@ -88,6 +88,27 @@ class DemoRegressionTests(unittest.TestCase):
         self.assertEqual(quality["ticker_mention_rate"], 0.0)
         self.assertFalse(quality["passes_quality_gate"])
 
+    def test_sentiment_quality_accepts_auditable_provider_ticker_mapping(self):
+        data = historical_fixture()
+        sentiment = next(item for item in data["evidence"] if item["domain"] == "sentiment")
+        sentiment.update(headline="Semiconductor market roundup", claim="Sector news",
+                         target_ticker="NVDA", relevance_score=.8,
+                         relevance_basis="alpha_vantage_provider_score")
+        quality = coverage(data)["sentiment_quality"]
+        self.assertEqual(quality["ticker_mention_rate"], 0.0)
+        self.assertEqual(quality["target_relevance_rate"], 1.0)
+        self.assertTrue(quality["passes_quality_gate"])
+
+    def test_sentiment_quality_rejects_untrusted_or_low_relevance_mapping(self):
+        for basis, score in (("manual", 1.0), ("alpha_vantage_provider_score", .2)):
+            with self.subTest(basis=basis, score=score):
+                data = historical_fixture()
+                sentiment = next(item for item in data["evidence"] if item["domain"] == "sentiment")
+                sentiment.update(headline="Broad market commentary", claim="Sector news",
+                                 target_ticker="NVDA", relevance_score=score,
+                                 relevance_basis=basis)
+                self.assertFalse(coverage(data)["sentiment_quality"]["passes_quality_gate"])
+
     def test_finbert_failure_does_not_mutate_dataset(self):
         data = historical_fixture()
         data["evidence"].append({"evidence_id": "sentiment-2", "domain": "sentiment", "claim": "second",
@@ -121,7 +142,7 @@ class DemoRegressionTests(unittest.TestCase):
             store = Store(Path(directory))
             config = {
                 "ticker": "NVDA", "analysis_date": "2024-12-31", "dataset_id": "fixture",
-                "protocol": {"version": "v3-0912.1"}, "protocol_hash": "fixture",
+                "protocol": {"version": "v3-0913.1"}, "protocol_hash": "fixture",
             }
             job = store.create(config)
             store.claim()  # transition queued -> running, as the worker does

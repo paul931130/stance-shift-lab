@@ -58,7 +58,7 @@ function Save-Settings([System.Collections.IDictionary]$Values) {
     $order = @(
         'OLLAMA_BASE_URL','OLLAMA_KEEP_ALIVE','RESEARCH_MODEL','RESEARCH_PARALLEL_WORKERS','RESEARCH_REMOTE',
         'RESEARCH_ACCESS_KEY','RESEARCH_ALLOWED_HOSTS','RESEARCH_PUBLIC_ORIGIN',
-        'SEC_USER_AGENT','FRED_API_KEY','ALPHA_VANTAGE_API_KEY','FNSPID_NEWS_PATH',
+        'SEC_USER_AGENT','FRED_API_KEY','ALPHA_VANTAGE_API_KEY','ALPHA_VANTAGE_NEWS_PATH','FNSPID_NEWS_PATH',
         'FINBERT_MODEL','FINBERT_REVISION','FINNHUB_API_KEY','FINNHUB_BASE_URL','FINNHUB_WS_URL','RESEARCH_ENABLE_LIVE',
         'OPENROUTER_API_KEY','OPENAI_API_KEY','GEMINI_API_KEY'
     )
@@ -193,6 +193,7 @@ function Setup-Research {
         SEC_USER_AGENT = ''
         FRED_API_KEY = ''
         ALPHA_VANTAGE_API_KEY = ''
+        ALPHA_VANTAGE_NEWS_PATH = ''
         FNSPID_NEWS_PATH = ''
         FINBERT_MODEL = 'ProsusAI/finbert'
         FINBERT_REVISION = '4556d13015211d73dccd3fdd39d39232506f3e43'
@@ -214,6 +215,8 @@ function Setup-Research {
     $values['RESEARCH_MODEL'] = Read-PlainSetting '預設模型（例如 ollama/qwen3:14b）' $values['RESEARCH_MODEL']
     $localNews = Join-Path $projectRoot 'research-inputs\Stock_news.csv'
     if (Test-Path -LiteralPath $localNews) { $values['FNSPID_NEWS_PATH'] = '/app/research-inputs/Stock_news.csv' }
+    $localAlphaCache = Join-Path $projectRoot 'research-inputs\alphavantage_news.csv'
+    if (Test-Path -LiteralPath $localAlphaCache) { $values['ALPHA_VANTAGE_NEWS_PATH'] = '/app/research-inputs/alphavantage_news.csv' }
 
     $cloud = (Read-Host '雲端模型金鑰要設定哪一個？openrouter / openai / gemini / skip [skip]').Trim().ToLowerInvariant()
     if ($cloud -eq 'openrouter') { $values['OPENROUTER_API_KEY'] = Read-SecretSetting 'OpenRouter API key' $values['OPENROUTER_API_KEY'] }
@@ -259,6 +262,8 @@ function Test-Research {
     }
     $news = Join-Path $projectRoot 'research-inputs\Stock_news.csv'
     if (Test-Path -LiteralPath $news) { Write-Host '[OK] FNSPID 篩選檔存在' } else { Write-Host '[INFO] 未安裝 FNSPID；可由 Alpha Vantage 提供情緒資料' }
+    $alphaCache = Join-Path $projectRoot 'research-inputs\alphavantage_news.csv'
+    if (Test-Path -LiteralPath $alphaCache) { Write-Host '[OK] Alpha Vantage 新聞快取檔存在（不消耗即時 API 額度）' } else { Write-Host '[INFO] 未安裝 Alpha Vantage 新聞快取；缺口由即時 API 補齊' }
     try {
         $tags = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
         Write-Host "[OK] Ollama 已連線，共 $($tags.models.Count) 個模型"

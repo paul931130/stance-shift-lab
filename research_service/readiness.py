@@ -19,13 +19,28 @@ def _sentiment_quality(data, day):
              and item.get("available_at", "") < day]
     mentions = sum(_mentions_target(item, data.get("ticker", "")) for item in items)
     relevance = []
+    source_mapped = 0
+    target_relevant = 0
     for item in items:
+        mapped = False
         try:
             value = float(item["relevance_score"])
         except (KeyError, TypeError, ValueError):
-            continue
-        if math.isfinite(value):
+            value = None
+        if value is not None and math.isfinite(value):
             relevance.append(value)
+            # Both supported news collectors attach the requested ticker from
+            # provider metadata rather than inferring it from prose.  A title
+            # need not repeat the company name (market roundups and ETF news
+            # are common), so use the auditable source mapping when available.
+            mapped_ticker = str(item.get("target_ticker", "")).upper()
+            basis = item.get("relevance_basis")
+            trusted_mapping = basis in ("alpha_vantage_provider_score", "fnspid_per_ticker_file")
+            if mapped_ticker == str(data.get("ticker", "")).upper() and trusted_mapping and value >= .35:
+                mapped = True
+                source_mapped += 1
+        if _mentions_target(item, data.get("ticker", "")) or mapped:
+            target_relevant += 1
     def valid_finbert(item):
         scores = item.get("sentiment_scores")
         if not isinstance(scores, dict):
@@ -41,10 +56,13 @@ def _sentiment_quality(data, day):
                 and bool(item.get("sentiment_revision")))
 
     finbert_scored = sum(valid_finbert(item) for item in items)
-    rate = mentions / len(items) if items else 0.
-    return {"items": len(items), "ticker_mentions": mentions, "ticker_mention_rate": rate,
+    mention_rate = mentions / len(items) if items else 0.
+    target_rate = target_relevant / len(items) if items else 0.
+    return {"items": len(items), "ticker_mentions": mentions, "ticker_mention_rate": mention_rate,
+            "source_mapped_items": source_mapped, "target_relevance_rate": target_rate,
+            "quality_rule": "source-target-v1",
             "median_relevance": median(relevance) if relevance else None,
-            "passes_quality_gate": bool(items) and rate >= .5,
+            "passes_quality_gate": bool(items) and target_rate >= .5,
             "finbert_scored": finbert_scored,
             "finbert_complete": bool(items) and finbert_scored == len(items)}
 
@@ -66,6 +84,8 @@ def coverage(data, analysis_date=None):
                 "fundamental_quality": {"items": 0, "comparative_items": 0,
                                         "passes_quality_gate": False},
                 "sentiment_quality": {"items": 0, "ticker_mentions": 0, "ticker_mention_rate": 0.,
+                                      "source_mapped_items": 0, "target_relevance_rate": 0.,
+                                      "quality_rule": "source-target-v1",
                                       "median_relevance": None, "passes_quality_gate": False,
                                       "finbert_scored": 0, "finbert_complete": False}}
     past = [row for row in data["prices"] if row["date"] < day]

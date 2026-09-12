@@ -3,11 +3,11 @@
 Resumable batch data collection across many ticker/quarter combinations.
 
 .DESCRIPTION
+The formal study contains 9 tickers x 20 quarter ends (2021 through 2025).
 FNSPID's news dataset stops at 2023-12-31 (the upstream project stopped
-maintaining it in 2025), so quarters from 2024-03-31 onward rely entirely on
-Alpha Vantage NEWS_SENTIMENT for the sentiment domain. Alpha Vantage's free
-tier is rate-limited, so collecting 9 tickers x 8 quarters in one sitting
-usually is not possible.
+maintaining it in 2025), so later quarters rely entirely on Alpha Vantage
+NEWS_SENTIMENT. Alpha Vantage's free tier is rate-limited, so collecting all
+180 combinations in one sitting usually is not possible.
 
 This script calls the same /api/datasets/download endpoint the web UI and
 `research.ps1 collect` use, one ticker/date combination at a time, and
@@ -21,9 +21,8 @@ API calls at all.
 
 .EXAMPLE
 .\scripts\collect-quarters.ps1
-Collects the 9-ticker study universe across the 8 quarters FNSPID does not
-cover (2024-03-31 through 2025-12-31), stopping after 20 new (non-reused)
-collection calls.
+Collects the complete 9-ticker x 20-quarter study universe, stopping after 20
+new (non-reused) collection calls. Local FinBERT scoring is enabled by default.
 
 .EXAMPLE
 .\scripts\collect-quarters.ps1 -Tickers NVDA,AAPL -Dates 2024-03-31,2024-06-30 -DailyBudget 5
@@ -32,10 +31,16 @@ Collect a smaller subset, useful for a first smoke test.
 [CmdletBinding()]
 param(
     [string[]]$Tickers = @('AAPL','NVDA','GOOGL','MSFT','AMZN','JPM','MCD','LLY','GE'),
-    [string[]]$Dates = @('2024-03-31','2024-06-30','2024-09-30','2024-12-31','2025-03-31','2025-06-30','2025-09-30','2025-12-31'),
+    [string[]]$Dates = @(
+        '2021-03-31','2021-06-30','2021-09-30','2021-12-31',
+        '2022-03-31','2022-06-30','2022-09-30','2022-12-31',
+        '2023-03-31','2023-06-30','2023-09-30','2023-12-31',
+        '2024-03-31','2024-06-30','2024-09-30','2024-12-31',
+        '2025-03-31','2025-06-30','2025-09-30','2025-12-31'
+    ),
     [ValidateRange(1, 500)][int]$DailyBudget = 20,
     [string]$CheckpointFile = '',
-    [switch]$UseFinbert,
+    [switch]$UseFinbert = $true,
     [switch]$Refresh
 )
 
@@ -88,7 +93,8 @@ function Invoke-ResearchApi([string]$Method, [string]$Path, $Body = $null) {
 }
 
 $checkpoint = Read-Checkpoint
-$combinations = @(foreach ($ticker in $Tickers) { foreach ($date in $Dates) { [pscustomobject]@{ Ticker = $ticker; Date = $date } } })
+# Date-major ordering keeps the panel balanced when a provider quota stops a run.
+$combinations = @(foreach ($date in $Dates) { foreach ($ticker in $Tickers) { [pscustomobject]@{ Ticker = $ticker; Date = $date } } })
 $remaining = @($combinations | Where-Object {
     $key = "$($_.Ticker)_$($_.Date)"
     -not ($checkpoint.ContainsKey($key) -and $checkpoint[$key].status -eq 'done')
@@ -113,9 +119,10 @@ foreach ($combo in $remaining) {
         # A genuine transport/HTTP failure (container down, 500, etc.) — not
         # an Alpha Vantage rate limit, which the API absorbs internally and
         # reports as a normal 200 response (see the check below instead).
-        $checkpoint[$key] = @{ status = 'error'; message = $_.Exception.Message; updated_at = (Get-Date).ToUniversalTime().ToString('o') }
+        $errorMessage = if ($_.ErrorDetails.Message) { $_.ErrorDetails.Message } else { $_.Exception.Message }
+        $checkpoint[$key] = @{ status = 'error'; message = $errorMessage; updated_at = (Get-Date).ToUniversalTime().ToString('o') }
         Save-Checkpoint $checkpoint
-        Write-Host "  -> 請求失敗：$($_.Exception.Message)"
+        Write-Host "  -> 請求失敗：$errorMessage"
         continue
     }
     if (-not $result.reused) { $budgetUsed++ }
@@ -124,7 +131,8 @@ foreach ($combo in $remaining) {
     # failures itself and reports them through this message string; the
     # API never raises an HTTP error for a rate-limited news call, so this
     # is the only place the signal is actually visible.
-    $rateLimited = $sentiment.message -match 'Alpha Vantage 下載失敗|流量限制|rate limit'
+    $rateLimited = ($sentiment.message -match 'Alpha Vantage 下載失敗|流量限制|rate limit') -and
+        ($sentiment.status -ne 'complete' -or [int]$sentiment.records -le 0)
     if ($rateLimited) {
         $checkpoint[$key] = @{ status = 'rate_limited'; message = $sentiment.message; updated_at = (Get-Date).ToUniversalTime().ToString('o') }
         Save-Checkpoint $checkpoint
@@ -141,5 +149,10 @@ foreach ($combo in $remaining) {
     Save-Checkpoint $checkpoint
 }
 
-$done = @($checkpoint.Values | Where-Object { $_.status -eq 'done' }).Count
+$done = @($combinations | Where-Object {
+    $key = "$($_.Ticker)_$($_.Date)"
+    $checkpoint.ContainsKey($key) -and $checkpoint[$key].status -eq 'done'
+}).Count
 Write-Host "目前累計完成 $done / $($combinations.Count) 組合。進度存在 $CheckpointFile。"
+$readiness = Invoke-ResearchApi 'GET' '/api/readiness'
+Write-Host "正式主實驗可跑 $($readiness.formal_experiment_ready_cases)/$($readiness.target_cases) · 四域完整 $($readiness.evidence_complete_cases) · 60 日行情完整 $($readiness.backtest_ready_cases) · 尚缺 $($readiness.missing_cases)"

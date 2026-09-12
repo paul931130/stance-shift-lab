@@ -10,6 +10,7 @@ FIELDS = {
     "OPENROUTER_API_KEY": "OpenRouter API key", "OPENAI_API_KEY": "OpenAI API key",
     "GEMINI_API_KEY": "Gemini API key", "RESEARCH_MODEL": "預設模型",
     "FNSPID_NEWS_PATH": "伺服器內 FNSPID CSV 路徑",
+    "ALPHA_VANTAGE_NEWS_PATH": "伺服器內 Alpha Vantage 新聞快取 CSV 路徑（免消耗 API 額度）",
 }
 
 

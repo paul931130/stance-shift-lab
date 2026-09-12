@@ -30,7 +30,7 @@ OPENROUTER_API_KEY=你的_OPENROUTER_API_KEY
 
 Alpha Vantage 使用官方 `NEWS_SENTIMENT` 端點，查詢分析日前 90 天且排除分析日當天的新聞。FNSPID 原始 `Stock_news.csv` 很大，先將它放成 `research-inputs\Stock_news_full.csv`，再執行下列命令串流篩出研究股票與期間；整理器只保留日期、股票、標題、網址與出版社，因正式情緒證據使用標題而不需要全文。處理完成後設定上述容器路徑。Docker 服務會以唯讀方式掛載結果。可參考 [Alpha Vantage 官方文件](https://www.alphavantage.co/documentation/)、[FNSPID 官方儲存庫](https://github.com/Zdong104/FNSPID_Financial_News_Dataset) 與 [FNSPID 資料頁](https://huggingface.co/datasets/Zihan1004/FNSPID)。
 
-**FNSPID 只到 2023-12-31**：上游專案已於 2025 年停止維護，資料集本身就不含 2024／2025 年的新聞，重新下載也無法補齊。2024-03-31 以後的分析日只能靠 Alpha Vantage 補情緒域證據。免費版 Alpha Vantage 有每日額度限制，一次收集 9 檔 × 8 個季度（72 組合）通常無法在同一天完成；可用 `scripts/collect-quarters.ps1` 批次收集，會在額度用完前自動停止並把進度存進 `work/collect-quarters-checkpoint.json`，之後重跑同一指令即可從中斷處繼續：
+**FNSPID 只到 2023-12-31**：上游專案已於 2025 年停止維護，資料集本身就不含 2024／2025 年的新聞，重新下載也無法補齊。2024-03-31 以後的分析日只能靠 Alpha Vantage 補情緒域證據。免費版 Alpha Vantage 有每日額度限制，180 組合通常無法在同一天完成；可用 `scripts/collect-quarters.ps1` 批次收集完整 9 檔 × 20 季。腳本預設執行本機 FinBERT、按季度交錯股票，會在額度用完前自動停止並把進度存進 `work/collect-quarters-checkpoint.json`，之後重跑同一指令即可從中斷處繼續：
 
 ```powershell
 .\scripts\collect-quarters.ps1

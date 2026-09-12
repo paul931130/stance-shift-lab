@@ -58,7 +58,10 @@ def validate_dataset(data):
                 raise ValueError("OHLC 必須為有限正數")
             row[key] = float(row[key])
         if row["low"] > min(row["open"], row["close"]) or row["high"] < max(row["open"], row["close"]) or row["low"] > row["high"]:
-            raise ValueError("OHLC 高低價不一致")
+            raise ValueError(
+                f"OHLC 高低價不一致（{day}: open={row['open']}, high={row['high']}, "
+                f"low={row['low']}, close={row['close']}）"
+            )
     evidence = data.get("evidence", [])
     if len(evidence) > 400:
         raise ValueError("每個資料集最多 400 筆摘要證據")
@@ -287,6 +290,51 @@ def _fnspid_news(path, ticker, analysis_date, limit=50):
     return list(unique.values())[:limit]
 
 
+def _alpha_vantage_cached_news(path, ticker, analysis_date, limit=50):
+    """Read a previously-fetched Alpha Vantage NEWS_SENTIMENT archive from disk.
+
+    Unlike _alpha_vantage_news, this never calls the live API or spends a
+    metered request; it exists so a locally accumulated news cache (built
+    ahead of time, e.g. covering the 2024/2025 quarters FNSPID does not
+    reach) can serve a case without touching the daily rate limit.
+    """
+    anchor = date.fromisoformat(analysis_date)
+    start = (anchor - timedelta(days=90)).isoformat()
+    items = []
+    with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
+        reader = csv.DictReader(handle)
+        fields = set(reader.fieldnames or [])
+        if not {"date", "symbol", "headline", "url"}.issubset(fields):
+            raise ValueError("Alpha Vantage 快取 CSV 缺少 date、symbol、headline 或 url 欄位")
+        for row in reader:
+            if str(row.get("symbol", "")).strip().upper() != ticker:
+                continue
+            raw_date = str(row.get("date", "")).strip()
+            if len(raw_date) < 8 or not raw_date[:8].isdigit():
+                continue
+            available_at = f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+            try:
+                date.fromisoformat(available_at)
+            except ValueError:
+                continue
+            if not start <= available_at < analysis_date:
+                continue
+            title = str(row.get("headline", "")).strip()
+            source = str(row.get("url", "")).strip()
+            if not title or not source:
+                continue
+            publisher = str(row.get("publisher", "")).strip()
+            items.append({"evidence_id": "av-cache-" + digest([ticker, available_at, source])[:20],
+                          "domain": "sentiment", "claim": title[:4000], "headline": title[:1000], "source": source[:2000],
+                          "available_at": available_at, "source_type": "alpha_vantage_news_cache",
+                          "publisher": publisher[:300], "target_ticker": ticker,
+                          "relevance_score": 1.0, "relevance_basis": "alpha_vantage_cache_per_ticker_file"})
+    unique = {}
+    for item in sorted(items, key=lambda value: value["available_at"], reverse=True):
+        unique.setdefault(item["evidence_id"], item)
+    return list(unique.values())[:limit]
+
+
 def _canonical_news_url(value):
     try:
         parsed = urlsplit(value.strip())
@@ -338,8 +386,22 @@ def _alpha_note(stats):
 def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE):
     """Fetch point-in-time news without silently inventing sentiment evidence."""
     items, notes = [], []
+    cache_path = os.getenv("ALPHA_VANTAGE_NEWS_PATH", "").strip()
+    cache_items = []
+    if cache_path:
+        try:
+            cache_items = _alpha_vantage_cached_news(cache_path, ticker, analysis_date)
+            items.extend(cache_items)
+            if not cache_items:
+                notes.append("Alpha Vantage 快取檔在切點前 90 天無相符新聞")
+        except FileNotFoundError:
+            notes.append("ALPHA_VANTAGE_NEWS_PATH 檔案不存在；請確認路徑或清空改用即時 API")
+        except Exception as error:
+            notes.append(f"Alpha Vantage 快取讀取失敗：{type(error).__name__}")
     alpha_configured = bool(os.getenv("ALPHA_VANTAGE_API_KEY", ""))
-    if alpha_configured:
+    # A cache read is free; a live call is metered. Only spend a live call
+    # when the local cache did not already cover this ticker/window.
+    if alpha_configured and not cache_items:
         try:
             alpha_items, alpha_stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor)
             items.extend(alpha_items)
@@ -360,8 +422,8 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
             notes.append("FNSPID 檔案不存在；請將 CSV 放入 research-inputs/Stock_news.csv，或清空 FNSPID_NEWS_PATH 改用 Alpha Vantage")
         except Exception as error:
             notes.append(f"FNSPID 讀取失敗：{type(error).__name__}")
-    if not alpha_configured and not path:
-        notes.append("未設定 ALPHA_VANTAGE_API_KEY 或 FNSPID_NEWS_PATH；可匯入具公開時間的新聞摘要")
+    if not alpha_configured and not path and not cache_path:
+        notes.append("未設定 ALPHA_VANTAGE_API_KEY、ALPHA_VANTAGE_NEWS_PATH 或 FNSPID_NEWS_PATH；可匯入具公開時間的新聞摘要")
     unique, aliases = _deduplicate_news(items)
     if aliases:
         notes.append(f"跨來源去除 {len(aliases)} 筆重複新聞")
@@ -371,6 +433,21 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
 def check_sentiment_sources(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE):
     """Actively verify configured news sources without exposing credentials."""
     results = {}
+    cache_path = os.getenv("ALPHA_VANTAGE_NEWS_PATH", "").strip()
+    if cache_path:
+        try:
+            items = _alpha_vantage_cached_news(cache_path, ticker, analysis_date)
+            results["alpha_vantage_cache"] = {"status": "ready", "records": len(items),
+                "message": ("檔案、欄位與日期格式已驗證" if items else "檔案可讀，但切點前 90 天無相符新聞")}
+        except FileNotFoundError:
+            results["alpha_vantage_cache"] = {"status": "error", "records": 0,
+                "message": "找不到檔案；請確認 ALPHA_VANTAGE_NEWS_PATH"}
+        except Exception as error:
+            results["alpha_vantage_cache"] = {"status": "error", "records": 0,
+                "message": f"實機檢查失敗：{type(error).__name__}"}
+    else:
+        results["alpha_vantage_cache"] = {"status": "unconfigured", "records": 0,
+            "message": "尚未設定 ALPHA_VANTAGE_NEWS_PATH"}
     if os.getenv("ALPHA_VANTAGE_API_KEY", ""):
         try:
             items, stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor)

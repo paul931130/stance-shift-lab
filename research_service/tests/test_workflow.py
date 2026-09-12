@@ -277,7 +277,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         cloned = response.json()
         self.assertEqual(cloned["config"]["parent_job_id"], legacy["id"])
-        self.assertEqual(cloned["config"]["protocol"]["version"], "v3-0912.1")
+        self.assertEqual(cloned["config"]["protocol"]["version"], "v3-0913.1")
         self.assertTrue(cloned["config"]["protocol"]["allow_small_model"])
         self.assertEqual(cloned["config"]["migration"]["from_protocol_version"], "v3-0908.2")
 
@@ -381,6 +381,22 @@ class WorkflowTests(unittest.TestCase):
         self.assertGreaterEqual(maximum, 2)
         self.assertEqual(set(response.json()["agents"]), {"technical", "fundamental", "sentiment", "macro"})
         self.assertEqual(response.json()["agents"]["technical"]["status"], "complete")
+
+    def test_download_with_finbert_keeps_zero_news_as_missing_data(self):
+        technical = json.loads(json.dumps(self.data))
+        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        with patch("research_service.app.download_prices", return_value=technical), \
+             patch("research_service.app.fetch_fundamental", return_value=([], "SEC not configured")), \
+             patch("research_service.app.fetch_sentiment", return_value=([], "news not configured")), \
+             patch("research_service.app.fetch_macro", return_value=([], "FRED not configured")), \
+             patch("research_service.app.score_sentiment_finbert", side_effect=AssertionError("must not score an empty set")):
+            with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+                response = client.post('/api/datasets/download', json={
+                    "ticker": "NVDA", "analysis_date": "2024-12-31", "use_finbert": True})
+        self.assertEqual(response.status_code, 200)
+        sentiment = response.json()["agents"]["sentiment"]
+        self.assertEqual(sentiment["status"], "needs_input")
+        self.assertEqual(sentiment["finbert"]["reason"], "no_headlines")
 
     def test_dataset_versions_ranges_and_usage_are_exposed(self):
         self.create("2024-12-31")

@@ -6,9 +6,9 @@ import unittest
 from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
-from research_service.data import (_alpha_vantage_news, _chart_rows, _deduplicate_news, _fnspid_news,
-                                   check_sentiment_sources, download_prices, fetch_fundamental,
-                                   fetch_sentiment)
+from research_service.data import (_alpha_vantage_cached_news, _alpha_vantage_news, _chart_rows,
+                                   _deduplicate_news, _fnspid_news, check_sentiment_sources,
+                                   download_prices, fetch_fundamental, fetch_sentiment)
 from scripts.prepare_fnspid_news import filter_fnspid
 
 
@@ -213,7 +213,10 @@ class NewsSourceTests(unittest.TestCase):
                 checks = check_sentiment_sources("NVDA", "2024-12-31", lambda _url: self.alpha_payload())
         self.assertEqual(len(items), 2)
         self.assertIn("Alpha Vantage 取得", note)
-        self.assertEqual({value["status"] for value in checks.values()}, {"ready"})
+        self.assertEqual(checks["alpha_vantage"]["status"], "ready")
+        self.assertEqual(checks["fnspid"]["status"], "ready")
+        # The local Alpha cache is an independent optional source.
+        self.assertIn(checks["alpha_vantage_cache"]["status"], {"ready", "unconfigured"})
 
     def test_missing_optional_fnspid_keeps_alpha_news_available(self):
         with patch.dict("os.environ", {"ALPHA_VANTAGE_API_KEY":"test-key",
@@ -224,6 +227,61 @@ class NewsSourceTests(unittest.TestCase):
         self.assertIn("FNSPID 檔案不存在", note)
         self.assertEqual(checks["fnspid"]["status"], "optional_missing")
         self.assertIn("不影響情緒資料", checks["fnspid"]["message"])
+
+    def test_alpha_vantage_cache_reads_the_fetch_script_output_format(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "alphavantage_news.csv"
+            with cache.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["date", "symbol", "headline", "publisher", "url"])
+                writer.writeheader()
+                writer.writerow({"date": "20241220T134500", "symbol": "NVDA",
+                    "headline": "Cached NVIDIA report", "publisher": "Wire", "url": "https://example.com/cached"})
+                writer.writerow({"date": "20241231T010000", "symbol": "NVDA",
+                    "headline": "Same-day excluded", "publisher": "Wire", "url": "https://example.com/future"})
+                writer.writerow({"date": "20241220T090000", "symbol": "AAPL",
+                    "headline": "Different ticker", "publisher": "Wire", "url": "https://example.com/other"})
+            items = _alpha_vantage_cached_news(str(cache), "NVDA", "2024-12-31")
+        self.assertEqual(len(items), 1)
+        self.assertEqual((items[0]["available_at"], items[0]["claim"]), ("2024-12-20", "Cached NVIDIA report"))
+        self.assertEqual((items[0]["relevance_score"], items[0]["relevance_basis"]),
+                         (1.0, "alpha_vantage_cache_per_ticker_file"))
+
+    def test_alpha_vantage_cache_is_tried_before_spending_a_live_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "alphavantage_news.csv"
+            with cache.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["date", "symbol", "headline", "publisher", "url"])
+                writer.writeheader()
+                writer.writerow({"date": "20241220T134500", "symbol": "NVDA",
+                    "headline": "Cached NVIDIA report", "publisher": "Wire", "url": "https://example.com/cached"})
+            live_calls = []
+            def requester(url):
+                live_calls.append(url)
+                return self.alpha_payload()
+            with patch.dict("os.environ", {"ALPHA_VANTAGE_API_KEY": "test-key", "ALPHA_VANTAGE_NEWS_PATH": str(cache)}):
+                items, note = fetch_sentiment("NVDA", "2024-12-31", requester)
+        self.assertEqual(live_calls, [])
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["source_type"], "alpha_vantage_news_cache")
+        self.assertNotIn("Alpha Vantage 取得", note)
+
+    def test_alpha_vantage_cache_miss_still_falls_back_to_the_live_call(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "alphavantage_news.csv"
+            with cache.open("w", encoding="utf-8-sig", newline="") as handle:
+                writer = csv.DictWriter(handle, fieldnames=["date", "symbol", "headline", "publisher", "url"])
+                writer.writeheader()
+                writer.writerow({"date": "20200101T000000", "symbol": "NVDA",
+                    "headline": "Way too old to matter", "publisher": "Wire", "url": "https://example.com/old"})
+            live_calls = []
+            def requester(url):
+                live_calls.append(url)
+                return self.alpha_payload()
+            with patch.dict("os.environ", {"ALPHA_VANTAGE_API_KEY": "test-key", "ALPHA_VANTAGE_NEWS_PATH": str(cache)}):
+                items, note = fetch_sentiment("NVDA", "2024-12-31", requester)
+        self.assertEqual(len(live_calls), 1)
+        self.assertIn("Alpha Vantage 取得", note)
+        self.assertTrue(any(item["source_type"] == "alpha_vantage_news_sentiment" for item in items))
 
     def test_alpha_provider_limit_is_actionable_without_exposing_a_key(self):
         def limited(_url):

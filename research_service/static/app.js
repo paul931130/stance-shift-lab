@@ -117,7 +117,7 @@ function renderDatasetDetail(alignDate = false) {
   const quality=d.coverage?.sentiment_quality;
   const fundamental=d.coverage?.fundamental_quality||{};
   const qualityText=quality
-    ? `新聞目標相關率 ${percentage(quality.ticker_mention_rate)} · ${quality.passes_quality_gate?'通過相關性':'未通過相關性'} · FinBERT ${quality.finbert_scored||0}/${quality.items||0}${quality.median_relevance==null?'':` · 中位相關性 ${number(quality.median_relevance)}`}`
+    ? `新聞目標相關率 ${percentage(quality.target_relevance_rate??quality.ticker_mention_rate)}（標題直接提及 ${percentage(quality.ticker_mention_rate)}） · ${quality.passes_quality_gate?'通過相關性':'未通過相關性'} · FinBERT ${quality.finbert_scored||0}/${quality.items||0}${quality.median_relevance==null?'':` · 中位相關性 ${number(quality.median_relevance)}`}`
     : '新聞相關性尚未計算';
   detail.innerHTML=`<span class="version">v${d.version}</span><strong>${escape(d.ticker)} · ${d.kind === 'synthetic' ? '合成測試' : '歷史資料'}</strong><br>研究前行情起點 ${escape(d.price_start)} · ${d.price_count} 個交易日 · ${d.evidence_count} 筆證據<br><b>${cut ? `研究分析日：${escape(cut)}` : '研究分析日：舊資料集未記錄'}</b> · 已用切點 ${escape(uses)}<br><b>未來行情終點：${escape(d.price_end)}（只供 30／60／90 日回測，不能選為分析日）</b><br><small>SEC 可比較指標 ${fundamental.comparative_items||0}/${fundamental.items||0} · ${escape(qualityText)}</small><br>建立 ${escape(formatStamp(d.created_at))} · ${escape(d.source)}<br><code title="完整資料集 ID">ID ${escape(d.id)}</code>`;
   if(alignDate && cut && [...$('analysis-date').options].some(option=>option.value===cut)) $('analysis-date').value=cut;
@@ -145,7 +145,7 @@ function syncExperimentGuard() {
   const messages={
     no_dataset:'尚未選擇資料集，因此不能啟動實驗。',
     date_mismatch:'資料集與研究分析日不一致，不能啟動實驗。',
-    sentiment_quality:`新聞品質尚未通過：目標相關率 ${percentage(result.quality?.ticker_mention_rate)}、FinBERT ${result.quality?.finbert_scored||0}/${result.quality?.items||0}；請建立新版或明確勾選資料品質敏感性覆寫。`,
+    sentiment_quality:`新聞品質尚未通過：目標相關率 ${percentage(result.quality?.target_relevance_rate??result.quality?.ticker_mention_rate)}、FinBERT ${result.quality?.finbert_scored||0}/${result.quality?.items||0}；請建立新版或明確勾選資料品質敏感性覆寫。`,
     fundamental_quality:'此資料集只有不可比較的 SEC 點時欄位；請重新採集新版資料，或明確勾選點時基本面敏感性覆寫。',
     model_not_installed:`本機尚未安裝 ${result.localModel}；請改選已安裝模型或先安裝正式模型。`,
     model_too_small:`${result.localModel} 為 ${result.localParameterSize||'14B 以下'}；若只驗證流程，請勾選小模型冒煙測試。`,

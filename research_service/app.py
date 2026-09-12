@@ -396,11 +396,15 @@ def create_app(store=None, model_call=None, start_worker=True):
                 data["limitations"].append(f"{name} 下載失敗；可重新下載或匯入可驗證的摘要")
         if not any(item["domain"] == "sentiment" for item in data["evidence"]):
             data["limitations"].append("自動新聞來源無可用摘要；情緒域保留缺資料標記，也可匯入具公開時間的新聞摘要")
-        if payload.use_finbert:
+        sentiment_items = [item for item in data["evidence"] if item["domain"] == "sentiment"]
+        if payload.use_finbert and sentiment_items:
             data = score_sentiment_finbert(data)
             count = data["processing"]["sentiment"]["items"]
             agents["sentiment"]["finbert"] = {"status": "complete", "items": count, "model": "ProsusAI/finbert", "input": "headline"}
             agents["sentiment"]["message"] += f"；本機 FinBERT 已完成 {count} 則標題"
+        elif payload.use_finbert:
+            agents["sentiment"]["finbert"] = {"status": "skipped", "items": 0,
+                "model": "ProsusAI/finbert", "input": "headline", "reason": "no_headlines"}
         data["_collection"] = agents
         return {"id": store.add_dataset(validate_dataset(data)), "analysis_date": payload.analysis_date,
             "limitations": data["limitations"], "agents": agents, "reused": False}
@@ -439,7 +443,7 @@ def create_app(store=None, model_call=None, start_worker=True):
         if quality_problem and not payload.allow_low_quality_sentiment:
             reasons = []
             if not quality.get("passes_quality_gate"):
-                reasons.append(f"目標公司提及率 {quality.get('ticker_mention_rate', 0.0):.2f} 未達 0.50")
+                reasons.append(f"新聞目標相關率 {quality.get('target_relevance_rate', quality.get('ticker_mention_rate', 0.0)):.2f} 未達 0.50")
             if not quality.get("finbert_complete"):
                 reasons.append(f"FinBERT 標題評分 {quality.get('finbert_scored', 0)}/{quality.get('items', 0)}")
             raise ValueError("此歷史資料集的新聞品質檢查未通過（" + "；".join(reasons)
