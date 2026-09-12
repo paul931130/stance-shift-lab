@@ -42,3 +42,13 @@ next-env.d.ts
 /.wrangler/
 /outputs/
 /work/
+/.venv/
+__pycache__/
+*.py[cod]
+/research-data/
+/_stance_shift_backups/
+/release/
+/research-inputs/*.csv
+/research-inputs/*.jsonl
+/app/research-inputs/
+/.pytest_cache/

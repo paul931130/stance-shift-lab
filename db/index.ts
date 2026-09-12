@@ -7,6 +7,12 @@ export type RuntimeBindings = {
   ARTIFACTS?: R2Bucket;
   GEMINI_API_KEY?: string;
   GEMINI_MODEL?: string;
+  OLLAMA_BASE_URL?: string;
+  OLLAMA_MODEL?: string;
+  LOCAL_MODE?: string;
+  LOCAL_OWNER_EMAIL?: string;
+  LOCAL_OWNER_NAME?: string;
+  APP_ENV?: string;
   OWNER_KEY_PEPPER?: string;
 };
 

@@ -1,6 +1,8 @@
 import { ensureDatabaseSchema, getArtifactsBucket, getD1, getRuntimeBindings } from "@/db";
 import { ApiError, parseJson } from "./http";
-import { callGemini, ProviderError } from "./gemini";
+import { callGemini } from "./gemini";
+import { callOllama, inspectOllama } from "./ollama";
+import { ProviderError } from "./provider-error";
 import {
   createDeterministicResearchSnapshots,
   flattenSnapshotEvidence,
@@ -123,32 +125,51 @@ type EventRow = {
 
 export type ServiceResponse = { status: number; body: Record<string, unknown> };
 
+export type ExecutionMode = "demo" | "local" | "live";
+
 export async function createRun(input: {
   ownerHash: string;
   ticker: string;
   analysisDate: string;
-  executionMode: "demo" | "live";
+  executionMode: ExecutionMode;
 }): Promise<Record<string, unknown>> {
   await ensureDatabaseSchema();
   const db = getD1();
   const runtime = getRuntimeBindings();
   const id = crypto.randomUUID();
   const now = new Date().toISOString();
-  const model = runtime.GEMINI_MODEL?.trim() || "gemini-3.5-flash";
+  const model =
+    input.executionMode === "local"
+      ? runtime.OLLAMA_MODEL?.trim() || "gemma3:4b"
+      : input.executionMode === "live"
+        ? runtime.GEMINI_MODEL?.trim() || "gemini-3.5-flash"
+        : "deterministic-demo-v1";
   const demoMode = input.executionMode === "demo";
-  if (!demoMode && !runtime.GEMINI_API_KEY) {
+  if (input.executionMode === "live" && !runtime.GEMINI_API_KEY) {
     throw new ApiError(
       503,
       "GEMINI_NOT_CONFIGURED",
       "正式 Gemini 模式尚未設定金鑰；請先使用可重現示範。",
     );
   }
+  if (input.executionMode === "local") {
+    if (!isLocalRuntime(runtime)) {
+      throw new ApiError(403, "LOCAL_MODE_DISABLED", "本機模型模式只允許從本機開發伺服器使用。" );
+    }
+    const readiness = await inspectOllama({
+      baseUrl: runtime.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434",
+      model,
+    });
+    if (!readiness.ready) {
+      throw new ApiError(503, readiness.code, readiness.message, { model });
+    }
+  }
   const quotaWindow = taipeiDay(new Date());
   const snapshotEvidence = flattenSnapshotEvidence(
     createDeterministicResearchSnapshots(input.ticker, input.analysisDate),
   );
 
-  const statements: D1PreparedStatement[] = [
+  const quotaStatements: D1PreparedStatement[] = isLocalRuntime(runtime) ? [] : [
     db
       .prepare(
         `INSERT INTO quotas (scope, quota_key, window_start, count, updated_at)
@@ -165,6 +186,9 @@ export async function createRun(input: {
          DO UPDATE SET count = count + 1, updated_at = excluded.updated_at`,
       )
       .bind(quotaWindow, now),
+  ];
+  const statements: D1PreparedStatement[] = [
+    ...quotaStatements,
     db
       .prepare(
         `INSERT INTO runs (
@@ -246,8 +270,12 @@ export async function createRun(input: {
       .bind(
         crypto.randomUUID(),
         id,
-        demoMode ? "已建立可重現示範實驗。" : "已建立 Gemini 實驗，等待逐步執行。",
-        JSON.stringify({ demoMode, totalSteps: WORKFLOW_STEPS.length }),
+        input.executionMode === "local"
+          ? `已建立本機 ${model} 實驗。`
+          : demoMode
+            ? "已建立可重現示範實驗。"
+            : "已建立 Gemini 實驗，等待逐步執行。",
+        JSON.stringify({ executionMode: input.executionMode, totalSteps: WORKFLOW_STEPS.length }),
         now,
       ),
   ];
@@ -264,12 +292,27 @@ export async function createRun(input: {
       });
     }
     if (message.includes("runs_one_active_owner_uq") || message.includes("runs.owner_hash")) {
-      throw new ApiError(409, "ACTIVE_RUN_EXISTS", "你已有一個尚未完成的實驗，請先繼續或取消。" );
+      const active = await db.prepare("SELECT id FROM runs WHERE owner_hash = ? AND status IN ('queued','running') LIMIT 1")
+        .bind(input.ownerHash).first<{ id: string }>();
+      throw new ApiError(409, "ACTIVE_RUN_EXISTS", "你已有一個尚未完成的實驗，請先繼續或取消。", { runId: active?.id });
     }
     throw error;
   }
 
   return getRunView(input.ownerHash, id);
+}
+
+export async function listRuns(ownerHash: string) {
+  await ensureDatabaseSchema();
+  const rows = await getD1().prepare(
+    `SELECT * FROM runs WHERE owner_hash = ?
+     ORDER BY CASE WHEN status IN ('queued','running') THEN 0 ELSE 1 END, created_at DESC LIMIT 100`,
+  ).bind(ownerHash).all<RunRow>();
+  return rows.results.map((run) => ({
+    id: run.id, ticker: run.ticker, analysisDate: run.analysis_date,
+    status: run.status, model: run.model, executionMode: executionModeForRun(run),
+    completedSteps: run.current_step, totalSteps: run.total_steps, createdAt: run.created_at,
+  }));
 }
 
 export async function getRunView(ownerHash: string, runId: string): Promise<Record<string, unknown>> {
@@ -304,6 +347,7 @@ export async function getRunView(ownerHash: string, runId: string): Promise<Reco
   ]);
 
   const completedSteps = stepsResult.results.filter((item) => item.status === "completed").length;
+  const executionMode = executionModeForRun(run);
   return {
     run: {
       id: run.id,
@@ -312,7 +356,11 @@ export async function getRunView(ownerHash: string, runId: string): Promise<Reco
       experimentMode: run.experiment_mode,
       status: run.status,
       model: run.model,
-      providerMode: run.demo_mode ? "deterministic-demo" : "gemini",
+      executionMode,
+      datasetVersion: "deterministic-demo-v1",
+      syntheticData: true,
+      exportsReady: artifactsResult.results.filter((item) => item.status === "ready").length === 8,
+      providerMode: providerName(executionMode),
       currentStep: run.current_step,
       totalSteps: run.total_steps,
       completedSteps,
@@ -438,7 +486,7 @@ export async function advanceRun(
   }
 
   const leaseToken = crypto.randomUUID();
-  const leaseExpiresAt = nowMs + 75_000;
+  const leaseExpiresAt = nowMs + (executionModeForRun(run) === "local" ? 210_000 : 75_000);
   const lease = await db
     .prepare(
       `UPDATE runs
@@ -582,7 +630,7 @@ export async function advanceRun(
         runId,
         stepRow.id,
         attemptNumber,
-        run.demo_mode ? "deterministic-demo" : "gemini",
+        providerName(executionModeForRun(run)),
         run.model,
         requestHash,
       ),
@@ -602,7 +650,8 @@ export async function advanceRun(
   let latencyMs = 0;
   let httpStatus = 200;
   try {
-    if (run.demo_mode) {
+    const executionMode = executionModeForRun(run);
+    if (executionMode === "demo") {
       const started = Date.now();
       output = await deterministicDemoOutput({
         ticker: run.ticker,
@@ -612,6 +661,20 @@ export async function advanceRun(
       });
       rawResponse = output;
       latencyMs = Date.now() - started;
+    } else if (executionMode === "local") {
+      const runtime = getRuntimeBindings();
+      if (!isLocalRuntime(runtime)) {
+        throw new ProviderError("本機模型模式已停用。", null, null, "LOCAL_MODE_DISABLED");
+      }
+      const result = await callOllama({
+        baseUrl: runtime.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434",
+        model: run.model,
+        prompt,
+      });
+      output = result.output;
+      rawResponse = result.raw;
+      latencyMs = result.latencyMs;
+      httpStatus = result.httpStatus;
     } else {
       const apiKey = getRuntimeBindings().GEMINI_API_KEY;
       if (!apiKey) throw new ProviderError("GEMINI_API_KEY disappeared during the run", null);
@@ -818,6 +881,7 @@ async function recordAttemptFailure(input: {
   const { db, run, ownerHash, leaseToken, stepRow, attemptId, attemptNumber, error } = input;
   const providerError = error instanceof ProviderError ? error : null;
   const message = error instanceof Error ? error.message : "Provider request failed";
+  const publicMessage = providerFailureMessage(providerError?.code);
   const terminal = attemptNumber >= 25;
   const now = new Date().toISOString();
   await db.batch([
@@ -851,7 +915,7 @@ async function recordAttemptFailure(input: {
         run.id,
         attemptNumber,
         `${WORKFLOW_STEPS[stepRow.step_index]?.label ?? "步驟"}暫時失敗。`,
-        JSON.stringify({ stepIndex: stepRow.step_index, retriable: !terminal }),
+        JSON.stringify({ stepIndex: stepRow.step_index, retriable: !terminal, providerCode: providerError?.code }),
         now,
       ),
   ]);
@@ -861,9 +925,10 @@ async function recordAttemptFailure(input: {
     body: {
       error: {
         code: terminal ? "ATTEMPT_LIMIT_REACHED" : "PROVIDER_STEP_FAILED",
-        message: terminal ? "模型嘗試次數已達上限。" : "此步驟執行失敗，可使用新的 Idempotency-Key 重試。",
+        message: terminal ? "模型嘗試次數已達上限。" : publicMessage,
         retriable: !terminal,
         attemptNumber,
+        providerCode: providerError?.code ?? "PROVIDER_ERROR",
       },
       ...(await getRunView(ownerHash, run.id)),
     },
@@ -876,6 +941,38 @@ async function recordAttemptFailure(input: {
     .bind(JSON.stringify(response), run.id, input.idempotencyKey, ownerHash)
     .run();
   return response;
+}
+
+function executionModeForRun(run: RunRow): ExecutionMode {
+  if (run.demo_mode) return "demo";
+  const stored = parseJson<{ executionMode?: string }>(run.input_json, {});
+  return stored.executionMode === "local" ? "local" : "live";
+}
+
+function providerName(mode: ExecutionMode): "deterministic-demo" | "ollama-local" | "gemini" {
+  return mode === "demo" ? "deterministic-demo" : mode === "local" ? "ollama-local" : "gemini";
+}
+
+function isLocalRuntime(runtime: ReturnType<typeof getRuntimeBindings>): boolean {
+  return runtime.LOCAL_MODE === "true" && runtime.APP_ENV === "development";
+}
+
+function providerFailureMessage(code?: string): string {
+  switch (code) {
+    case "OLLAMA_UNREACHABLE":
+      return "無法連上本機 Ollama；請啟動 Ollama 後按下重試。";
+    case "OLLAMA_MODEL_MISSING":
+      return "找不到指定的本機模型；請確認模型仍已安裝。";
+    case "LOCAL_MODEL_TIMEOUT":
+      return "本機模型推論逾時；進度已保存，可重新連線並重試。";
+    case "LOCAL_MODEL_BAD_JSON":
+    case "LOCAL_MODEL_EMPTY_RESPONSE":
+      return "本機模型輸出格式不符；進度已保存，可再次重試。";
+    case "LOCAL_MODE_DISABLED":
+      return "本機模式已停用，請改由本機開發伺服器開啟。";
+    default:
+      return "此步驟執行失敗，進度已保存，可使用新的要求重試。";
+  }
 }
 
 async function completeAdvanceRequests(
@@ -898,6 +995,7 @@ async function finalizeRun(ownerHash: string, runId: string): Promise<void> {
   const db = getD1();
   const run = await ownedRun(db, ownerHash, runId);
   if (run.status === "completed") return;
+  if (run.status === "cancelled" || run.status === "failed") return;
   const stepResult = await db
     .prepare("SELECT * FROM run_steps WHERE run_id = ? AND status = 'completed' ORDER BY step_index")
     .bind(runId)
@@ -966,7 +1064,36 @@ async function finalizeRun(ownerHash: string, runId: string): Promise<void> {
       .bind(crypto.randomUUID(), runId, JSON.stringify({ logicalCalls: 20 }), now),
   ]);
 
-  await createRunArtifact(ownerHash, runId);
+  // Decisions remain durable even if blob storage is temporarily unavailable.
+  // The separate export action can repair partial exports without model calls.
+  try {
+    await repairRunArtifacts(ownerHash, runId);
+  } catch (error) {
+    console.error("Run decisions completed; exports need retry", runId, error);
+  }
+}
+
+export async function repairRunArtifacts(ownerHash: string, runId: string): Promise<Record<string, unknown>> {
+  await ensureDatabaseSchema();
+  const db = getD1();
+  const run = await ownedRun(db, ownerHash, runId);
+  if (run.status !== "completed") {
+    throw new ApiError(409, "RUN_NOT_COMPLETED", "請先完成四組決策，再產生匯出檔。");
+  }
+  const token = crypto.randomUUID();
+  const now = Date.now();
+  const lease = await db.prepare(
+    `UPDATE runs SET lease_token = ?, lease_expires_at = ?
+     WHERE id = ? AND owner_hash = ? AND status = 'completed'
+       AND (lease_expires_at IS NULL OR lease_expires_at < ?)`,
+  ).bind(token, now + 120_000, runId, ownerHash, now).run();
+  if (lease.meta.changes !== 1) throw new ApiError(409, "EXPORT_BUSY", "匯出檔正在產生，請稍後重新整理。");
+  try {
+    await createRunArtifact(ownerHash, runId);
+    return await getRunView(ownerHash, runId);
+  } finally {
+    await releaseLease(db, runId, ownerHash, token);
+  }
 }
 
 function createSyntheticBacktest(
@@ -1118,13 +1245,13 @@ async function createRunArtifact(ownerHash: string, runId: string): Promise<void
       kind: "neutral-report",
       fileName: "neutral_report.md",
       contentType: "text/markdown; charset=utf-8",
-      body: `# ${ticker} 中立研究報告\n\n- 分析日期：${analysisDate}\n- 資料版本：deterministic-demo-v1\n- 證據數量：${evidenceView.length}\n- 邏輯模型呼叫：${run.logicalCalls}\n\n## 四組決策\n\n${resultLines.join("\n")}\n\n> 本報告為 AI 研究實驗，不構成投資建議。\n`,
+      body: `# ${ticker} 中立研究報告\n\n- 分析日期：${analysisDate}\n- 資料版本：deterministic-demo-v1（合成證據與價格，非真實市場資料）\n- 模型：${run.model}\n- 證據數量：${evidenceView.length}\n- 邏輯模型呼叫：${run.logicalCalls}\n\n## 四組決策\n\n${resultLines.join("\n")}\n\n> 本報告為 AI 研究實驗，不構成投資建議。\n`,
     },
     {
       kind: "run-summary",
       fileName: "run_summary.md",
       contentType: "text/markdown; charset=utf-8",
-      body: `# 立場交換研究室執行摘要\n\n實驗 ${run.id} 已完成固定 A/B/C/D = 1/5/7/7，共 20 個邏輯呼叫。\n\n${resultLines.join("\n")}\n`,
+      body: `# 立場交換研究室執行摘要\n\n資料為合成示範快照與價格，不能用來證明真實市場績效。\n\n實驗 ${run.id} 已完成固定 A/B/C/D = 1/5/7/7，共 20 個邏輯呼叫。\n\n${resultLines.join("\n")}\n`,
     },
   ] as const;
 

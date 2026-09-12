@@ -208,6 +208,7 @@ export function buildStepPrompt(input: {
     "HOLD 表示證據充分但方向中立；NO_TRADE 表示證據不足或不可靠。",
     `證據帳本：${JSON.stringify(evidence)}`,
     `本組先前輸出：${JSON.stringify(sameGroupHistory)}`,
+    "保持精簡：thesis 最多 80 字、argument 最多 240 字、counterpoint 最多 100 字。",
     "請以繁體中文作答，並嚴格輸出指定 JSON。",
   ]
     .filter(Boolean)

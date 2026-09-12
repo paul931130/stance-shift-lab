@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { chatGPTSignInPath, getChatGPTUser } from "../chatgpt-auth";
+import { getRuntimeBindings } from "@/db";
+import { inspectOllama } from "@/lib/server/ollama";
 import { RunLauncher } from "./RunLauncher";
+import { RunHistory } from "./RunHistory";
 import styles from "./lab.module.css";
 
 export const dynamic = "force-dynamic";
@@ -13,6 +16,15 @@ export const metadata: Metadata = {
 
 export default async function LabPage() {
   const user = await getChatGPTUser();
+  const runtime = getRuntimeBindings();
+  const localEnabled = runtime.APP_ENV === "development" && runtime.LOCAL_MODE === "true";
+  const localModel = runtime.OLLAMA_MODEL?.trim() || "gemma3:4b";
+  const localModelState = localEnabled
+    ? await inspectOllama({
+        baseUrl: runtime.OLLAMA_BASE_URL?.trim() || "http://127.0.0.1:11434",
+        model: localModel,
+      })
+    : null;
 
   return (
     <main className={styles.shell}>
@@ -29,15 +41,19 @@ export default async function LabPage() {
 
       <section className={styles.intro}>
         <p className={styles.eyebrow}>NEW EXPERIMENT · 新實驗</p>
-        <h1>把同一份證據，交給四種決策機制。</h1>
+        <h1>{localEnabled ? "地端多代理人實驗台" : "把同一份證據，交給四種決策機制。"}</h1>
         <p>
-          系統會先鎖定分析日當下可取得的資料，再依序完成 A、B、C、D 四組比較；
-          任何未來價格都必須等決策鎖定後才會解封。
+          同一份證據、四組方法、20 個步驟。Ollama 負責本機推論，D 組只在第二輪交換立場。
         </p>
       </section>
 
+      <p className={styles.dataNotice}>資料來源：合成示範快照（deterministic-demo-v1），不是實際歷史行情或新聞。即使使用本機模型，回測數字也僅供驗證流程。</p>
+
       {user ? (
-        <RunLauncher displayName={user.displayName} />
+        <RunLauncher
+          displayName={user.displayName}
+          localModel={localModelState ? { enabled: true, ...localModelState } : { enabled: false, ready: false, model: localModel, message: "" }}
+        />
       ) : (
         <section className={styles.signInCard} aria-labelledby="signin-title">
           <div>
@@ -52,6 +68,8 @@ export default async function LabPage() {
           </Link>
         </section>
       )}
+
+      {user ? <RunHistory /> : null}
 
       <aside className={styles.notice}>
         <strong>研究用途聲明</strong>

@@ -1,0 +1,4 @@
+services:
+  research:
+    environment:
+      RESEARCH_REMOTE: "true"
