@@ -41,6 +41,21 @@ ollama pull qwen3:14b
 
 只有 `formal_experiment_ready=true` 的資料集可進主實驗。完整操作見 [本機回測 Demo](demo-backtest.md)。
 
+## 哪些設定可以在網頁完成，哪些要在本機做
+
+**可以在網頁完成**：開啟 <http://127.0.0.1:8000/>，在「01/資料」面板展開「設定資料來源與模型」，可直接填入並儲存：
+
+- `SEC_USER_AGENT`、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`、`FINNHUB_API_KEY`
+- `OPENROUTER_API_KEY`、`OPENAI_API_KEY`、`GEMINI_API_KEY`（雲端模型）
+- `RESEARCH_MODEL`（預設模型名稱）、`FNSPID_NEWS_PATH`（容器內路徑字串）
+
+按「儲存設定」會呼叫 `/api/settings`，寫進伺服器端的 `research-data/private/settings.json`，立即生效、不需要重啟服務或編輯 `.env.research`。金鑰輸入框會遮住內容，介面只顯示「已設定／未設定」，不會把已存的值送回瀏覽器。
+
+**不能在網頁完成，需要在使用者自己電腦上做**：
+
+- **安裝 Ollama、下載模型**——瀏覽器沒有權限在使用者電腦裝軟體或拉幾 GB 的模型檔，仍要照上面步驟 5 手動 `ollama pull`。裝好後網頁的模型下拉選單會自動偵測到。
+- **放置 FNSPID 原始 CSV**——`FNSPID_NEWS_PATH` 欄位填的是容器內路徑字串，不是上傳按鈕；實際檔案（通常上百 MB、有再散布限制）要照步驟 3 手動放進 `research-inputs/`，再跑 `scripts/prepare_fnspid_news.py` 篩選。只用 Alpha Vantage 的話可以完全跳過這步。
+
 ## 驗證原始碼
 
 ```powershell
