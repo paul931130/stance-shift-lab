@@ -11,7 +11,7 @@ jobs:
     name: Ruff lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -27,7 +27,7 @@ jobs:
     name: Python unit tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-python@v5
         with:
@@ -43,7 +43,7 @@ jobs:
     name: Static frontend checks
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
@@ -61,7 +61,7 @@ jobs:
     name: Docker image build
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Build research image
         run: docker build -f Dockerfile.research -t stance-shift-lab-research .
