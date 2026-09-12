@@ -1,6 +1,6 @@
 # v3 正式研究台
 
-入口為專案根目錄的 **start-research.cmd**。啟動後開啟 http://127.0.0.1:8000 。這是 FastAPI / Uvicorn 正式服務，不使用開發熱更新；原本 3000 埠的網站是舊版示範台。
+入口為專案根目錄的 **start-research.cmd**。啟動後開啟 http://127.0.0.1:8000 。這是 FastAPI / Uvicorn 正式服務，不使用開發熱更新。
 
 ## 本機操作
 
@@ -16,7 +16,7 @@
 
 模型欄位會列出目前 Ollama 已安裝的模型，也可在「雲端模型」欄位直接輸入 LiteLLM 模型名稱，例如 `openrouter/openai/gpt-4.1-mini`。雲端欄位有值時會覆蓋 Ollama 下拉選擇。模型會寫入該實驗的不可變協議；已排程、執行中或已完成的實驗不可中途換模型。比較另一個模型時請建立新實驗，並依研究設計選擇 Study 2。
 
-API 金鑰與設定檔位於專案根目錄 `C:\Users\paul9\Desktop\114-2\專題\stance-shift-lab\.env.research`。檔案已建立，可直接填入下列欄位，儲存後重新啟動服務。`SEC_USER_AGENT` 是 SEC 要求的研究名稱與可聯絡 email，不是金鑰；完整值不會顯示在介面。
+API 金鑰與設定檔位於專案根目錄的 `.env.research`（執行 `.\research.ps1 setup` 會自動建立）。可直接填入下列欄位，儲存後重新啟動服務。`SEC_USER_AGENT` 是 SEC 要求的研究名稱與可聯絡 email，不是金鑰；完整值不會顯示在介面。
 
 ```text
 SEC_USER_AGENT=研究名稱 contact@example.com
@@ -30,8 +30,10 @@ Alpha Vantage 使用官方 `NEWS_SENTIMENT` 端點，查詢分析日前 90 天�
 
 Windows 使用者也可用統一終端入口：`.\research.ps1 setup` 設定憑證、`.\research.ps1 doctor` 檢查服務、`.\research.ps1 collect NVDA 2024-12-31` 取得資料、`.\research.ps1 run NVDA 2024-12-31` 以預設 14B 模型啟動實驗。小模型只用於流程檢查，例如 `.\research.ps1 run NVDA 2024-12-31 -Model ollama/qwen3:8b -AllowSmallModel`。
 
+在專案根目錄執行（PowerShell 用 `${PWD}`，Bash 用 `$(pwd)`）：
+
 ```powershell
-docker run --rm -v "C:\Users\paul9\Desktop\114-2\專題\stance-shift-lab\research-inputs:/inputs" stance-shift-lab-research python scripts/prepare_fnspid_news.py /inputs/Stock_news_full.csv /inputs/Stock_news.csv
+docker run --rm -v "${PWD}/research-inputs:/inputs" stance-shift-lab-research python scripts/prepare_fnspid_news.py /inputs/Stock_news_full.csv /inputs/Stock_news.csv
 ```
 
 勾選 FinBERT 時，系統在本機以固定版本的 `ProsusAI/finbert` 離線分析 sentiment 證據的新聞標題，產生 positive/neutral/negative 機率與正負差分並寫回資料集；首次使用會下載並快取模型，之後不需要 `HF_TOKEN` 或網路。評分結果會保存模型版本、輸入雜湊與處理參數，只有全部指定標題成功才建立新的資料集版本。雲端模型依 LiteLLM 的模型名稱使用對應金鑰，例如 OpenRouter 使用 `OPENROUTER_API_KEY`。Ollama 推論不會載入 LiteLLM 或聯絡雲端模型。

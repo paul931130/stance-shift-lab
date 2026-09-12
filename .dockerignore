@@ -1,14 +1,12 @@
 .git
 .venv
-node_modules
-.wrangler
 research-data
 research-inputs/*.csv
 research-inputs/*.jsonl
-app/research-inputs
 work
 .env*
 __pycache__
 *.pyc
-dist
 outputs
+deliverables
+release
