@@ -16,7 +16,7 @@ from fastapi.testclient import TestClient
 
 from research_service.app import create_app
 from research_service.data import validate_dataset, research_inputs, digest, score_sentiment_finbert
-from research_service.engine import Engine, StepFailure, compute_usage, gate, derive_action, source_locked_fundamental
+from research_service.engine import Engine, compute_usage, gate, derive_action, source_locked_fundamental
 from research_service.models import messages_for, output_schema_for
 from research_service.protocol import StudyProtocol, decision_plan
 from research_service.reporting import export_job, study_report, pilot_diagnostics, hold_band_sensitivity

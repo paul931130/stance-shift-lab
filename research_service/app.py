@@ -11,21 +11,18 @@ import json
 import os
 from pathlib import Path
 import re
-import secrets
 import threading
-import time
-from urllib.parse import urlparse
 import zipfile
 
-from fastapi import FastAPI, Request, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, Request, HTTPException, WebSocket
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
 from .data import (validate_dataset, download_prices, fetch_fundamental, fetch_sentiment,
                    fetch_macro, research_inputs, get_json, score_sentiment_finbert,
                    check_sentiment_sources)
-from .engine import Engine, protocol_from
-from .finnhub import configured as finnhub_configured, live_snapshot, websocket_url
+from .engine import Engine
+from .finnhub import configured as finnhub_configured, live_snapshot
 from .protocol import (DEFAULT_RESEARCH_MODEL, SMALL_MODEL_PATTERN, StudyProtocol, TICKERS,
                        QUARTER_DATES, validate_case, validate_live_symbol)
 from .reporting import (study_report, export_job, csv_text, pilot_diagnostics,
@@ -35,6 +32,10 @@ from .settings import Settings
 from .finbert import status as finbert_status, prepare_model
 from .readiness import coverage
 from .live_stream import TradeHub
+from .logging_config import get_logger
+from .security import SessionAuth
+
+logger = get_logger(__name__)
 
 ROOT = Path(__file__).parent
 PARAMETER_SIZE_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*[bB]\b")
@@ -87,22 +88,7 @@ def create_app(store=None, model_call=None, start_worker=True):
     if remote and len(access_key) < 32:
         raise RuntimeError("Remote mode requires RESEARCH_ACCESS_KEY with at least 32 characters")
     allowed_hosts = {host.strip() for host in os.getenv("RESEARCH_ALLOWED_HOSTS", "localhost,127.0.0.1,::1,testserver").split(",")}
-    session_ttl = 43_200
-
-    def issue_session():
-        payload = f"{int(time.time())}.{secrets.token_urlsafe(24)}"
-        signature = hmac.new(access_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-        return f"{payload}.{signature}"
-
-    def valid_session(token):
-        try:
-            stamp, _, signature = token.split(".", 2)
-            payload = token.rsplit(".", 1)[0]
-            expected = hmac.new(access_key.encode(), payload.encode(), hashlib.sha256).hexdigest()
-            age = time.time() - int(stamp)
-            return -60 <= age <= session_ttl and hmac.compare_digest(signature.encode(), expected.encode())
-        except (AttributeError, TypeError, ValueError):
-            return False
+    auth = SessionAuth(access_key)
 
     def work():
         while not stop.is_set():
@@ -118,12 +104,15 @@ def create_app(store=None, model_call=None, start_worker=True):
             except Exception as error:
                 state = getattr(error, "state", state)
                 # Persist progress before exposing a bounded diagnostic; never dump provider keys.
+                # SEC_USER_AGENT is a contact string, not a secret, but it is still
+                # someone's identifying info and gets the same redaction treatment.
                 message = str(error).replace(access_key, "[redacted]") if access_key else str(error)
                 for name in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "FRED_API_KEY",
                              "ALPHA_VANTAGE_API_KEY", "FINNHUB_API_KEY", "HF_TOKEN", "SEC_USER_AGENT"):
                     if os.getenv(name):
                         message = message.replace(os.environ[name], "[redacted]")
                 message = f"{type(error).__name__}: {message[:700]}"
+                logger.error("job %s failed: %s", job["id"], message)
                 state["attempts"].append({"at": now(), "status": "error", "message": message})
                 store.save_step(job["id"], state, message)
 
@@ -159,8 +148,7 @@ def create_app(store=None, model_call=None, start_worker=True):
         if access_key and request.url.path not in public_paths:
             bearer = request.headers.get("authorization", "").removeprefix("Bearer ")
             cookie = request.cookies.get("research_session", "")
-            bearer_ok = bool(bearer) and hmac.compare_digest(bearer.encode(), access_key.encode())
-            if not bearer_ok and not valid_session(cookie):
+            if not auth.bearer_ok(bearer) and not auth.valid_session(cookie):
                 return JSONResponse({"detail": "請先輸入研究室存取金鑰"}, status_code=401)
         response = await call_next(request)
         response.headers["X-Content-Type-Options"] = "nosniff"
@@ -194,12 +182,18 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @app.post("/api/login")
     async def login(request: Request):
+        client_ip = request.client.host if request.client else "unknown"
+        if auth.login_rate_limited(client_ip):
+            logger.warning("login rate limited for client=%s", client_ip)
+            raise HTTPException(429, "登入嘗試次數過多，請稍後再試")
         data = await request.json()
         if not access_key or not hmac.compare_digest(str(data.get("key", "")).encode(), access_key.encode()):
+            auth.record_login_failure(client_ip)
             raise HTTPException(401, "存取金鑰不正確")
+        auth.clear_login_failures(client_ip)
         response = JSONResponse({"ok": True})
-        response.set_cookie("research_session", issue_session(), httponly=True, secure=remote,
-                            samesite="strict", max_age=session_ttl)
+        response.set_cookie("research_session", auth.issue_session(), httponly=True, secure=remote,
+                            samesite="strict", max_age=auth.session_ttl)
         return response
 
     @app.post("/api/logout")
@@ -319,6 +313,7 @@ def create_app(store=None, model_call=None, start_worker=True):
             progress(stage="complete", result=result)
             return result
         except Exception as error:
+            logger.warning("finbert scoring failed dataset=%s: %s: %s", key, type(error).__name__, error)
             progress(stage="failed", message=f"{type(error).__name__}：評分未完成，原資料未變更；可重試")
             raise
 
@@ -393,6 +388,8 @@ def create_app(store=None, model_call=None, start_worker=True):
                 if note:
                     data["limitations"].append(note)
             except Exception as error:
+                logger.warning("dataset collection failed ticker=%s domain=%s: %s: %s",
+                               payload.ticker, domain, type(error).__name__, error)
                 agents[domain] = {"status": "error", "records": 0,
                     "message": f"{name} 下載失敗：{type(error).__name__}"}
                 data["limitations"].append(f"{name} 下載失敗；可重新下載或匯入可驗證的摘要")
@@ -517,8 +514,7 @@ def create_app(store=None, model_call=None, start_worker=True):
             return
         if access_key:
             bearer = websocket.headers.get("authorization", "").removeprefix("Bearer ")
-            bearer_ok = bool(bearer) and hmac.compare_digest(bearer.encode(), access_key.encode())
-            if not bearer_ok and not valid_session(websocket.cookies.get("research_session", "")):
+            if not auth.bearer_ok(bearer) and not auth.valid_session(websocket.cookies.get("research_session", "")):
                 await websocket.close(code=4401)
                 return
         raw_symbols = (websocket.query_params.get("symbols") or "").split(",")

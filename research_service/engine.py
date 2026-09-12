@@ -15,6 +15,9 @@ from .models import (compact_research_evidence, generate, messages_for,
                      validate_decision, validate_research)
 from .protocol import StudyProtocol, DOMAIN_NAMES, decision_plan, decision_wave, temperature_for
 from .storage import now
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 def protocol_from(value):
@@ -324,6 +327,7 @@ class Engine:
                     # The degraded flag remains visible so formal runs can be
                     # repeated or excluded instead of silently accepting a bad
                     # model summary.
+                    logger.warning("research agent degraded domain=%s: %s: %s", domain, type(error).__name__, error)
                     cited = items[:6]
                     summary = "；".join(f"[{item['evidence_id']}] {item['claim']}" for item in cited)[:1800]
                     return {"summary": summary, "evidence_ids": [item["evidence_id"] for item in cited],
@@ -349,6 +353,7 @@ class Engine:
                         try:
                             completed[domain] = future.result()
                         except Exception as error:
+                            logger.error("research agent pool failure domain=%s: %s: %s", domain, type(error).__name__, error)
                             failures.append(f"{domain}: {type(error).__name__}: {error}")
             for domain in DOMAIN_NAMES:
                 if domain in completed:
@@ -399,6 +404,7 @@ class Engine:
                     try:
                         completed[key] = future.result()
                     except Exception as error:
+                        logger.error("decision pool failure call=%s: %s: %s", key, type(error).__name__, error)
                         failures.append(f"{key}: {type(error).__name__}: {error}")
             for call in decision_plan(protocol):
                 if call.key in completed:

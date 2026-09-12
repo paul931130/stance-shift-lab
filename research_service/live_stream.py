@@ -3,6 +3,9 @@ import asyncio
 import json
 import time
 from .finnhub import websocket_url, finite
+from .logging_config import get_logger
+
+logger = get_logger(__name__)
 
 
 class TradeHub:
@@ -94,6 +97,7 @@ class TradeHub:
             except asyncio.CancelledError:
                 raise
             except Exception as error:
+                logger.warning("Finnhub upstream connection lost: %s: %s", type(error).__name__, error)
                 self.publish({"type": "status", "status": "reconnecting", "retry_seconds": backoff,
                               "message": f"上游連線中斷（{type(error).__name__}）；{backoff} 秒後重連"})
                 await asyncio.sleep(backoff)
