@@ -3,6 +3,8 @@
 審查日期：2026-09-12  
 範圍：本機歷史回測研究台、資料品質、提示詞、Web／CLI、Docker 與交接封裝
 
+> **更新（2026-09-13）**：下方「公開 GitHub release」列已改善——repo 已推送至 GitHub、加入 `LICENSE`（MIT）與 GitHub Actions CI（Python 測試、前端語法檢查、Docker build）。尚缺 release tag，其餘見 [版本紀錄](../CHANGELOG.md)。
+
 ## 結論
 
 | 交付層級 | 狀態 | 依據 |
