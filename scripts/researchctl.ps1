@@ -124,7 +124,19 @@ function Invoke-ResearchApi([string]$Method, [string]$Path, $Body = $null) {
         $parameters.ContentType = 'application/json'
         $parameters.Body = ($Body | ConvertTo-Json -Depth 12 -Compress)
     }
-    $response = Invoke-WebRequest @parameters -UseBasicParsing
+    try {
+        $response = Invoke-WebRequest @parameters -UseBasicParsing
+    } catch {
+        # PowerShell's own exception message is just the HTTP status line
+        # ("Response status code does not indicate success: 422"); the
+        # service's actual explanation is JSON in the response body.
+        $detail = $null
+        if ($_.ErrorDetails.Message) {
+            try { $detail = ($_.ErrorDetails.Message | ConvertFrom-Json).detail } catch { }
+        }
+        if ($detail) { throw "研究服務拒絕請求：$detail" }
+        throw
+    }
     if ($response.RawContentStream) {
         $response.RawContentStream.Position = 0
         $reader = New-Object System.IO.StreamReader($response.RawContentStream, [Text.Encoding]::UTF8)

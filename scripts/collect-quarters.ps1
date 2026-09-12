@@ -109,30 +109,35 @@ foreach ($combo in $remaining) {
             ticker = $combo.Ticker; analysis_date = $combo.Date
             refresh = [bool]$Refresh; use_finbert = [bool]$UseFinbert
         }
-        if (-not $result.reused) { $budgetUsed++ }
-        $sentiment = $result.agents.sentiment
-        $checkpoint[$key] = @{
-            status = 'done'; dataset_id = $result.id; reused = [bool]$result.reused
-            sentiment_status = $sentiment.status; sentiment_records = $sentiment.records
-            updated_at = (Get-Date).ToUniversalTime().ToString('o')
-        }
-        Write-Host "  -> $(if ($result.reused) { '重用既有資料集' } else { '新收集' }) · 情緒域 $($sentiment.status) · $($sentiment.records) 筆"
     } catch {
-        $message = $_.Exception.Message
-        $rateLimited = $message -match 'rate|限流|流量限制|429'
-        $checkpoint[$key] = @{
-            status = if ($rateLimited) { 'rate_limited' } else { 'error' }
-            message = $message; updated_at = (Get-Date).ToUniversalTime().ToString('o')
-        }
+        # A genuine transport/HTTP failure (container down, 500, etc.) — not
+        # an Alpha Vantage rate limit, which the API absorbs internally and
+        # reports as a normal 200 response (see the check below instead).
+        $checkpoint[$key] = @{ status = 'error'; message = $_.Exception.Message; updated_at = (Get-Date).ToUniversalTime().ToString('o') }
         Save-Checkpoint $checkpoint
-        if ($rateLimited) {
-            Write-Host "  -> 疑似觸發流量限制，提前停止本次執行：$message"
-            Write-Host "已儲存進度到 $CheckpointFile；額度重置後重跑同一指令即可繼續。"
-            exit 0
-        }
-        Write-Host "  -> 失敗（非流量限制）：$message"
+        Write-Host "  -> 請求失敗：$($_.Exception.Message)"
         continue
     }
+    if (-not $result.reused) { $budgetUsed++ }
+    $sentiment = $result.agents.sentiment
+    # research_service/data.py's fetch_sentiment() catches Alpha Vantage
+    # failures itself and reports them through this message string; the
+    # API never raises an HTTP error for a rate-limited news call, so this
+    # is the only place the signal is actually visible.
+    $rateLimited = $sentiment.message -match 'Alpha Vantage 下載失敗|流量限制|rate limit'
+    if ($rateLimited) {
+        $checkpoint[$key] = @{ status = 'rate_limited'; message = $sentiment.message; updated_at = (Get-Date).ToUniversalTime().ToString('o') }
+        Save-Checkpoint $checkpoint
+        Write-Host "  -> Alpha Vantage 疑似已達流量限制，提前停止本次執行：$($sentiment.message)"
+        Write-Host "已儲存進度到 $CheckpointFile；額度重置後重跑同一指令即可繼續（此組合不會被標記為完成）。"
+        exit 0
+    }
+    $checkpoint[$key] = @{
+        status = 'done'; dataset_id = $result.id; reused = [bool]$result.reused
+        sentiment_status = $sentiment.status; sentiment_records = $sentiment.records
+        updated_at = (Get-Date).ToUniversalTime().ToString('o')
+    }
+    Write-Host "  -> $(if ($result.reused) { '重用既有資料集' } else { '新收集' }) · 情緒域 $($sentiment.status) · $($sentiment.records) 筆"
     Save-Checkpoint $checkpoint
 }
 
