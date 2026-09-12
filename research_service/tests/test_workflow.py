@@ -575,6 +575,33 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(len(diagnostic["pairs"]), 2)
         self.assertEqual(len(diagnostic["control"]["pairs"]), 2)
 
+    def test_preregistration_freeze_locks_dataset_ids_and_flags_later_additions(self):
+        with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            first = self.complete(self.create("2024-12-31"))
+            protocol_hash = first["config"]["protocol_hash"]
+            self.assertIsNone(client.get(f'/api/studies/{protocol_hash}').json()["preregistration"])
+            frozen = client.post(f'/api/studies/{protocol_hash}/freeze').json()
+            self.assertEqual(frozen["dataset_ids"], [self.dataset_id])
+            self.assertTrue(frozen["frozen_at"])
+            again = client.post(f'/api/studies/{protocol_hash}/freeze').json()
+            self.assertEqual(again["frozen_at"], frozen["frozen_at"])
+            report = client.get(f'/api/studies/{protocol_hash}').json()
+            self.assertEqual(report["preregistration"]["dataset_ids"], [self.dataset_id])
+            self.assertEqual(report["preregistration"]["post_freeze_dataset_ids"], [])
+            other_dataset_id = self.store.add_dataset({**self.data, "source": "unit-test-fixture-v2"})
+            self.complete(self.store.create({"ticker": "NVDA", "analysis_date": "2025-03-31",
+                "dataset_id": other_dataset_id, "protocol": asdict(self.protocol), "protocol_hash": protocol_hash}))
+            report = client.get(f'/api/studies/{protocol_hash}').json()
+            self.assertEqual(report["preregistration"]["post_freeze_dataset_ids"], [other_dataset_id])
+
+    def test_freeze_rejects_changing_the_dataset_set_after_the_fact(self):
+        job = self.complete(self.create("2024-12-31"))
+        protocol_hash = job["config"]["protocol_hash"]
+        self.store.freeze(protocol_hash, [self.dataset_id])
+        other_dataset_id = self.store.add_dataset({**self.data, "source": "unit-test-fixture-v2"})
+        with self.assertRaises(ValueError):
+            self.store.freeze(protocol_hash, [self.dataset_id, other_dataset_id])
+
     def test_provider_error_pauses_and_requires_explicit_resume(self):
         job = self.create()
         self.store.save_step(job['id'], job['state'], 'provider failed')

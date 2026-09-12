@@ -37,6 +37,10 @@ def _get(path, params, requester=get_json):
     url = f"{base}/{path.lstrip('/')}?{urlencode(params)}"
     identity = hashlib.sha256((token + url).encode()).hexdigest()
     with _cache_lock:
+        # Bounded the same way as _cache: a long-running server querying many
+        # distinct symbol/endpoint combinations must not grow this forever.
+        if len(_request_locks) >= 500:
+            _request_locks.clear()
         lock = _request_locks.setdefault(identity, threading.Lock())
     with lock:
         if requester is get_json:

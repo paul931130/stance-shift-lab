@@ -8,7 +8,20 @@ let modelDetails = new Map(), installedModels = new Set();
 let submitting = false, scoring = false;
 let hasActiveJobs = false, pollTimer = null, liveSocket = null, finbertReady = false, pollFailures = 0;
 const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
-function notify(message, error = false) { $('notice').hidden = false; $('notice').className = error ? 'error' : ''; $('notice').textContent = message; }
+let notices = [], noticeSeq = 0;
+function renderNotices() {
+  const el = $('notice');
+  el.hidden = notices.length === 0;
+  el.innerHTML = notices.map(n => `<div class="notice-item ${n.error ? 'error' : ''}"><span>${escape(n.message)}</span><button type="button" data-dismiss-notice="${n.id}" aria-label="關閉通知">×</button></div>`).join('');
+}
+function dismissNotice(id) { notices = notices.filter(n => n.id !== id); renderNotices(); }
+function notify(message, error = false) {
+  const id = ++noticeSeq;
+  notices.push({ id, message, error });
+  if (notices.length > 4) notices.shift();
+  renderNotices();
+  if (!error) setTimeout(() => dismissNotice(id), 8000);
+}
 async function api(path, body, method) {
   const response = await fetch(path, {method: method || (body === undefined ? 'GET' : 'POST'), headers: body === undefined ? {} : {'Content-Type':'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
   const data = await response.json();
@@ -90,29 +103,30 @@ function renderDatasetDetail(alignDate = false) {
     : `這筆舊版或匯入資料未記錄研究分析日；請選計劃書的季末切點。${d.price_end} 是未來行情終點，不能當分析日。`;
 }
 function syncExperimentGuard() {
-  const d=datasetRows.find(row=>row.id===$('dataset').value), cut=d&&datasetCut(d);
-  const dateReady=Boolean(d) && (d.kind!=='historical' || cut===$('analysis-date').value), guard=$('experiment-guard'), button=$('run-button');
-  const quality=d?.coverage?.sentiment_quality;
-  const fundamental=d?.coverage?.fundamental_quality;
-  const hasNews=Boolean(quality?.items);
-  const qualityReady=!hasNews||(quality.passes_quality_gate&&quality.finbert_complete);
-  const qualityAllowed=qualityReady||$('allow-low-quality-sentiment').checked||d?.kind!=='historical';
-  const fundamentalReady=!fundamental?.items||fundamental.passes_quality_gate;
-  const fundamentalAllowed=fundamentalReady||$('allow-point-fundamental').checked||d?.kind!=='historical';
-  const cloudModel=$('cloud-model').value.trim(), localModel=$('model').value;
-  const detail=modelDetails.get(localModel), size=Number.parseFloat(detail?.parameter_size);
-  const localAvailable=installedModels.has(localModel);
-  const modelReady=Boolean(cloudModel)||(localAvailable&&(size>=14||$('allow-small-model').checked));
-  const ready=dateReady&&qualityAllowed&&fundamentalAllowed&&modelReady;
-  button.disabled=!ready || submitting;
-  guard.classList.toggle('ready',ready);
-  if(!d)guard.textContent='尚未選擇資料集，因此不能啟動實驗。';
-  else if(!dateReady)guard.textContent='資料集與研究分析日不一致，不能啟動實驗。';
-  else if(!qualityAllowed)guard.textContent=`新聞品質尚未通過：目標相關率 ${percentage(quality.ticker_mention_rate)}、FinBERT ${quality.finbert_scored||0}/${quality.items||0}；請建立新版或明確勾選資料品質敏感性覆寫。`;
-  else if(!fundamentalAllowed)guard.textContent='此資料集只有不可比較的 SEC 點時欄位；請重新採集新版資料，或明確勾選點時基本面敏感性覆寫。';
-  else if(!cloudModel&&!localAvailable)guard.textContent=`本機尚未安裝 ${localModel}；請改選已安裝模型或先安裝正式模型。`;
-  else if(!cloudModel&&size<14&&!$('allow-small-model').checked)guard.textContent=`${localModel} 為 ${detail?.parameter_size||'14B 以下'}；若只驗證流程，請勾選小模型冒煙測試。`;
-  else guard.textContent='資料集、研究分析日、模型與新聞品質均已驗證；設定會一起鎖定於新實驗。';
+  const d=datasetRows.find(row=>row.id===$('dataset').value);
+  const localModel=$('model').value, detail=modelDetails.get(localModel);
+  const result=computeExperimentReadiness({
+    dataset: d, analysisDate: $('analysis-date').value,
+    allowLowQualitySentiment: $('allow-low-quality-sentiment').checked,
+    allowPointFundamental: $('allow-point-fundamental').checked,
+    allowSmallModel: $('allow-small-model').checked,
+    cloudModel: $('cloud-model').value, localModel,
+    localAvailable: installedModels.has(localModel),
+    localParameterSize: detail?.parameter_size,
+  });
+  const guard=$('experiment-guard'), button=$('run-button');
+  button.disabled=!result.ready || submitting;
+  guard.classList.toggle('ready',result.ready);
+  const messages={
+    no_dataset:'尚未選擇資料集，因此不能啟動實驗。',
+    date_mismatch:'資料集與研究分析日不一致，不能啟動實驗。',
+    sentiment_quality:`新聞品質尚未通過：目標相關率 ${percentage(result.quality?.ticker_mention_rate)}、FinBERT ${result.quality?.finbert_scored||0}/${result.quality?.items||0}；請建立新版或明確勾選資料品質敏感性覆寫。`,
+    fundamental_quality:'此資料集只有不可比較的 SEC 點時欄位；請重新採集新版資料，或明確勾選點時基本面敏感性覆寫。',
+    model_not_installed:`本機尚未安裝 ${result.localModel}；請改選已安裝模型或先安裝正式模型。`,
+    model_too_small:`${result.localModel} 為 ${result.localParameterSize||'14B 以下'}；若只驗證流程，請勾選小模型冒煙測試。`,
+    ready:'資料集、研究分析日、模型與新聞品質均已驗證；設定會一起鎖定於新實驗。',
+  };
+  guard.textContent=messages[result.reason];
 }
 async function refreshReadiness() {
   const r=await api('/api/readiness'), done=r.evidence_complete_cases??r.complete_cases, formal=r.formal_experiment_ready_cases??0, total=r.target_cases;
@@ -131,7 +145,18 @@ async function refreshDatasets() {
   syncExperimentGuard();
 }
 async function refreshJobs() {
-  const dashboard = await api('/api/dashboard' + (selectedJob ? `?selected=${encodeURIComponent(selectedJob)}` : ''));
+  let dashboard;
+  try {
+    dashboard = await api('/api/dashboard' + (selectedJob ? `?selected=${encodeURIComponent(selectedJob)}` : ''));
+  } catch (error) {
+    if (!selectedJob) throw error;
+    // A URL restored from a bookmark or refresh may point at a job that no
+    // longer exists (deleted store, different environment); fall back to the
+    // unfiltered dashboard instead of leaving the whole page stuck on an error.
+    selectedJob = null;
+    history.replaceState(null, '', location.pathname);
+    dashboard = await api('/api/dashboard');
+  }
   const jobs = dashboard.jobs;
   hasActiveJobs=jobs.some(job=>job.status==='queued'||job.status==='running');
   $('jobs').className = jobs.length ? '' : 'empty';
@@ -206,8 +231,21 @@ function backtestComparison(s) {
   const benchmark=rows.find(row=>row.horizon===60&&row.status==='complete');
   return `<section class="execution-block"><div class="subheading"><h3>四組結果與回測比較</h3><small>Corwin–Schultz 成本後淨報酬</small></div><div class="table-wrap"><table><thead><tr><th>組別</th><th>最終決策</th><th>30 日</th><th>60 日（主要）</th><th>90 日</th></tr></thead><tbody>${'ABCD'.split('').map(group=>`<tr><td><b>${group}</b></td><td>${escape(s.decisions?.[group]?.action||'—')}</td><td>${cell(group,30)}</td><td>${cell(group,60)}</td><td>${cell(group,90)}</td></tr>`).join('')}</tbody></table></div><p class="hint">同期間 60 日 Buy-and-Hold：${benchmark?percentage(benchmark.benchmark_return):'待成熟'}。完整逐日報酬、零成本版本與統計檢定可由 ZIP 下載。</p></section>`;
 }
+function estimateRemaining(s, total, jobStatus) {
+  if(['complete','cancelled'].includes(jobStatus))return null;
+  const done=(s.records||[]).length, remaining=total-done;
+  if(remaining<=0)return null;
+  const elapsed=(s.records||[]).map(r=>r.audit?.usage?.client_elapsed_seconds).filter(v=>typeof v==='number'&&Number.isFinite(v)&&v>0);
+  if(elapsed.length<2)return null;
+  const avg=elapsed.reduce((a,b)=>a+b,0)/elapsed.length, seconds=avg*remaining;
+  if(seconds<60)return '不到 1 分鐘';
+  const minutes=Math.round(seconds/60);
+  return minutes<60?`約 ${minutes} 分鐘`:`約 ${(minutes/60).toFixed(1)} 小時`;
+}
 async function showJob(id, loadedJob=null) {
   selectedJob = id;
+  const query = id ? `?selected=${encodeURIComponent(id)}` : '';
+  if (location.search !== query) history.replaceState(null, '', location.pathname + query);
   const job = loadedJob || await api(`/api/jobs/${id}`), s = job.state, total = 15 + job.config.protocol.voting_samples;
   selectedProtocol = job.config.protocol_hash;
   const output = $('run-detail'); output.hidden = false;
@@ -217,13 +255,18 @@ async function showJob(id, loadedJob=null) {
   const protocolNotice = oldProtocol
     ? `這是協議 ${job.config.protocol.version || '未記錄'} 的既有結果；決策規則修正只會套用於 ${currentProtocolVersion} 新建立的實驗。`
     : `${protocolLabel(job.config.protocol)} · 使用目前的 Buy／Hold／Sell 候選決策規則。`;
-  output.innerHTML = `<div class="section-label">CASE / ${escape(id.slice(0,8))}</div><h2>${escape(job.config.ticker)} · ${escape(job.config.analysis_date)} <span class="status ${escape(job.status)}">${escape(statuses[job.status])}</span></h2><p class="${oldProtocol?'protocol-warning':'hint'}">${escape(protocolNotice)}</p><p class="hint">目前：${escape(trace)} · ${s.records.length}/${total} 決策輸出 · ${s.attempts.length} 次持久化波次</p><progress class="progress" max="${total}" value="${s.records.length}" aria-label="決策推論進度"></progress>${job.error ? `<p class="error-text">${escape(job.error)}</p>` : ''}<div class="actions">${oldProtocol ? `<button class="quiet" data-clone="${escape(id)}">複製至新版重新執行</button>` : ''}${!isFinal && !oldProtocol ? `<button class="quiet" data-control="${job.wants_run ? 'pause' : 'resume'}">${job.wants_run ? '暫停' : '繼續執行'}</button><button class="quiet" data-control="cancel">取消實驗</button>` : ''}<a href="/api/jobs/${id}/export">下載研究產物 ZIP</a>${job.status === 'complete' ? '<button data-statistics="true">檢視同協議統計</button>' : ''}</div>${runAgentTerminal(job,s)}${researchAgentPanel(s,job.status)}${groupProgressPanel(s,job.config.protocol,job.status)}${s.decisions ? `<div class="decisions">${Object.entries(s.decisions).map(([g,d]) => `<div><small>${g} 組 · 信心 ${percentage(d.confidence)} · 預測 ${number(d.expected_return_pct)}%</small><strong>${escape(d.action)}</strong><small>模型：${escape(d.model_action||d.candidate_action)} · 推導：${escape(d.derived_action||d.candidate_action)} · 候選：${escape(d.candidate_action)}<br>中性帶 ±${number(d.hold_band_pct)}% · 資料覆蓋 ${percentage(d.gate.domain_coverage)}<br>${d.gate.missing_data_control?'缺資料對照：未覆寫模型決策<br>':''}${escape(d.gate.reasons.join(' / ') || '通過門檻')}</small></div>`).join('')}</div>` : '<p class="hint">四組完成後由 Gatekeeper 同步鎖定決策。</p>'}${backtestComparison(s)}<details><summary>中立研究報告與來源</summary><pre>${escape(JSON.stringify(s.report || s.research, null, 2))}</pre></details><details><summary>逐步論證與三輪立場交換（${s.records.length}）</summary>${s.records.map(r => `<article class="trace"><strong>${escape(r.group)} · ${escape(r.key)} · ${escape(r.stance)}</strong><p>${escape(r.output.rationale)}</p><small>引用：${escape(r.output.evidence_ids.join(', '))}<br>提示雜湊：${escape(r.audit.prompt_hash)}</small></article>`).join('')}</details><details><summary>回測、門檻與流程紀錄</summary><pre>${escape(JSON.stringify({decisions:s.decisions,cases:s.cases,compute_usage:s.compute_usage,completeness_diagnostic:s.completeness_diagnostic,trace:s.trace},null,2))}</pre></details>`;
+  const eta=estimateRemaining(s,total,job.status);
+  output.innerHTML = `<div class="section-label">CASE / ${escape(id.slice(0,8))}</div><h2>${escape(job.config.ticker)} · ${escape(job.config.analysis_date)} <span class="status ${escape(job.status)}">${escape(statuses[job.status])}</span></h2><p class="${oldProtocol?'protocol-warning':'hint'}">${escape(protocolNotice)}</p><p class="hint">目前：${escape(trace)} · ${s.records.length}/${total} 決策輸出 · ${s.attempts.length} 次持久化波次${eta?` · 依目前平均耗時預估剩餘 ${escape(eta)}`:''}</p><progress class="progress" max="${total}" value="${s.records.length}" aria-label="決策推論進度"></progress>${job.error ? `<p class="error-text">${escape(job.error)}</p>` : ''}<div class="actions">${oldProtocol ? `<button class="quiet" data-clone="${escape(id)}">複製至新版重新執行</button>` : ''}${!isFinal && !oldProtocol ? `<button class="quiet" data-control="${job.wants_run ? 'pause' : 'resume'}">${job.wants_run ? '暫停' : '繼續執行'}</button><button class="quiet" data-control="cancel">取消實驗</button>` : ''}<a href="/api/jobs/${id}/export">下載研究產物 ZIP</a>${job.status === 'complete' ? '<button data-statistics="true">檢視同協議統計</button>' : ''}</div>${runAgentTerminal(job,s)}${researchAgentPanel(s,job.status)}${groupProgressPanel(s,job.config.protocol,job.status)}${s.decisions ? `<div class="decisions">${Object.entries(s.decisions).map(([g,d]) => `<div><small>${g} 組 · 信心 ${percentage(d.confidence)} · 預測 ${number(d.expected_return_pct)}%</small><strong>${escape(d.action)}</strong><small>模型：${escape(d.model_action||d.candidate_action)} · 推導：${escape(d.derived_action||d.candidate_action)} · 候選：${escape(d.candidate_action)}<br>中性帶 ±${number(d.hold_band_pct)}% · 資料覆蓋 ${percentage(d.gate.domain_coverage)}<br>${d.gate.missing_data_control?'缺資料對照：未覆寫模型決策<br>':''}${escape(d.gate.reasons.join(' / ') || '通過門檻')}</small></div>`).join('')}</div>` : '<p class="hint">四組完成後由 Gatekeeper 同步鎖定決策。</p>'}${backtestComparison(s)}<details><summary>中立研究報告與來源</summary><pre>${escape(JSON.stringify(s.report || s.research, null, 2))}</pre></details><details><summary>逐步論證與三輪立場交換（${s.records.length}）</summary>${s.records.map(r => `<article class="trace"><strong>${escape(r.group)} · ${escape(r.key)} · ${escape(r.stance)}</strong><p>${escape(r.output.rationale)}</p><small>引用：${escape(r.output.evidence_ids.join(', '))}<br>提示雜湊：${escape(r.audit.prompt_hash)}</small></article>`).join('')}</details><details><summary>回測、門檻與流程紀錄</summary><pre>${escape(JSON.stringify({decisions:s.decisions,cases:s.cases,compute_usage:s.compute_usage,completeness_diagnostic:s.completeness_diagnostic,trace:s.trace},null,2))}</pre></details>`;
 }
 async function showStatistics() {
   const [report,pilot,band] = await Promise.all([api(`/api/studies/${selectedProtocol}`),api(`/api/studies/${selectedProtocol}/pilot`),api(`/api/studies/${selectedProtocol}/hold-band`)]), element = $('statistics'); element.hidden = false;
   const primary = report.summary.filter(r => r.horizon === 60 && r.cost_model === 'corwin_schultz' && r.decision_layer === 'candidate' && r.portfolio_basis === 'all');
   const insufficient=report.status==='insufficient_cases'?`<p class="protocol-warning">樣本數 ${report.unique_cases || 0} / ${report.required_cases || 30} 不足，尚未產出任何統計檢定。</p>`:'';
-  element.innerHTML = `<div class="section-label">PRIMARY ENDPOINT / 60 交易日</div><h2>同協議研究比較</h2><p class="hint">候選決策、60 日、Corwin–Schultz、固定權重投組。${report.unique_cases || 0} 個已完成案例；後續重跑保留供稽核。</p>${insufficient}<div class="table-wrap"><table><thead><tr><th>方法</th><th>覆蓋率</th><th>條件準確率</th><th>Hold</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div><p class="hint">Pilot：${escape(pilot.verdict||'—')} · ${escape((pilot.blocking_reasons||[]).join(' / ')||'無阻擋原因')}。中性帶敏感性已用既有預測重算，不重新呼叫模型。</p><div class="actions"><a href="/api/studies/${selectedProtocol}/summary.csv">下載 summary.csv</a><a href="/api/studies/${selectedProtocol}" download="statistics.json">下載 statistics.json</a></div><details><summary>Pilot、hold band 與完整性診斷</summary><pre>${escape(JSON.stringify({pilot,hold_band:band,completeness:report.completeness},null,2))}</pre></details><details><summary>統計檢定與口徑</summary><pre>${escape(JSON.stringify({comparisons:report.comparisons,conventions:report.conventions},null,2))}</pre></details>`;
+  const prereg=report.preregistration;
+  const preregBlock=prereg
+    ? `<p class="${prereg.post_freeze_dataset_ids.length?'protocol-warning':'hint'}">Preregistration 已於 ${escape(formatStamp(prereg.frozen_at))} 凍結，涵蓋 ${prereg.dataset_ids.length} 個資料集。${prereg.post_freeze_dataset_ids.length?`⚠️ 凍結後又新增了 ${prereg.post_freeze_dataset_ids.length} 個資料集的實驗，這些案例不應計入凍結後的正式分析結論。`:'目前所有案例都在凍結範圍內。'}</p>`
+    : `<p class="hint">尚未凍結 preregistration。凍結後會鎖住目前已分析的資料集清單，之後新增的案例會被標記，避免看完結果後偷偷擴大樣本。</p><button class="quiet" type="button" data-freeze="${escape(selectedProtocol)}">凍結目前的 preregistration</button>`;
+  element.innerHTML = `<div class="section-label">PRIMARY ENDPOINT / 60 交易日</div><h2>同協議研究比較</h2><p class="hint">候選決策、60 日、Corwin–Schultz、固定權重投組。${report.unique_cases || 0} 個已完成案例；後續重跑保留供稽核。</p>${insufficient}${preregBlock}<div class="table-wrap"><table><thead><tr><th>方法</th><th>覆蓋率</th><th>條件準確率</th><th>Hold</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div><p class="hint">Pilot：${escape(pilot.verdict||'—')} · ${escape((pilot.blocking_reasons||[]).join(' / ')||'無阻擋原因')}。中性帶敏感性已用既有預測重算，不重新呼叫模型。</p><div class="actions"><a href="/api/studies/${selectedProtocol}/summary.csv">下載 summary.csv</a><a href="/api/studies/${selectedProtocol}" download="statistics.json">下載 statistics.json</a></div><details><summary>Pilot、hold band 與完整性診斷</summary><pre>${escape(JSON.stringify({pilot,hold_band:band,completeness:report.completeness},null,2))}</pre></details><details><summary>統計檢定與口徑</summary><pre>${escape(JSON.stringify({comparisons:report.comparisons,conventions:report.conventions},null,2))}</pre></details>`;
 }
 function panelData(snapshot,name) { return snapshot.panels?.[name]?.status==='ready' ? snapshot.panels[name].data : null; }
 function unavailable(snapshot,name) { return snapshot.panels?.[name]?.message || '目前方案或來源未回傳資料'; }
@@ -291,6 +334,7 @@ async function initialize() {
   const cloudLabels={openrouter:'OpenRouter',openai:'OpenAI',gemini:'Gemini'};
   const readyCloud=Object.entries(c.cloud_models||{}).filter(([,value])=>value).map(([key])=>cloudLabels[key]||key);
   $('cloud-model-state').textContent=readyCloud.length?`可用雲端憑證：${readyCloud.join('、')}。輸入 LiteLLM 模型名稱即可切換。`:'尚未設定常用雲端模型金鑰；可先使用 Ollama，或在上方設定表單填入金鑰。';
+  selectedJob = new URLSearchParams(location.search).get('selected') || null;
   await refreshSettings(); await refreshDatasets(); await refreshReadiness(); await refreshJobs();
   const m = await api('/api/models');
   modelDetails=new Map((m.details||[]).map(item=>[item.id,item]));
@@ -338,9 +382,22 @@ $('settings-form').addEventListener('submit',e=>{e.preventDefault();task(e.submi
   await api('/api/settings',{values,clear});await refreshSettings();notify('設定已儲存在伺服器並立即生效。');
   const c=await api('/api/config');$('live-source-state').textContent=c.sources.finnhub?'Finnhub 已設定，可進行真實連線檢查':'尚未設定 Finnhub 金鑰';
 });});
-$('batch-file').addEventListener('change', e => task(null,async()=>{const f=e.target.files[0];if(!f)return;const ids=await api('/api/batches',JSON.parse(await f.text()));notify(`已加入 ${ids.length} 個研究案例。`);await refreshJobs();}));
+$('batch-file').addEventListener('change', e => task(null,async()=>{
+  const f=e.target.files[0];if(!f)return;
+  const payload=JSON.parse(await f.text());
+  const cases=Array.isArray(payload.cases)?payload.cases:[];
+  const dates=[...new Set(cases.map(c=>c.analysis_date))].filter(Boolean).sort();
+  const datasets=new Set(cases.map(c=>c.dataset_id));
+  const models=[...new Set(cases.map(c=>c.model).filter(Boolean))];
+  const summary=`即將建立 ${cases.length} 筆研究案例\n分析日：${dates.join('、')||'（未指定）'}\n涉及資料集：${datasets.size} 種\n模型：${models.join('、')||'使用各筆預設值'}\n\n確定要送出並排入佇列嗎？`;
+  if(!cases.length || !window.confirm(summary)){e.target.value='';return;}
+  const ids=await api('/api/batches',payload);
+  notify(`已加入 ${ids.length} 個研究案例。`);
+  await refreshJobs();
+  e.target.value='';
+}));
 $('job-form').addEventListener('submit', e => {e.preventDefault();if(submitting)return;if(!$('dataset').value){notify('請先選擇一筆資料集，才能開始研究實驗。',true);syncExperimentGuard();return;}submitting=true;task(e.submitter,async()=>{try{const model=$('cloud-model').value.trim()||$('model').value;const j=await api('/api/jobs',{dataset_id:$('dataset').value,analysis_date:$('analysis-date').value,model,study:$('study').value,voting_samples:Number($('voting').value),missing_data_policy:$('missing-policy').value,anonymize_ticker:$('anonymize').checked,allow_point_fundamental:$('allow-point-fundamental').checked,allow_small_model:$('allow-small-model').checked,allow_low_quality_sentiment:$('allow-low-quality-sentiment').checked});selectedJob=j.id;notify(`研究已加入背景佇列，模型為 ${model}。候選決策、風控決策與品質覆寫會一起鎖定於協議。`);await refreshJobs();}finally{submitting=false;}});});
-document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);});
+document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.dismissNotice){dismissNotice(Number(b.dataset.dismissNotice));return;}if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);if(b.dataset.freeze)task(b,async()=>{if(!window.confirm('凍結此協議目前分析的資料集清單？凍結後不可撤銷，之後新增的案例會被標記為凍結後追加。'))return;await api(`/api/studies/${b.dataset.freeze}/freeze`,{});await showStatistics();});});
 $('live-refresh').addEventListener('click', e=>task(e.currentTarget,refreshLive));
 $('live-stream-toggle').addEventListener('click', toggleLiveStream);
 $('refresh').addEventListener('click', e=>task(e.currentTarget,async()=>{await refreshDatasets();await refreshReadiness();await refreshJobs();}));
