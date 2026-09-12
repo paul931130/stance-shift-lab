@@ -8,7 +8,7 @@ from urllib.parse import parse_qs, urlparse
 
 from research_service.data import (_alpha_vantage_news, _chart_rows, _deduplicate_news, _fnspid_news,
                                    check_sentiment_sources, download_prices, fetch_fundamental,
-                                   fetch_sentiment, research_inputs)
+                                   fetch_sentiment)
 from scripts.prepare_fnspid_news import filter_fnspid
 
 
@@ -176,7 +176,9 @@ class NewsSourceTests(unittest.TestCase):
                 {"Date":"2024-12-19 09:00:00","Article_title":"Apple news","Stock_symbol":"AAPL","Url":"https://example.com/aapl","Publisher":"P"},
             ]
             with source.open("w", encoding="utf-8-sig", newline="") as handle:
-                writer = csv.DictWriter(handle, fieldnames=fields); writer.writeheader(); writer.writerows(rows)
+                writer = csv.DictWriter(handle, fieldnames=fields)
+                writer.writeheader()
+                writer.writerows(rows)
             result = filter_fnspid(source, filtered, ["NVDA"], "2024-01-01", "2025-01-01")
             self.assertEqual((result["rows"], result["by_ticker"]["NVDA"]), (2, 2))
             items = _fnspid_news(filtered, "NVDA", "2024-12-31")
@@ -186,7 +188,8 @@ class NewsSourceTests(unittest.TestCase):
             lowercase = Path(directory) / "filtered-lowercase.csv"
             with lowercase.open("w", encoding="utf-8", newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=["date", "symbol", "headline", "publisher", "url"])
-                writer.writeheader(); writer.writerow({"date":"2024-12-20 09:00:00 UTC", "symbol":"NVDA",
+                writer.writeheader()
+                writer.writerow({"date":"2024-12-20 09:00:00 UTC", "symbol":"NVDA",
                     "headline":"Filtered headline", "publisher":"Publisher", "url":"https://example.com/lower"})
             lowercase_items = _fnspid_news(lowercase, "NVDA", "2024-12-31")
             self.assertEqual((len(lowercase_items), lowercase_items[0]["claim"]), (1, "Filtered headline"))
@@ -202,7 +205,8 @@ class NewsSourceTests(unittest.TestCase):
             source = Path(directory) / "fnspid.csv"
             with source.open("w", encoding="utf-8-sig", newline="") as handle:
                 writer = csv.DictWriter(handle, fieldnames=["Date","Article_title","Stock_symbol","Url"])
-                writer.writeheader(); writer.writerow({"Date":"2024-12-15","Article_title":"FNSPID item","Stock_symbol":"NVDA","Url":"https://example.com/two"})
+                writer.writeheader()
+                writer.writerow({"Date":"2024-12-15","Article_title":"FNSPID item","Stock_symbol":"NVDA","Url":"https://example.com/two"})
             env = {"ALPHA_VANTAGE_API_KEY":"test-key", "FNSPID_NEWS_PATH":str(source)}
             with patch.dict("os.environ", env, clear=False):
                 items, note = fetch_sentiment("NVDA", "2024-12-31", lambda _url: self.alpha_payload())

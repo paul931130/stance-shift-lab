@@ -13,6 +13,7 @@
 __pycache__/
 *.py[cod]
 /.pytest_cache/
+/.ruff_cache/
 
 # research runtime data and artifacts (persist in the Docker volume instead)
 /research-data/
