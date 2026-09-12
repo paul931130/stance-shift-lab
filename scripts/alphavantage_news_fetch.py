@@ -35,16 +35,21 @@ import json
 import os
 import csv
 from datetime import datetime, timedelta
+from pathlib import Path
 
+# Prefers ALPHA_VANTAGE_API_KEY from the environment (e.g. already set in
+# .env.research) so a real key never has to be hardcoded into this file.
+# The literal below is only a fallback for manual editing.
 API_KEYS = [
-    "YOUR_API_KEY_HERE",
-]  # <-- 換成你自己的 key（只放一組，避免多組key被防濫用機制一起限制）
+    os.environ.get("ALPHA_VANTAGE_API_KEY") or "YOUR_API_KEY_HERE",
+]
 TICKERS = ["AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "LLY", "GE"]
 START_DATE = datetime(2023, 12, 17)  # 接續 FNSPID 最後一筆之後
 END_DATE = datetime.now()
 
-CHECKPOINT_FILE = "av_checkpoint.json"
-OUTPUT_FILE = "alphavantage_news.csv"
+RESEARCH_INPUTS_DIR = Path(__file__).resolve().parents[1] / "research-inputs"
+CHECKPOINT_FILE = str(RESEARCH_INPUTS_DIR / "av_checkpoint.json")
+OUTPUT_FILE = str(RESEARCH_INPUTS_DIR / "alphavantage_news.csv")
 DAILY_LIMIT_PER_KEY = 25
 DAILY_LIMIT = DAILY_LIMIT_PER_KEY * len(API_KEYS)
 CALL_DELAY_SEC = 13  # 每次呼叫之間的間隔，不管用哪組key都保持這個間隔比較安全

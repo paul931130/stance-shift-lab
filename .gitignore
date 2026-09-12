@@ -22,5 +22,6 @@ __pycache__/
 /deliverables/
 /research-inputs/*.csv
 /research-inputs/*.jsonl
+/research-inputs/*.json
 /outputs/
 /work/
