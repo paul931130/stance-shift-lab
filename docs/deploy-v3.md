@@ -1,6 +1,6 @@
 # 部署正式研究台
 
-此版本需要常駐 Python 服務、持久化磁碟，以及可連線的 Ollama 或雲端模型。Cloudflare Workers / GitHub Pages 無法直接執行這個 Python + 本機模型後端。既有 Sites 展示網站不等於本次正式研究服務。
+此版本需要常駐 Python 服務、持久化磁碟，以及可連線的 Ollama 或雲端模型。Cloudflare Workers / GitHub Pages 無法直接執行這個 Python + 本機模型後端。
 
 ## Docker 部署
 

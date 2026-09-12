@@ -96,4 +96,4 @@ Web 與終端使用同一個 FastAPI、SQLite、資料集與工作佇列；任�
 .\research.ps1 backup -File .\research-backup.zip
 ```
 
-部署與交接方式見 [部署指南](deploy-v3.md)、[v3-0912.1 遷移說明](migration-v3-0912.1.md) 與 [交接清單](handoff-v3-0912.1.md)。
+部署與交接方式見 [部署指南](deploy-v3.md)、[版本紀錄](../CHANGELOG.md) 與 [Clone 後首次啟動](getting-started.md)。
