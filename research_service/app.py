@@ -144,7 +144,8 @@ def create_app(store=None, model_call=None, start_worker=True):
                 return JSONResponse({"detail": "Cross-origin mutation blocked"}, status_code=403)
             if request.headers.get("content-length", "").isdigit() and int(request.headers["content-length"]) > 6_000_000:
                 return JSONResponse({"detail": "Upload exceeds 6 MB"}, status_code=413)
-        public_paths = {"/", "/health", "/assets/app.js", "/assets/app.css", "/assets/dataset.css", "/api/login"}
+        public_paths = {"/", "/health", "/assets/app.js", "/assets/readiness-rules.js",
+                        "/assets/app.css", "/assets/dataset.css", "/api/login"}
         if access_key and request.url.path not in public_paths:
             bearer = request.headers.get("authorization", "").removeprefix("Bearer ")
             cookie = request.cookies.get("research_session", "")
@@ -172,7 +173,7 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @app.get("/assets/{name}")
     def asset(name: str):
-        if name not in ("app.js", "app.css", "dataset.css"):
+        if name not in ("app.js", "readiness-rules.js", "app.css", "dataset.css"):
             raise HTTPException(404)
         return FileResponse(ROOT / "static" / name)
 
@@ -639,7 +640,25 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @app.get("/api/studies/{protocol_hash}")
     def report(protocol_hash: str):
-        return study_report([j for j in store.jobs() if j["config"]["protocol_hash"] == protocol_hash])
+        jobs = [j for j in store.jobs() if j["config"]["protocol_hash"] == protocol_hash]
+        result = study_report(jobs)
+        preregistration = store.preregistration(protocol_hash)
+        if preregistration:
+            frozen = set(preregistration["dataset_ids"])
+            post_freeze = sorted({j["config"]["dataset_id"] for j in jobs
+                                   if j["config"].get("dataset_id") not in frozen})
+            result["preregistration"] = {**preregistration, "post_freeze_dataset_ids": post_freeze}
+        else:
+            result["preregistration"] = None
+        return result
+
+    @app.post("/api/studies/{protocol_hash}/freeze")
+    def freeze_study(protocol_hash: str):
+        jobs = [j for j in store.jobs() if j["config"]["protocol_hash"] == protocol_hash]
+        dataset_ids = {j["config"]["dataset_id"] for j in jobs if j["config"].get("dataset_id")}
+        if not dataset_ids:
+            raise ValueError("此協議尚無任何實驗，無法凍結 preregistration")
+        return store.freeze(protocol_hash, dataset_ids)
 
     @app.get("/api/studies/{protocol_hash}/pilot")
     def pilot(protocol_hash: str):

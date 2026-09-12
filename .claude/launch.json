@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "research-service",
+      "runtimeExecutable": ".venv/Scripts/python.exe",
+      "runtimeArgs": ["-m", "uvicorn", "research_service.app:app", "--host", "127.0.0.1", "--port", "8010"],
+      "port": 8010
+    }
+  ]
+}

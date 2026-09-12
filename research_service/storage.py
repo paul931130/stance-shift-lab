@@ -16,6 +16,9 @@ class Store:
         self.root = Path(root)
         self.root.mkdir(parents=True, exist_ok=True)
         self.path = self.root / "research.sqlite3"
+        # Dataset content is immutable and content-addressed (id = digest(data)),
+        # so the derived summary below never needs to be recomputed once cached.
+        self._dataset_summary_cache = {}
         with self.connect() as db:
             db.executescript("""
                 PRAGMA journal_mode=WAL;
@@ -30,6 +33,8 @@ class Store:
                     PRIMARY KEY(job_id, "group", horizon, cost_model, decision_layer));
                 CREATE INDEX IF NOT EXISTS idx_case_results_lookup
                     ON case_results(protocol_hash, ticker, "group", maturity_date);
+                CREATE TABLE IF NOT EXISTS preregistrations(
+                    protocol_hash TEXT PRIMARY KEY, dataset_ids TEXT, frozen_at TEXT);
             """)
         self.backfill_case_results()
 
@@ -80,20 +85,32 @@ class Store:
             uses.setdefault(config.get("dataset_id"), set()).add(config.get("analysis_date"))
         versions, summaries = {}, []
         for row in rows:
-            content = json.loads(row["content"])
-            prices, evidence = content["prices"], content["evidence"]
-            evidence_by_domain = {domain: sum(item.get("domain") == domain for item in evidence)
-                                  for domain in ("technical", "fundamental", "sentiment", "macro")}
-            version_key = (row["ticker"], content.get("kind", "historical"))
+            cached = self._dataset_summary_cache.get(row["id"])
+            if cached is None:
+                content = json.loads(row["content"])
+                prices, evidence = content["prices"], content["evidence"]
+                evidence_by_domain = {domain: sum(item.get("domain") == domain for item in evidence)
+                                      for domain in ("technical", "fundamental", "sentiment", "macro")}
+                from .readiness import coverage
+                cached = {
+                    "coverage": coverage(content),
+                    "kind": content.get("kind", "historical"),
+                    "static": {key: value for key, value in content.items() if key not in ("prices", "evidence")},
+                    "price_count": len(prices), "evidence_count": len(evidence),
+                    "evidence_by_domain": evidence_by_domain,
+                    "price_start": prices[0]["date"], "price_end": prices[-1]["date"],
+                }
+                self._dataset_summary_cache[row["id"]] = cached
+            version_key = (row["ticker"], cached["kind"])
             versions[version_key] = versions.get(version_key, 0) + 1
-            from .readiness import coverage
             summaries.append({
-                "coverage": coverage(content),
+                "coverage": cached["coverage"],
                 "id": row["id"], "ticker": row["ticker"], "created_at": row["created_at"],
-                **{key: value for key, value in content.items() if key not in ("prices", "evidence")},
-                "version": versions[version_key], "price_count": len(prices), "evidence_count": len(evidence),
-                "evidence_by_domain": evidence_by_domain,
-                "price_start": prices[0]["date"], "price_end": prices[-1]["date"],
+                **cached["static"],
+                "version": versions[version_key], "price_count": cached["price_count"],
+                "evidence_count": cached["evidence_count"],
+                "evidence_by_domain": cached["evidence_by_domain"],
+                "price_start": cached["price_start"], "price_end": cached["price_end"],
                 "used_analysis_dates": sorted(day for day in uses.get(row["id"], set()) if day),
             })
         return list(reversed(summaries))
@@ -208,3 +225,31 @@ class Store:
             value["correct"] = None if value["correct"] is None else bool(value["correct"])
             unique.setdefault(value["analysis_date"], value)
         return list(unique.values())[:20]
+
+    def freeze(self, protocol_hash, dataset_ids):
+        """Record the dataset IDs a study analyzed at the moment it was frozen.
+
+        Freezing is a one-time, append-only action: once a protocol_hash is
+        frozen, calling this again with a different dataset_id set raises,
+        so a researcher cannot quietly widen the sample after seeing results.
+        """
+        dataset_ids = sorted(set(dataset_ids))
+        with self.connect() as db:
+            existing = db.execute("SELECT dataset_ids, frozen_at FROM preregistrations WHERE protocol_hash=?",
+                                   (protocol_hash,)).fetchone()
+            if existing:
+                if json.loads(existing["dataset_ids"]) != dataset_ids:
+                    raise ValueError("此協議已於 " + existing["frozen_at"] + " 凍結；不能改變已分析的資料集清單")
+                return {"protocol_hash": protocol_hash, "dataset_ids": dataset_ids, "frozen_at": existing["frozen_at"]}
+            stamp = now()
+            db.execute("INSERT INTO preregistrations VALUES(?,?,?)",
+                       (protocol_hash, json.dumps(dataset_ids), stamp))
+            return {"protocol_hash": protocol_hash, "dataset_ids": dataset_ids, "frozen_at": stamp}
+
+    def preregistration(self, protocol_hash):
+        with self.connect() as db:
+            row = db.execute("SELECT dataset_ids, frozen_at FROM preregistrations WHERE protocol_hash=?",
+                              (protocol_hash,)).fetchone()
+        if not row:
+            return None
+        return {"protocol_hash": protocol_hash, "dataset_ids": json.loads(row["dataset_ids"]), "frozen_at": row["frozen_at"]}

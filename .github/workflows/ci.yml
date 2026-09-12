@@ -40,7 +40,7 @@ jobs:
         run: python -m unittest discover -s research_service/tests -p "test_*.py" -v
 
   static-frontend-check:
-    name: Static frontend syntax check
+    name: Static frontend checks
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -49,8 +49,13 @@ jobs:
         with:
           node-version: "22"
 
-      - name: node --check static/app.js
-        run: node --check research_service/static/app.js
+      - name: node --check static assets
+        run: |
+          node --check research_service/static/app.js
+          node --check research_service/static/readiness-rules.js
+
+      - name: Run frontend unit tests
+        run: node --test research_service/tests_js/*.test.js
 
   docker-build:
     name: Docker image build

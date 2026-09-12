@@ -74,6 +74,7 @@
 docker compose -f compose.research.yaml build research
 docker compose -f compose.research.yaml run --rm --no-deps research python -m unittest discover -s research_service/tests -p test_*.py
 node --check research_service\static\app.js
+node --test research_service\tests_js\*.test.js
 ```
 
 公開伺服器需使用 HTTPS 反向代理、至少 32 字元的研究室存取金鑰與持久化備份。GitHub Pages、純 Cloudflare Workers 以及靜態網站無法執行此 Python/Ollama 後端。詳見 [部署指南](docs/deploy-v3.md) 與 [GitHub 發布檢查表](docs/github-release-checklist.md)。
