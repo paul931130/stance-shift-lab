@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { env } from "cloudflare:workers";
 
 export type ChatGPTUser = {
   displayName: string;
@@ -18,21 +19,48 @@ const CALLBACK_PATH = "/callback";
 
 export async function getChatGPTUser(): Promise<ChatGPTUser | null> {
   const requestHeaders = await headers();
-  const email = requestHeaders.get(USER_EMAIL_HEADER);
+  let email = requestHeaders.get(USER_EMAIL_HEADER);
+  let localFullName: string | null = null;
+  const runtime = env as unknown as {
+    APP_ENV?: string;
+    LOCAL_MODE?: string;
+    LOCAL_OWNER_EMAIL?: string;
+    LOCAL_OWNER_NAME?: string;
+  };
+  if (
+    !email &&
+    runtime.APP_ENV === "development" &&
+    runtime.LOCAL_MODE === "true" &&
+    isLoopbackRequest(requestHeaders)
+  ) {
+    email = runtime.LOCAL_OWNER_EMAIL?.trim() || "local@stance-shift.test";
+    localFullName = runtime.LOCAL_OWNER_NAME?.trim() || "本機研究者";
+  }
   if (!email) return null;
 
   const encodedFullName = requestHeaders.get(USER_FULL_NAME_HEADER);
-  const fullName =
+  const fullName = localFullName ?? (
     encodedFullName &&
     requestHeaders.get(USER_FULL_NAME_ENCODING_HEADER) === PERCENT_ENCODED_UTF8
       ? safeDecodeURIComponent(encodedFullName)
-      : null;
+      : null
+  );
 
   return {
     displayName: fullName ?? email,
     email,
     fullName,
   };
+}
+
+function isLoopbackRequest(requestHeaders: Headers): boolean {
+  const rawHost = requestHeaders.get("x-forwarded-host") ?? requestHeaders.get("host") ?? "";
+  const host = rawHost.split(",", 1)[0].trim().toLowerCase();
+  return (
+    /^localhost(?::\d+)?$/.test(host) ||
+    /^127\.0\.0\.1(?::\d+)?$/.test(host) ||
+    /^\[::1\](?::\d+)?$/.test(host)
+  );
 }
 
 export async function requireChatGPTUser(

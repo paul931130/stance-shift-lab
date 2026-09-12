@@ -27,7 +27,7 @@ assert.match(await home.text(), /立場交換研究室/);
 
 const anonymous = await jsonRequest("/api/runs", {
   method: "POST",
-  headers: { "content-type": "application/json" },
+  headers: { "content-type": "application/json", "x-forwarded-host": "example.test" },
   body: JSON.stringify({ ticker: "NVDA", analysisDate: "2024-12-31", mode: "demo" }),
 });
 assert.equal(anonymous.response.status, 401);
@@ -51,6 +51,16 @@ const runId = created.body.run.id;
 assert.match(runId, /^[0-9a-f-]{36}$/i);
 assert.equal(created.body.run.totalSteps, 20);
 assert.equal(created.body.evidence.length, 12);
+assert.equal(created.body.run.syntheticData, true);
+const listed = await jsonRequest("/api/runs", { headers: ownerHeaders });
+assert.equal(listed.response.status, 200);
+assert.ok(listed.body.runs.some((run) => run.id === runId));
+const conflict = await jsonRequest("/api/runs", {
+  method: "POST", headers: ownerHeaders,
+  body: JSON.stringify({ ticker: "AAPL", analysisDate: "2024-12-31", mode: "demo" }),
+});
+assert.equal(conflict.response.status, 409);
+assert.equal(conflict.body.error.details.runId, runId);
 
 let view = created.body;
 for (let index = 0; index < 20; index += 1) {
@@ -81,6 +91,7 @@ assert.equal(view.run.providerAttempts, 20);
 assert.equal(view.run.completedSteps, 20);
 assert.equal(view.results.length, 4);
 assert.equal(view.artifacts.length, 8);
+assert.equal(view.run.exportsReady, true);
 assert.ok(view.results.every((result) => result.backtest));
 
 const artifact = await fetch(`${baseUrl}${view.artifacts[0].downloadUrl}`, {
@@ -88,12 +99,35 @@ const artifact = await fetch(`${baseUrl}${view.artifacts[0].downloadUrl}`, {
 });
 assert.equal(artifact.status, 200);
 assert.ok((await artifact.arrayBuffer()).byteLength > 0);
+const repaired = await jsonRequest(`/api/runs/${runId}/exports`, { method: "POST", headers: ownerHeaders });
+assert.equal(repaired.response.status, 200);
+assert.equal(repaired.body.artifacts.length, 8);
+assert.equal(repaired.body.run.providerAttempts, 20);
+for (const file of repaired.body.artifacts) {
+  const downloaded = await fetch(`${baseUrl}${file.downloadUrl}`, { headers: ownerHeaders });
+  assert.equal(downloaded.status, 200, file.fileName);
+  assert.ok((await downloaded.arrayBuffer()).byteLength > 0);
+}
 
 const otherOwner = await jsonRequest(`/api/runs/${runId}`, {
   headers: { "oai-authenticated-user-email": `other-${Date.now()}@example.test` },
 });
 assert.equal(otherOwner.response.status, 404);
 assert.equal(otherOwner.body.error.code, "RUN_NOT_FOUND");
+const otherList = await jsonRequest("/api/runs", { headers: { "oai-authenticated-user-email": `other-${Date.now()}@example.test` } });
+assert.deepEqual(otherList.body.runs, []);
+const otherExport = await jsonRequest(`/api/runs/${runId}/exports`, { method: "POST", headers: { "oai-authenticated-user-email": `other-${Date.now()}@example.test` } });
+assert.equal(otherExport.response.status, 404);
+
+const cancellable = await jsonRequest("/api/runs", {
+  method: "POST", headers: ownerHeaders,
+  body: JSON.stringify({ ticker: "AAPL", analysisDate: "2024-12-31", mode: "demo" }),
+});
+assert.equal(cancellable.response.status, 201);
+const cancelled = await jsonRequest(`/api/runs/${cancellable.body.run.id}/cancel`, { method: "POST", headers: ownerHeaders });
+assert.equal(cancelled.body.run.status, "cancelled");
+const blocked = await jsonRequest(`/api/runs/${cancellable.body.run.id}/advance`, { method: "POST", headers: { ...ownerHeaders, "idempotency-key": "cancelled-advance" }, body: "{}" });
+assert.equal(blocked.response.status, 409);
 
 console.log(JSON.stringify({
   ok: true,

@@ -1,0 +1,23 @@
+services:
+  research:
+    build:
+      context: .
+      dockerfile: Dockerfile.research
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - path: .env.research
+        required: false
+    environment:
+      RESEARCH_CONTAINER_LOCAL: "true"
+      RESEARCH_ENABLE_LIVE: "${RESEARCH_ENABLE_LIVE:-false}"
+      RESEARCH_DATA_DIR: /data
+      OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
+    volumes:
+      - research-data:/data
+      - ./research-inputs:/app/research-inputs:ro
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+volumes:
+  research-data:

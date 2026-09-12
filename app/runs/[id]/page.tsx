@@ -16,7 +16,7 @@ export default async function RunPage({ params }: { params: Promise<{ id: string
     <main className={styles.shell}>
       <header className={styles.header}>
         <Link className={styles.brand} href="/"><span>SS</span>立場交換研究室</Link>
-        <nav aria-label="實驗導覽"><Link href="/lab">新實驗</Link><Link href="/cases">公開案例</Link></nav>
+        <nav aria-label="實驗導覽"><Link href="/lab">實驗紀錄／新實驗</Link><Link href="/cases">公開案例</Link></nav>
       </header>
       <RunConsole runId={id} />
     </main>

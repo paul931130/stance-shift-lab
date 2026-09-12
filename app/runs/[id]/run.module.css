@@ -19,7 +19,7 @@
 .progressTop strong { font-family: ui-monospace, monospace; color: #2f63d3; }
 .progressTrack { height: 10px; background: #ddd7cc; overflow: hidden; }
 .progressTrack span { display: block; height: 100%; background: #2f63d3; transition: width .35s ease; }
-.stageLabels { display: grid; grid-template-columns: repeat(8, 1fr); gap: .4rem; margin-top: .9rem; color: #9a9386; font-size: .68rem; }
+.stageLabels { display: grid; grid-template-columns: repeat(5, 1fr); gap: .4rem; margin-top: .9rem; color: #687181; font-size: .875rem; }
 .stageDone { color: #172033; font-weight: 700; }
 .controlBar { display: flex; justify-content: space-between; align-items: center; gap: 1.4rem; margin: 1rem 0 2rem; padding: 1rem 1.2rem; border: 1px solid #cfc9bc; }
 .controlBar > div:first-child { display: flex; gap: 1rem; align-items: baseline; }
@@ -55,6 +55,13 @@
 .downloads a span { overflow-wrap: anywhere; font-weight: 700; }
 .downloads a small { color: #747c88; font: .65rem/1 ui-monospace, monospace; white-space: nowrap; }
 .disclaimer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid #cfc9bc; color: #69717e; font-size: .8rem; text-align: center; }
+.operationNote { color: #566071; font-size: .875rem; line-height: 1.7; }
+.transcript { margin-top: 1.5rem; border: 1px solid #bdb6a8; background: #fff; }
+.transcript details { border-bottom: 1px solid #ddd7cc; }
+.transcript summary { padding: 1rem 1.4rem; cursor: pointer; font-weight: 700; line-height: 1.6; }
+.transcript details > div, .transcript > p { padding: 0 1.4rem 1rem; line-height: 1.8; overflow-wrap: anywhere; }
+.transcript h3 { font-size: 1.125rem; }
+.controls button:disabled, .error button:disabled { opacity: .5; cursor: wait; }
 
 @keyframes pulse { 50% { box-shadow: 0 0 0 2px #dceee8; } }
 @media (max-width: 900px) { .grid { grid-template-columns: 1fr; }.stageLabels { grid-template-columns: repeat(4,1fr); }.hero { align-items: stretch; flex-direction: column; }.statusBlock { align-self: flex-start; }.downloads > div:last-child { grid-template-columns: repeat(2,1fr); } }

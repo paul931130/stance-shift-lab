@@ -1,9 +1,18 @@
 import { requireApiOwner } from "@/lib/server/auth";
 import { ApiError, json, readJsonObject, routeError } from "@/lib/server/http";
-import { createRun } from "@/lib/server/runs";
+import { createRun, listRuns } from "@/lib/server/runs";
 import { parseAnalysisDate, parseTicker } from "@/lib/server/workflow";
 
 export const dynamic = "force-dynamic";
+
+export async function GET() {
+  try {
+    const owner = await requireApiOwner();
+    return json({ runs: await listRuns(owner.hash) });
+  } catch (error) {
+    return routeError(error);
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -17,8 +26,8 @@ export async function POST(request: Request) {
     if (!analysisDate) {
       throw new ApiError(400, "INVALID_ANALYSIS_DATE", "analysisDate 必須是 2021–2025 的有效 ISO 日期。" );
     }
-    if (body.mode !== "demo" && body.mode !== "live") {
-      throw new ApiError(400, "INVALID_MODE", "mode 必須是 demo 或 live。" );
+    if (body.mode !== "demo" && body.mode !== "local" && body.mode !== "live") {
+      throw new ApiError(400, "INVALID_MODE", "mode 必須是 demo、local 或 live。" );
     }
 
     return json(

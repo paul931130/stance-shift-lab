@@ -12,6 +12,10 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Local Python runtime and generated research artifacts are not source code.
+    ".venv/**",
+    "research-data/**",
+    "work/**",
   ]),
 ]);
 

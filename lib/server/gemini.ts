@@ -1,15 +1,5 @@
 import { STEP_OUTPUT_JSON_SCHEMA, validateStepOutput, type StepOutput } from "./workflow";
-
-export class ProviderError extends Error {
-  constructor(
-    message: string,
-    readonly httpStatus: number | null,
-    readonly responseExcerpt: string | null = null,
-  ) {
-    super(message);
-    this.name = "ProviderError";
-  }
-}
+import { ProviderError } from "./provider-error";
 
 export async function callGemini(input: {
   apiKey: string;

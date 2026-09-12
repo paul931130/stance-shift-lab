@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import styles from "./lab.module.css";
 
 const TICKERS = ["AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "LLY", "ASTS", "GE"] as const;
@@ -11,20 +12,34 @@ const DATES = Array.from({ length: 5 }, (_, yearIndex) => {
   return ["03-31", "06-30", "09-30", "12-31"].map((tail) => `${year}-${tail}`);
 }).flat();
 
-type Mode = "demo" | "live";
+type Mode = "demo" | "local" | "live";
 
-export function RunLauncher({ displayName }: { displayName: string }) {
+type LocalModelState = {
+  enabled: boolean;
+  ready: boolean;
+  model: string;
+  message: string;
+};
+
+export function RunLauncher({ displayName, localModel }: { displayName: string; localModel: LocalModelState }) {
   const router = useRouter();
   const [ticker, setTicker] = useState<(typeof TICKERS)[number]>("NVDA");
   const [analysisDate, setAnalysisDate] = useState("2024-12-31");
-  const [mode, setMode] = useState<Mode>("demo");
+  const [mode, setMode] = useState<Mode>(localModel.enabled ? "local" : "demo");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [activeRunId, setActiveRunId] = useState<string | null>(null);
 
   const estimate = useMemo(
-    () => (mode === "demo" ? "不使用模型額度，完整重播流程" : "固定 20 個邏輯模型呼叫"),
-    [mode],
+    () =>
+      mode === "demo"
+        ? "不使用模型運算，完整重播流程"
+        : mode === "local"
+          ? `固定 20 次本機推論 · ${localModel.model}`
+          : "固定 20 個 Gemini 邏輯模型呼叫",
+    [localModel.model, mode],
   );
+  const modeReady = mode !== "local" || localModel.ready;
 
   async function startRun() {
     setSubmitting(true);
@@ -38,9 +53,12 @@ export function RunLauncher({ displayName }: { displayName: string }) {
       const payload = (await response.json()) as {
         id?: string;
         run?: { id?: string };
-        error?: string | { message?: string };
+        error?: string | { message?: string; details?: { runId?: string } };
       };
       if (!response.ok) {
+        if (typeof payload.error === "object" && payload.error.details?.runId) {
+          setActiveRunId(payload.error.details.runId);
+        }
         const detail = typeof payload.error === "string" ? payload.error : payload.error?.message;
         throw new Error(detail ?? "目前無法建立實驗，請稍後重試。");
       }
@@ -84,14 +102,33 @@ export function RunLauncher({ displayName }: { displayName: string }) {
 
       <fieldset className={styles.modeFieldset}>
         <legend>執行模式</legend>
+        {localModel.enabled ? (
+          <label className={localModel.ready ? (mode === "local" ? styles.modeSelected : styles.modeOption) : styles.modeDisabled}>
+            <input
+              type="radio"
+              name="mode"
+              value="local"
+              checked={mode === "local"}
+              disabled={!localModel.ready}
+              onChange={() => setMode("local")}
+            />
+            <span>
+              <strong>本機基礎模型（推薦）</strong>
+              <small>Ollama · {localModel.model}。推論與研究資料都留在這台電腦。</small>
+              <em>{localModel.message}</em>
+            </span>
+          </label>
+        ) : null}
         <label className={mode === "demo" ? styles.modeSelected : styles.modeOption}>
           <input type="radio" name="mode" value="demo" checked={mode === "demo"} onChange={() => setMode("demo")} />
           <span><strong>可重現示範</strong><small>使用固定種子與內建證據，適合先體驗完整網站。</small></span>
         </label>
-        <label className={mode === "live" ? styles.modeSelected : styles.modeOption}>
-          <input type="radio" name="mode" value="live" checked={mode === "live"} onChange={() => setMode("live")} />
-          <span><strong>Gemini 新實驗</strong><small>相同快照、相同模型設定，依序完成四組比較。</small></span>
-        </label>
+        {!localModel.enabled ? (
+          <label className={mode === "live" ? styles.modeSelected : styles.modeOption}>
+            <input type="radio" name="mode" value="live" checked={mode === "live"} onChange={() => setMode("live")} />
+            <span><strong>Gemini 新實驗</strong><small>相同快照、相同模型設定，依序完成四組比較。</small></span>
+          </label>
+        ) : null}
       </fieldset>
 
       <div className={styles.callPlan} aria-label="模型呼叫配置">
@@ -104,13 +141,15 @@ export function RunLauncher({ displayName }: { displayName: string }) {
       <div className={styles.actionRow}>
         <div>
           <strong>{estimate}</strong>
-          <small>執行期間可離開；重新開啟時會從已保存步驟繼續。</small>
+          <small>請保持頁面開啟以自動推進；離開後可從下方歷史紀錄續跑。</small>
         </div>
-        <button className={styles.primaryButton} type="button" disabled={submitting} onClick={startRun}>
+        <button className={styles.primaryButton} type="button" disabled={submitting || !modeReady} onClick={startRun}>
           {submitting ? "正在建立…" : "開始四組比較"}
         </button>
       </div>
+      {localModel.enabled && !localModel.ready ? <p className={styles.error} role="alert">{localModel.message} 啟動 Ollama 後，<button type="button" onClick={() => router.refresh()}>重新檢查連線</button>。示範模式須手動選擇。</p> : null}
       {error ? <p className={styles.error} role="alert">{error}</p> : null}
+      {activeRunId ? <Link className={styles.primaryButton} href={`/runs/${activeRunId}`}>返回未完成的實驗</Link> : null}
     </section>
   );
 }

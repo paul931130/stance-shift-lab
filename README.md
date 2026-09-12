@@ -1,43 +1,78 @@
-# 立場交換研究室
+# Stance Shift Research v3
 
-可實際操作的多代理人投資決策研究網站。系統讓四組方法在同一份證據上執行，固定比較單次判斷、多次取樣、固定立場辯論，以及第二輪強制交換立場的辯論。
+可實際執行的多代理人立場交換回測研究台。正式入口是 Docker 化的 FastAPI 服務：四個資料 Agent 建立具時間邊界的不可變資料快照，A/B/C/D 使用同一份快照比較單次判斷、獨立投票、固定立場辯論與立場交換辯論。
 
-## 核心能力
+## 快速開始
 
-- A／B／C／D 四組固定使用 `1 / 5 / 7 / 7` 次邏輯模型呼叫，共 20 步。
-- D 組只在第二輪交換 Bull／Bear 角色，第三輪恢復原始角色。
-- 技術面、基本面、情緒面、總體面四類可追溯證據。
-- Gatekeeper 在決策鎖定後才執行 30／60／90 日回測。
-- D1 保存實驗狀態、事件、證據與結果；R2 保存八種私有匯出檔。
-- Sign in with ChatGPT 身分隔離、冪等推進、租約鎖與每日額度保護。
-- 無 API 金鑰也能使用完全可重現的示範模式；正式模式只在伺服器端呼叫 Gemini。
+需求：Windows 10/11、Docker Desktop，以及 Ollama 或一組雲端模型金鑰。
 
-## 本機執行
-
-需求：Node.js `>=22.13.0`。
-
-```bash
-npm install
-copy .env.example .env.local
-npm run dev
+```powershell
+.\research.ps1 setup
+.\research.ps1 start
 ```
 
-環境變數：
+開啟 <http://127.0.0.1:8000/>。也可直接雙擊 `start-research.cmd`。
 
-- `GEMINI_API_KEY`：啟用正式 Gemini 模式；未設定時示範模式仍可完整操作。
-- `GEMINI_MODEL`：預設 `gemini-3.5-flash`。
-- `OWNER_KEY_PEPPER`：部署環境必設，用於不可逆的使用者所有權雜湊。
+網頁負責互動式研究操作與結果檢視；終端負責安裝設定、啟停、檢查、日誌與批次工作：
 
-## 驗證
-
-```bash
-npm run lint
-npm test
-node scripts/smoke-runtime.mjs
+```powershell
+.\research.ps1 doctor
+.\research.ps1 collect NVDA 2024-12-31
+.\research.ps1 run NVDA 2024-12-31
+.\research.ps1 jobs
+.\research.ps1 logs
 ```
 
-`npm test` 會重新建置網站並執行領域契約與部署資產測試。`smoke-runtime.mjs` 需在開發伺服器運作時執行，會走完 20 步、驗證冪等性、跨帳號隔離及私有匯出下載。
+研究執行預設使用 `ollama/qwen3:14b`。若只想用較小模型驗證流程，需明確加上 `-Model ollama/qwen3:8b -AllowSmallModel`；這類結果只算冒煙測試，不納入正式研究比較。
 
-## 資料與風險聲明
+執行 `.\research.ps1 help` 可查看完整命令。`start` 會先檢查 Docker Linux engine，未啟動時嘗試開啟 Docker Desktop 並給出可操作的錯誤訊息。`collect` 會重用同股票、同分析日且四域完整的既有快照；加上 `-Refresh` 才會重新呼叫資料來源。
 
-目前內建資料為版本化、確定性的研究示範快照，不是即時行情；正式 Gemini 模式也只分析該快照。所有內容只用於多代理人方法研究與教育，不構成投資建議、交易訊號或報酬保證。
+## 回測資料
+
+| 研究域 | 正式來源 | 建立快照時的處理 |
+| --- | --- | --- |
+| 技術面 | Yahoo Finance adjusted OHLC | 下載分析日前行情與 30/60/90 日回測需要的未來行情 |
+| 基本面 | SEC XBRL | 依 filing date 保存分析日前可得的財報證據 |
+| 情緒面 | Alpha Vantage、FNSPID、可選本機 FinBERT | 使用分析日前 90 天的標題／摘要；Alpha Vantage 以目標 ticker 相關性排序並過濾，FNSPID 本機檔只保存必要欄位；FinBERT 對標題離線評分 |
+| 總經面 | FRED/ALFRED | 依 vintage date 保存當時可取得的總經資料 |
+
+四域資料在「建立資料集」時取得並寫入持久化 SQLite；執行 A/B/C/D 模型實驗時只讀選定的 dataset ID，不會再次呼叫市場資料 API。重跑模型時應重用同一資料集，才能維持公平比較。`v3-0912.1` 另外分開顯示四域完整、可比較 SEC 基本面、FinBERT／新聞品質、60 日主要回測及 90 日次要回測。正式主實驗需使用可比較 SEC 指標、所有新聞標題完成固定版本 FinBERT，且目標公司提及率至少 50%；舊點時基本面或低品質新聞只能以明確覆寫執行敏感性測試。
+
+自動行情快照會下載分析日前 900 個日曆日，讓 60-session 非重疊基準能達到至少八窗。舊版 400 日快照仍可查看，但應重新採集後再用於 `v3-0912.1` 正式研究。版本差異與遷移方式見 [v3-0912.1 遷移說明](docs/migration-v3-0912.1.md)。
+
+## 憑證與資料安全
+
+`.\research.ps1 setup` 會隱藏秘密輸入並寫入 Git 忽略的 `.env.research`。網頁只顯示來源是否就緒，不把 API key 寫入瀏覽器儲存空間。公開部署時，憑證屬於伺服器營運者；若未來改成多使用者服務，必須另做使用者身分、加密憑證庫、額度與隔離，不能共用目前的單一研究室設定。
+
+以下內容不會進入 Git 或 Docker 映像：
+
+- `.env.research` 與所有 API key
+- `research-inputs/*.csv`、原始 FNSPID 檔
+- SQLite 研究資料、工作輸出與本機模型
+
+資料授權仍由部署者負責。不要把 Yahoo、FNSPID 或其他來源的原始資料直接提交到公開儲存庫。
+
+## 專案結構
+
+- `research_service/`：正式 FastAPI 後端、研究流程與網頁工作台
+- `research-inputs/`：本機唯讀資料輸入；大型檔案由 Git 忽略
+- `scripts/`：FNSPID 整理、CLI 與驗證工具
+- `docs/`：研究口徑、操作、部署與審查文件
+- `compose.research.yaml`、`Dockerfile.research`：正式執行封裝
+- `app/`、`lib/`、Node 設定：舊版 Sites/Next 示範台，正式研究服務不會載入
+
+更完整的整理原則見 [專案結構](docs/project-layout.md)，目前驗證結果、正式研究缺口與公開發布優先序見 [v3-0912.1 最終審查](docs/final-review-2026-09-12.md)。
+
+第一次只想驗證回測流程，可照 [本機回測 Demo](docs/demo-backtest.md) 操作。這份流程會固定在歷史資料模式，並說明如何辨認完整資料集 ID、暫停續跑與匯出研究產物。交給另一位開發者前再依 [v3-0912.1 交接清單](docs/handoff-v3-0912.1.md) 檢查。
+
+## 驗證與部署
+
+```powershell
+docker compose -f compose.research.yaml build research
+docker compose -f compose.research.yaml run --rm --no-deps research python -m unittest discover -s research_service/tests -p test_*.py
+node --check research_service\static\app.js
+```
+
+公開伺服器需使用 HTTPS 反向代理、至少 32 字元的研究室存取金鑰與持久化備份。GitHub Pages、純 Cloudflare Workers 以及靜態網站無法執行此 Python/Ollama 後端。詳見 [部署指南](docs/deploy-v3.md) 與 [GitHub 發布檢查表](docs/github-release-checklist.md)。
+
+本系統只用於研究與教育，不執行交易。單筆試跑與合成測試不能當成投資績效結論。

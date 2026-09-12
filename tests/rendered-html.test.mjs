@@ -20,14 +20,33 @@ test("ships the finished Traditional Chinese research surface", async () => {
 });
 
 test("keeps auth-protected writes closed to anonymous callers", async () => {
-  const [route, auth] = await Promise.all([
+  const [route, auth, localAuth] = await Promise.all([
     readFile(new URL("../app/api/runs/route.ts", import.meta.url), "utf8"),
     readFile(new URL("../lib/server/auth.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/chatgpt-auth.ts", import.meta.url), "utf8"),
   ]);
   assert.match(route, /await requireApiOwner\(\)/);
   assert.match(auth, /if \(!user\)/);
   assert.match(auth, /401, "AUTH_REQUIRED"/);
   assert.doesNotMatch(route, /ownerHash.*body|body.*ownerHash/);
+  assert.match(localAuth, /runtime\.APP_ENV === "development"/);
+  assert.match(localAuth, /runtime\.LOCAL_MODE === "true"/);
+  assert.match(localAuth, /isLoopbackRequest/);
+});
+
+test("ships a loopback-only Ollama provider and local-first launcher", async () => {
+  const [provider, launcher, packageJson] = await Promise.all([
+    readFile(new URL("../lib/server/ollama.ts", import.meta.url), "utf8"),
+    readFile(new URL("../app/lab/RunLauncher.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../package.json", import.meta.url), "utf8"),
+  ]);
+  assert.match(provider, /\/api\/generate/);
+  assert.match(provider, /format: STEP_OUTPUT_JSON_SCHEMA/);
+  assert.match(provider, /allowedHosts = new Set\(\["localhost", "127\.0\.0\.1", "\[::1\]"\]\)/);
+  assert.match(launcher, /本機基礎模型（推薦）/);
+  assert.match(launcher, /mode === "local"/);
+  assert.match(packageJson, /LOCAL_MODE=true/);
+  assert.doesNotMatch(launcher, /127\.0\.0\.1:11434/);
 });
 
 test("ships Sites persistence bindings, migrations, and a bespoke social card", async () => {
@@ -36,7 +55,10 @@ test("ships Sites persistence bindings, migrations, and a bespoke social card", 
     readFile(new URL("../package.json", import.meta.url), "utf8"),
     readFile(new URL("../drizzle/0000_shocking_anita_blake.sql", import.meta.url), "utf8"),
   ]);
-  assert.deepEqual(JSON.parse(hosting), { d1: "DB", r2: "ARTIFACTS" });
+  const hostingConfig = JSON.parse(hosting);
+  assert.equal(hostingConfig.d1, "DB");
+  assert.equal(hostingConfig.r2, "ARTIFACTS");
+  assert.match(hostingConfig.project_id, /^appgprj_/);
   assert.doesNotMatch(packageJson, /react-loading-skeleton/);
   assert.match(migration, /CREATE TABLE `runs`/);
   assert.match(migration, /runs_one_active_owner_uq/);
