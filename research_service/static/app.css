@@ -16,7 +16,12 @@ main{max-width:1500px;margin:auto;padding:32px 4vw}
 .eyebrow,.section-label{font-size:12px!important;font-weight:700;color:var(--accent)!important;letter-spacing:1.7px}
 .eyebrow::before,.section-label::before{content:"$ "}
 .connection{max-width:310px;border-left:3px solid var(--accent);padding:8px 16px;font-size:13px}
-.workspace{display:grid;grid-template-columns:350px minmax(0,1fr);gap:24px}
+.tabs{display:flex;gap:4px;margin-bottom:20px;border-bottom:1px solid var(--line);overflow-x:auto}
+.tabs button{border:none;border-bottom:2px solid transparent;background:transparent;color:var(--muted);border-radius:0;padding:10px 14px;font-size:12.5px;font-weight:700;min-height:auto;white-space:nowrap}
+.tabs button:hover{color:var(--ink)}
+.tabs button.active{color:var(--accent);border-bottom-color:var(--accent)}
+.workspace-grid{display:grid;grid-template-columns:350px minmax(0,1fr);gap:24px}
+.workspace-grid.full-width{grid-template-columns:1fr}
 .panel{background:var(--surface);border:1px solid var(--line);padding:24px;margin-bottom:24px;border-radius:var(--radius)}
 .panel h2{font-size:19px;margin:6px 0 20px}
 .panel-heading{display:flex;justify-content:space-between;gap:20px;align-items:center}
@@ -79,6 +84,6 @@ th,td{padding:10px 8px;text-align:left;border-bottom:1px solid var(--line);white
 th{color:var(--muted);font-weight:600}
 footer{padding:26px 4vw;border-top:1px solid var(--line);font-size:12px;color:var(--muted);text-align:center}
 [hidden]{display:none!important}
-@media(max-width:1000px){.workspace{grid-template-columns:310px minmax(0,1fr)}.methods,.decisions{grid-template-columns:repeat(2,1fr)}.intro{align-items:flex-start;flex-direction:column}}
-@media(max-width:720px){header{gap:12px}.tag{display:none}.brand{margin-right:auto}.brand small{font-size:9px}main{padding:22px 16px}.workspace{grid-template-columns:1fr}.panel{padding:20px}.panel-heading{align-items:flex-start;flex-direction:column;gap:0}.job{align-items:flex-start}.intro h1{font-size:25px}.connection{max-width:none}.actions{gap:9px}}
+@media(max-width:1000px){.workspace-grid{grid-template-columns:310px minmax(0,1fr)}.methods,.decisions{grid-template-columns:repeat(2,1fr)}.intro{align-items:flex-start;flex-direction:column}}
+@media(max-width:720px){header{gap:12px}.tag{display:none}.brand{margin-right:auto}.brand small{font-size:9px}main{padding:22px 16px}.workspace-grid{grid-template-columns:1fr}.panel{padding:20px}.panel-heading{align-items:flex-start;flex-direction:column;gap:0}.job{align-items:flex-start}.intro h1{font-size:25px}.connection{max-width:none}.actions{gap:9px}}
 .live-panel.demo-disabled{display:none}

@@ -4,9 +4,12 @@ const percentage = value => value == null ? '—' : `${(value * 100).toFixed(1)}
 const number = value => value == null ? '—' : Number(value).toFixed(3);
 const statuses = {queued:'等待執行',running:'執行中',paused:'已暫停',complete:'已完成',cancelled:'已取消'};
 let selectedJob = null, selectedProtocol = null, busy = false, datasetRows = [], parallelWorkers = 1, currentProtocolVersion = '', terminalEvents = [];
+let currentTab = 'setup';
+const TABS = ['setup', 'runs', 'stats', 'live'];
 let modelDetails = new Map(), installedModels = new Set();
 let submitting = false, scoring = false;
 let hasActiveJobs = false, pollTimer = null, liveSocket = null, finbertReady = false, pollFailures = 0;
+let allJobs = [];
 const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
 let notices = [], noticeSeq = 0;
 function renderNotices() {
@@ -21,6 +24,28 @@ function notify(message, error = false) {
   if (notices.length > 4) notices.shift();
   renderNotices();
   if (!error) setTimeout(() => dismissNotice(id), 8000);
+}
+function syncUrl() {
+  const params = new URLSearchParams();
+  if (currentTab && currentTab !== 'setup') params.set('tab', currentTab);
+  if (selectedJob) params.set('selected', selectedJob);
+  const query = params.toString();
+  const url = location.pathname + (query ? `?${query}` : '');
+  if (location.pathname + location.search !== url) history.replaceState(null, '', url);
+}
+function setTab(tab, opts = {}) {
+  if (!TABS.includes(tab)) tab = 'setup';
+  currentTab = tab;
+  for (const name of TABS) {
+    for (const el of document.querySelectorAll(`[data-tab-panel="${name}"]`)) el.hidden = name !== tab;
+  }
+  for (const btn of document.querySelectorAll('[data-tab-button]')) {
+    const active = btn.dataset.tabButton === tab;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  }
+  $('workspace-grid').classList.toggle('full-width', tab !== 'setup');
+  if (!opts.skipUrl) syncUrl();
 }
 async function api(path, body, method) {
   const response = await fetch(path, {method: method || (body === undefined ? 'GET' : 'POST'), headers: body === undefined ? {} : {'Content-Type':'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
@@ -133,14 +158,29 @@ async function refreshReadiness() {
   const covered=r.tickers.filter(row=>row.complete>0).map(row=>`${row.ticker} 四域 ${row.complete}／正式 ${row.formal_ready||0}`).join('、') || '尚無完整案例';
   $('study-readiness').innerHTML=`<strong>正式主實驗可跑 ${formal}/${total}</strong> · 四域證據完整 ${done} · SEC 可比較 ${r.comparable_fundamental_cases??0} · FinBERT 完整 ${r.finbert_ready_cases??0} · 60 日行情齊全 ${r.backtest_ready_cases} · 90 日也齊全 ${r.all_horizons_ready_cases??0}<br><small>部分 ${r.partial_cases} · 尚缺 ${r.missing_cases}。${escape(covered)}。${escape(r.note)}</small>`;
 }
+function renderDatasetOptions(preserveValue) {
+  const value = preserveValue !== undefined ? preserveValue : $('dataset').value;
+  const search = ($('dataset-picker-search')?.value || '').trim().toLowerCase();
+  const filtered = datasetRows.filter(d => !search || d.ticker.toLowerCase().includes(search) || d.id === value);
+  $('dataset').innerHTML = '<option value="">請選擇資料集</option>' + filtered.map(d => `<option value="${escape(d.id)}">${escape(datasetLabel(d))}</option>`).join('');
+  if (datasetRows.some(d => d.id === value)) $('dataset').value = value;
+}
+function renderDatasetPreviewList() {
+  const search = ($('dataset-search')?.value || '').trim().toLowerCase();
+  const filtered = datasetRows.filter(d => !search || d.ticker.toLowerCase().includes(search));
+  if (!datasetRows.length) { $('datasets').innerHTML = ''; return; }
+  $('datasets').innerHTML = filtered.length
+    ? filtered.slice(0,5).map(d => `<div><span class="version">v${d.version}</span><strong>${escape(d.ticker)} · ${d.kind === 'synthetic' ? '合成測試' : '歷史資料'}</strong><br>研究分析日 ${escape(datasetCut(d)||'未記錄')}<br>未來行情終點 ${escape(d.price_end)}（只供回測）<br>${d.price_count} 個交易日 · ${d.evidence_count} 筆證據 · 建立 ${escape(formatStamp(d.created_at))}<br><code title="完整資料集 ID">ID ${escape(d.id)}</code><br>${escape(d.source)}</div>`).join('')
+    : `<p class="hint">沒有符合條件的資料集（共 ${datasetRows.length} 筆）。</p>`;
+}
 async function refreshDatasets() {
-  const data = await api('/api/datasets'), previous = $('dataset').value; datasetRows=data;
-  $('dataset').innerHTML = '<option value="">請選擇資料集</option>' + data.map(d => `<option value="${escape(d.id)}">${escape(datasetLabel(d))}</option>`).join('');
-  if (data.some(d => d.id === previous)) $('dataset').value = previous;
-  $('datasets').innerHTML = data.slice(0,5).map(d => `<div><span class="version">v${d.version}</span><strong>${escape(d.ticker)} · ${d.kind === 'synthetic' ? '合成測試' : '歷史資料'}</strong><br>研究分析日 ${escape(datasetCut(d)||'未記錄')}<br>未來行情終點 ${escape(d.price_end)}（只供回測）<br>${d.price_count} 個交易日 · ${d.evidence_count} 筆證據 · 建立 ${escape(formatStamp(d.created_at))}<br><code title="完整資料集 ID">ID ${escape(d.id)}</code><br>${escape(d.source)}</div>`).join('');
+  const previous = $('dataset').value;
+  datasetRows = await api('/api/datasets');
+  renderDatasetOptions(previous);
+  renderDatasetPreviewList();
   renderDatasetDetail(true);
-  renderCollectionAgents(data.find(d=>d.id===$('dataset').value)||null);
-  const selected=data.find(d=>d.id===$('dataset').value);
+  renderCollectionAgents(datasetRows.find(d=>d.id===$('dataset').value)||null);
+  const selected=datasetRows.find(d=>d.id===$('dataset').value);
   $('score-finbert-button').disabled=scoring || !finbertReady || !(selected?.evidence_by_domain?.sentiment > 0);
   syncExperimentGuard();
 }
@@ -154,15 +194,24 @@ async function refreshJobs() {
     // longer exists (deleted store, different environment); fall back to the
     // unfiltered dashboard instead of leaving the whole page stuck on an error.
     selectedJob = null;
-    history.replaceState(null, '', location.pathname);
+    syncUrl();
     dashboard = await api('/api/dashboard');
   }
-  const jobs = dashboard.jobs;
-  hasActiveJobs=jobs.some(job=>job.status==='queued'||job.status==='running');
-  $('jobs').className = jobs.length ? '' : 'empty';
-  $('jobs').innerHTML = jobs.length ? jobs.map(j => `<div class="job"><div><strong>${escape(j.config.ticker)} · ${escape(j.config.analysis_date)}</strong> <span class="status ${escape(j.status)}">${escape(statuses[j.status])}</span><small>${escape(j.config.protocol.model)} · ${j.steps}/${15 + j.config.protocol.voting_samples} 模型輸出${j.wants_run === 0 && j.status === 'running' ? ' · 將在本波次後暫停' : ''}</small><small>${escape(protocolLabel(j.config.protocol))} · ${escape(missingPolicyLabel(j.config.protocol))} · ${escape(j.config.protocol.study)} · ${j.id.slice(0,8)}</small></div><button class="quiet" data-open="${escape(j.id)}">檢視</button></div>`).join('') : '尚無實驗。先準備資料，再建立第一筆研究。';
+  allJobs = dashboard.jobs;
+  hasActiveJobs=allJobs.some(job=>job.status==='queued'||job.status==='running');
+  renderJobList();
   if(dashboard.selected) await showJob(selectedJob,dashboard.selected);
   schedulePoll();
+}
+function renderJobList() {
+  const search=($('job-search')?.value||'').trim().toLowerCase();
+  const status=$('job-status-filter')?.value||'';
+  const jobs=allJobs.filter(j=>(!status||j.status===status)
+    &&(!search||`${j.config.ticker} ${j.config.analysis_date}`.toLowerCase().includes(search)));
+  $('jobs').className = jobs.length ? '' : 'empty';
+  if (!allJobs.length) { $('jobs').textContent='尚無實驗。先準備資料，再建立第一筆研究。'; return; }
+  if (!jobs.length) { $('jobs').textContent=`沒有符合條件的實驗（共 ${allJobs.length} 筆）。`; return; }
+  $('jobs').innerHTML = jobs.map(j => `<div class="job"><div><strong>${escape(j.config.ticker)} · ${escape(j.config.analysis_date)}</strong> <span class="status ${escape(j.status)}">${escape(statuses[j.status])}</span><small>${escape(j.config.protocol.model)} · ${j.steps}/${15 + j.config.protocol.voting_samples} 模型輸出${j.wants_run === 0 && j.status === 'running' ? ' · 將在本波次後暫停' : ''}</small><small>${escape(protocolLabel(j.config.protocol))} · ${escape(missingPolicyLabel(j.config.protocol))} · ${escape(j.config.protocol.study)} · ${j.id.slice(0,8)}</small></div><button class="quiet" data-open="${escape(j.id)}">檢視</button></div>`).join('');
 }
 function schedulePoll() {
   if(pollTimer)clearTimeout(pollTimer);
@@ -244,8 +293,7 @@ function estimateRemaining(s, total, jobStatus) {
 }
 async function showJob(id, loadedJob=null) {
   selectedJob = id;
-  const query = id ? `?selected=${encodeURIComponent(id)}` : '';
-  if (location.search !== query) history.replaceState(null, '', location.pathname + query);
+  syncUrl();
   const job = loadedJob || await api(`/api/jobs/${id}`), s = job.state, total = 15 + job.config.protocol.voting_samples;
   selectedProtocol = job.config.protocol_hash;
   const output = $('run-detail'); output.hidden = false;
@@ -259,6 +307,7 @@ async function showJob(id, loadedJob=null) {
   output.innerHTML = `<div class="section-label">CASE / ${escape(id.slice(0,8))}</div><h2>${escape(job.config.ticker)} · ${escape(job.config.analysis_date)} <span class="status ${escape(job.status)}">${escape(statuses[job.status])}</span></h2><p class="${oldProtocol?'protocol-warning':'hint'}">${escape(protocolNotice)}</p><p class="hint">目前：${escape(trace)} · ${s.records.length}/${total} 決策輸出 · ${s.attempts.length} 次持久化波次${eta?` · 依目前平均耗時預估剩餘 ${escape(eta)}`:''}</p><progress class="progress" max="${total}" value="${s.records.length}" aria-label="決策推論進度"></progress>${job.error ? `<p class="error-text">${escape(job.error)}</p>` : ''}<div class="actions">${oldProtocol ? `<button class="quiet" data-clone="${escape(id)}">複製至新版重新執行</button>` : ''}${!isFinal && !oldProtocol ? `<button class="quiet" data-control="${job.wants_run ? 'pause' : 'resume'}">${job.wants_run ? '暫停' : '繼續執行'}</button><button class="quiet" data-control="cancel">取消實驗</button>` : ''}<a href="/api/jobs/${id}/export">下載研究產物 ZIP</a>${job.status === 'complete' ? '<button data-statistics="true">檢視同協議統計</button>' : ''}</div>${runAgentTerminal(job,s)}${researchAgentPanel(s,job.status)}${groupProgressPanel(s,job.config.protocol,job.status)}${s.decisions ? `<div class="decisions">${Object.entries(s.decisions).map(([g,d]) => `<div><small>${g} 組 · 信心 ${percentage(d.confidence)} · 預測 ${number(d.expected_return_pct)}%</small><strong>${escape(d.action)}</strong><small>模型：${escape(d.model_action||d.candidate_action)} · 推導：${escape(d.derived_action||d.candidate_action)} · 候選：${escape(d.candidate_action)}<br>中性帶 ±${number(d.hold_band_pct)}% · 資料覆蓋 ${percentage(d.gate.domain_coverage)}<br>${d.gate.missing_data_control?'缺資料對照：未覆寫模型決策<br>':''}${escape(d.gate.reasons.join(' / ') || '通過門檻')}</small></div>`).join('')}</div>` : '<p class="hint">四組完成後由 Gatekeeper 同步鎖定決策。</p>'}${backtestComparison(s)}<details><summary>中立研究報告與來源</summary><pre>${escape(JSON.stringify(s.report || s.research, null, 2))}</pre></details><details><summary>逐步論證與三輪立場交換（${s.records.length}）</summary>${s.records.map(r => `<article class="trace"><strong>${escape(r.group)} · ${escape(r.key)} · ${escape(r.stance)}</strong><p>${escape(r.output.rationale)}</p><small>引用：${escape(r.output.evidence_ids.join(', '))}<br>提示雜湊：${escape(r.audit.prompt_hash)}</small></article>`).join('')}</details><details><summary>回測、門檻與流程紀錄</summary><pre>${escape(JSON.stringify({decisions:s.decisions,cases:s.cases,compute_usage:s.compute_usage,completeness_diagnostic:s.completeness_diagnostic,trace:s.trace},null,2))}</pre></details>`;
 }
 async function showStatistics() {
+  setTab('stats');
   const [report,pilot,band] = await Promise.all([api(`/api/studies/${selectedProtocol}`),api(`/api/studies/${selectedProtocol}/pilot`),api(`/api/studies/${selectedProtocol}/hold-band`)]), element = $('statistics'); element.hidden = false;
   const primary = report.summary.filter(r => r.horizon === 60 && r.cost_model === 'corwin_schultz' && r.decision_layer === 'candidate' && r.portfolio_basis === 'all');
   const insufficient=report.status==='insufficient_cases'?`<p class="protocol-warning">樣本數 ${report.unique_cases || 0} / ${report.required_cases || 30} 不足，尚未產出任何統計檢定。</p>`:'';
@@ -334,7 +383,9 @@ async function initialize() {
   const cloudLabels={openrouter:'OpenRouter',openai:'OpenAI',gemini:'Gemini'};
   const readyCloud=Object.entries(c.cloud_models||{}).filter(([,value])=>value).map(([key])=>cloudLabels[key]||key);
   $('cloud-model-state').textContent=readyCloud.length?`可用雲端憑證：${readyCloud.join('、')}。輸入 LiteLLM 模型名稱即可切換。`:'尚未設定常用雲端模型金鑰；可先使用 Ollama，或在上方設定表單填入金鑰。';
-  selectedJob = new URLSearchParams(location.search).get('selected') || null;
+  const urlParams = new URLSearchParams(location.search);
+  selectedJob = urlParams.get('selected') || null;
+  setTab(urlParams.get('tab') || (selectedJob ? 'runs' : 'setup'), { skipUrl: true });
   await refreshSettings(); await refreshDatasets(); await refreshReadiness(); await refreshJobs();
   const m = await api('/api/models');
   modelDetails=new Map((m.details||[]).map(item=>[item.id,item]));
@@ -397,7 +448,7 @@ $('batch-file').addEventListener('change', e => task(null,async()=>{
   e.target.value='';
 }));
 $('job-form').addEventListener('submit', e => {e.preventDefault();if(submitting)return;if(!$('dataset').value){notify('請先選擇一筆資料集，才能開始研究實驗。',true);syncExperimentGuard();return;}submitting=true;task(e.submitter,async()=>{try{const model=$('cloud-model').value.trim()||$('model').value;const j=await api('/api/jobs',{dataset_id:$('dataset').value,analysis_date:$('analysis-date').value,model,study:$('study').value,voting_samples:Number($('voting').value),missing_data_policy:$('missing-policy').value,anonymize_ticker:$('anonymize').checked,allow_point_fundamental:$('allow-point-fundamental').checked,allow_small_model:$('allow-small-model').checked,allow_low_quality_sentiment:$('allow-low-quality-sentiment').checked});selectedJob=j.id;notify(`研究已加入背景佇列，模型為 ${model}。候選決策、風控決策與品質覆寫會一起鎖定於協議。`);await refreshJobs();}finally{submitting=false;}});});
-document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.dismissNotice){dismissNotice(Number(b.dataset.dismissNotice));return;}if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);if(b.dataset.freeze)task(b,async()=>{if(!window.confirm('凍結此協議目前分析的資料集清單？凍結後不可撤銷，之後新增的案例會被標記為凍結後追加。'))return;await api(`/api/studies/${b.dataset.freeze}/freeze`,{});await showStatistics();});});
+document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.tabButton){setTab(b.dataset.tabButton);return;}if(b.dataset.dismissNotice){dismissNotice(Number(b.dataset.dismissNotice));return;}if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);if(b.dataset.freeze)task(b,async()=>{if(!window.confirm('凍結此協議目前分析的資料集清單？凍結後不可撤銷，之後新增的案例會被標記為凍結後追加。'))return;await api(`/api/studies/${b.dataset.freeze}/freeze`,{});await showStatistics();});});
 $('live-refresh').addEventListener('click', e=>task(e.currentTarget,refreshLive));
 $('live-stream-toggle').addEventListener('click', toggleLiveStream);
 $('refresh').addEventListener('click', e=>task(e.currentTarget,async()=>{await refreshDatasets();await refreshReadiness();await refreshJobs();}));
@@ -412,5 +463,9 @@ $('allow-point-fundamental').addEventListener('change',syncExperimentGuard);
 $('model').addEventListener('change',syncExperimentGuard);
 $('cloud-model').addEventListener('input',syncExperimentGuard);
 $('allow-small-model').addEventListener('change',syncExperimentGuard);
+$('job-search').addEventListener('input',renderJobList);
+$('job-status-filter').addEventListener('change',renderJobList);
+$('dataset-search').addEventListener('input',renderDatasetPreviewList);
+$('dataset-picker-search').addEventListener('input',()=>renderDatasetOptions());
 task(null,initialize);
 
