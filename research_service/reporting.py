@@ -3,9 +3,11 @@ from copy import deepcopy
 import csv
 from datetime import datetime, timezone
 import hashlib
+from importlib import metadata
 import io
 import json
 import math
+import platform
 import statistics
 import zipfile
 
@@ -501,6 +503,25 @@ def _write_zip_entry(archive, name, payload, timestamp):
     archive.writestr(info, payload)
 
 
+def runtime_environment():
+    """Record the libraries that decide the numbers, not just the model.
+
+    The protocol hash pins the research design and model_identity pins the
+    model, but the statistics and the FinBERT scores are also a function of
+    the installed numeric/ML stack. Without this, two runs of the same
+    protocol_hash could report different figures with nothing in the audit
+    trail to distinguish them.
+    """
+    versions = {}
+    for name in ("numpy", "scipy", "pandas", "transformers", "torch", "litellm", "yfinance"):
+        try:
+            versions[name] = metadata.version(name)
+        except metadata.PackageNotFoundError:
+            versions[name] = None
+    return {"python": platform.python_version(), "platform": platform.platform(), "packages": versions,
+            "note": "Statistics and FinBERT scores depend on these versions; record them alongside any published figure."}
+
+
 def _export_manifest(job, payloads):
     config = job["config"]
     protocol = config.get("protocol", {})
@@ -510,6 +531,7 @@ def _export_manifest(job, payloads):
                 "dataset_id": config.get("dataset_id"), "dataset_hash": config.get("dataset_hash"),
                 "protocol_version": protocol.get("version"), "protocol_hash": config.get("protocol_hash"),
                 "model_identity": config.get("model_identity", {}), "quality_overrides": config.get("quality_overrides", {})},
+        "runtime_environment": runtime_environment(),
         "files": [{"path": name, "bytes": len(payload), "sha256": hashlib.sha256(payload).hexdigest()}
                   for name, payload in sorted(payloads.items())],
         "integrity_scope": "All payload files listed above; manifest.json is not self-hashed."}

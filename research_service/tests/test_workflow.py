@@ -104,6 +104,13 @@ class WorkflowTests(unittest.TestCase):
             manifest = json.loads(archive.read("manifest.json"))
             self.assertEqual(manifest["schema"], "stance-shift-export/v1")
             self.assertEqual(manifest["job"]["id"], job["id"])
+            # The numeric/ML stack decides the reported figures, so it belongs
+            # in the audit trail next to the protocol and model identity.
+            environment = manifest["runtime_environment"]
+            self.assertTrue(environment["python"])
+            for package in ("numpy", "scipy", "transformers"):
+                self.assertIn(package, environment["packages"])
+            self.assertTrue(environment["packages"]["numpy"])
             for item in manifest["files"]:
                 payload = archive.read(item["path"])
                 self.assertEqual(len(payload), item["bytes"])

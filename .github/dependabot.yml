@@ -5,6 +5,21 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # Research results must stay reproducible: the numeric and ML stack decides
+    # the statistics and the FinBERT scores, and a version change can move a
+    # published number without any protocol change. These are upgraded
+    # deliberately, alongside a re-run, never by an automatic PR. Security
+    # advisories still surface through Dependabot alerts.
+    ignore:
+      - dependency-name: "numpy"
+      - dependency-name: "scipy"
+      - dependency-name: "pandas"
+      - dependency-name: "transformers"
+      - dependency-name: "torch"
+      # Everything else (fastapi, uvicorn, litellm, yfinance, websockets,
+      # langgraph) may propose minor/patch bumps, but not majors.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
 
   - package-ecosystem: "github-actions"
     directory: "/"
@@ -17,3 +32,8 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    # The Python base image pins the interpreter the whole study runs on;
+    # a major bump also risks losing prebuilt torch wheels.
+    ignore:
+      - dependency-name: "python"
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
