@@ -94,6 +94,27 @@ class RefreshArchiveTests(unittest.TestCase):
         # December is checkpointed and skipped; January (current) is redone.
         self.assertEqual(len(calls), 1)
 
+    def test_prioritizes_tickers_with_no_data_over_current_month_refresh(self):
+        # NVDA already has December checkpointed (i.e. some history); AAPL
+        # has nothing at all. With only 1 call of daily budget, AAPL's
+        # untouched backlog should be fetched before NVDA's current-month
+        # re-fetch, even though NVDA sorts first alphabetically.
+        start = datetime(2023, 12, 15, tzinfo=timezone.utc)
+        end = datetime(2024, 1, 10, tzinfo=timezone.utc)
+        calls = []
+        def requester(url):
+            calls.append(url)
+            return {"feed": []}
+        with tempfile.TemporaryDirectory() as directory:
+            output = Path(directory) / "a.csv"
+            checkpoint = Path(directory) / "c.json"
+            checkpoint.write_text('[["NVDA", "2023-12"]]', encoding="utf-8")
+            with patch.dict("os.environ", {"ALPHA_VANTAGE_API_KEY": "test-key"}):
+                refresh_archive(output_path=output, checkpoint_path=checkpoint,
+                                tickers=["NVDA", "AAPL"], start_date=start, end_date=end,
+                                daily_limit=1, requester=requester, sleep=lambda _: None)
+        self.assertIn("tickers=AAPL", calls[0])
+
     def test_current_month_is_purged_and_overwritten_not_appended(self):
         now = datetime.now(timezone.utc)
         start = now.replace(day=1)

@@ -142,10 +142,22 @@ def main():
     def is_current_month(win_start):
         return win_start >= CURRENT_MONTH_START
 
-    remaining_tasks = [
+    def done_count(ticker):
+        return sum(1 for (t, _month) in done if t == ticker)
+
+    # Prioritize tickers with the least history filled in yet, and only
+    # re-fetch the still-open current month once every ticker's past-month
+    # backlog is caught up — otherwise a ticker that already has data keeps
+    # eating the daily quota on repeat current-month overwrites while an
+    # empty ticker never gets a turn.
+    backlog_tasks = [
         t for t in all_tasks
-        if is_current_month(t[1]) or (t[0], t[1].strftime("%Y-%m")) not in done
+        if not is_current_month(t[1]) and (t[0], t[1].strftime("%Y-%m")) not in done
     ]
+    backlog_tasks.sort(key=lambda t: (done_count(t[0]), t[1]))
+    current_tasks = [t for t in all_tasks if is_current_month(t[1])]
+    current_tasks.sort(key=lambda t: done_count(t[0]))
+    remaining_tasks = backlog_tasks + current_tasks
 
     print(f"總共需要 {len(all_tasks)} 個「股票×月份」組合，已完成(不含當月) {len(done)} 個，"
           f"這次要處理 {min(DAILY_LIMIT, len(remaining_tasks))} 個。")

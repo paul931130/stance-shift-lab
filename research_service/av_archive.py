@@ -120,8 +120,21 @@ def refresh_archive(output_path=None, checkpoint_path=None, tickers=STUDY_TICKER
     done = _load_checkpoint(checkpoint_path)
     windows = month_windows(start, end)
     all_tasks = [(ticker, *window) for ticker in tickers for window in windows]
-    remaining = [task for task in all_tasks
-                 if is_current_month(task[1]) or (task[0], task[1].strftime("%Y-%m")) not in done]
+
+    def done_count(ticker):
+        return sum(1 for (t, _month) in done if t == ticker)
+
+    # Prioritize tickers with the least history filled in yet (a brand-new
+    # ticker goes first), and only re-fetch the still-open current month
+    # once every ticker's past-month backlog is caught up — otherwise a
+    # ticker that already has data keeps eating the daily quota on repeat
+    # current-month overwrites while an empty ticker never gets a turn.
+    backlog = [task for task in all_tasks
+               if not is_current_month(task[1]) and (task[0], task[1].strftime("%Y-%m")) not in done]
+    backlog.sort(key=lambda task: (done_count(task[0]), task[1]))
+    current_tasks = [task for task in all_tasks if is_current_month(task[1])]
+    current_tasks.sort(key=lambda task: done_count(task[0]))
+    remaining = backlog + current_tasks
 
     report(stage="running", completed=0, total=min(daily_limit, len(remaining)),
            message=f"共 {len(all_tasks)} 個股票×月份組合，待處理 {len(remaining)} 個")
