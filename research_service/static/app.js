@@ -152,6 +152,10 @@ function syncExperimentGuard() {
     ready:'資料集、研究分析日、模型與新聞品質均已驗證；設定會一起鎖定於新實驗。',
   };
   guard.textContent=messages[result.reason];
+  const overrideFor={sentiment_quality:'override-sentiment',fundamental_quality:'override-fundamental',model_too_small:'override-model'};
+  for(const el of document.querySelectorAll('.check-wrap.needs-override'))el.classList.remove('needs-override');
+  const neededId=overrideFor[result.reason];
+  if(neededId){$('quality-overrides').open=true;$(neededId).classList.add('needs-override');}
 }
 async function refreshReadiness() {
   const r=await api('/api/readiness'), done=r.evidence_complete_cases??r.complete_cases, formal=r.formal_experiment_ready_cases??0, total=r.target_cases;
@@ -372,6 +376,7 @@ async function initialize() {
   terminalLine('COORD', `等待四域資料任務 · worker=${parallelWorkers}`);
   terminalLine('SOURCE', Object.entries(c.sources).filter(([,ready])=>ready).map(([name])=>name.toUpperCase()).join(' · ') || '尚未設定外部來源', Object.values(c.sources).some(Boolean)?'ok':'warn');
   $('login').hidden = true; $('workspace').hidden = false;
+  try { $('first-time-guide').hidden = localStorage.getItem('firstTimeGuideDismissed') === '1'; } catch { $('first-time-guide').hidden = false; }
   $('ticker').innerHTML = options(c.tickers); $('ticker').value = 'NVDA';
   $('download-date').innerHTML = c.dates.map(v=>`<option value="${escape(v)}">${escape(v)} · 季末研究日</option>`).join('');
   $('analysis-date').innerHTML = c.dates.map(v=>`<option value="${escape(v)}">${escape(v)} · 季末研究日</option>`).join('');
@@ -483,5 +488,6 @@ $('job-search').addEventListener('input',renderJobList);
 $('job-status-filter').addEventListener('change',renderJobList);
 $('dataset-search').addEventListener('input',renderDatasetPreviewList);
 $('dataset-picker-search').addEventListener('input',()=>renderDatasetOptions());
+$('dismiss-first-time-guide').addEventListener('click',()=>{$('first-time-guide').hidden=true;try{localStorage.setItem('firstTimeGuideDismissed','1');}catch{}});
 task(null,initialize);
 
