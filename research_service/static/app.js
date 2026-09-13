@@ -387,6 +387,7 @@ async function initialize() {
   selectedJob = urlParams.get('selected') || null;
   setTab(urlParams.get('tab') || (selectedJob ? 'runs' : 'setup'), { skipUrl: true });
   await refreshSettings(); await refreshDatasets(); await refreshReadiness(); await refreshJobs();
+  api('/api/sources/alpha-vantage-archive').then(state=>{if(state.stage==='running')pollAlphaVantageArchive();}).catch(()=>{});
   const m = await api('/api/models');
   modelDetails=new Map((m.details||[]).map(item=>[item.id,item]));
   installedModels=new Set(m.models||[]);
@@ -402,7 +403,22 @@ async function initialize() {
 }
 $('login-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{await api('/api/login',{key:$('access-key').value}); $('access-key').value=''; await initialize();}); });
 $('download-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{const ticker=$('ticker').value,analysisDate=$('download-date').value,refresh=$('refresh-data').checked,useFinbert=$('download-finbert').checked;resetAgentTerminal();terminalLine('YOU',`collect --ticker ${ticker} --as-of ${analysisDate} --domains all${refresh?' --refresh':''}${useFinbert?' --finbert':''}`,'command');terminalLine('COORD',refresh?`強制建立 ${analysisDate} 新快照，派發 4 個資料 Agent`:`先搜尋 ${ticker}／${analysisDate} 可重用的四域完整快照`);notify('資料 Agent 正在檢查快照與來源…');renderCollectionAgents(null,'running');let r;try{r=await api('/api/datasets/download',{ticker,analysis_date:analysisDate,refresh,use_finbert:useFinbert});}catch(error){terminalLine('ERROR',error.message,'error');renderCollectionAgents(datasetRows.find(d=>d.id===$('dataset').value)||null);throw error;}if(r.reused){terminalLine('CACHE',`HIT dataset v${r.version} · ${r.id.slice(0,12)}… · 未呼叫外部 API`,'ok');}else{terminalLine('COORD','已完成四域來源派工：Yahoo／SEC／Alpha+FNSPID／ALFRED');}const codes={technical:'TECH',fundamental:'FUND',sentiment:'SENT',macro:'MACRO'};for(const [domain,item] of Object.entries(r.agents))terminalLine(codes[domain],`${item.status.toUpperCase()} · ${item.records} records · ${item.message}`,item.status==='complete'?'ok':'warn');for(const limitation of r.limitations)terminalLine('AUDIT',limitation,'warn');if(!r.reused)terminalLine('STORE',`SAVED dataset ${r.id.slice(0,12)}… · immutable snapshot`,'ok');await refreshDatasets();await refreshReadiness();$('dataset').value=r.id;$('analysis-date').value=r.analysis_date;renderDatasetDetail();renderCollectionAgents(datasetRows.find(d=>d.id===r.id));notify(r.reused?'已重用符合條件的既有資料快照；未重新呼叫來源 API。':'資料 Agent 已完成本輪工作，資料集已保存。\n'+r.limitations.join('\n'));}); });
-$('source-check-button').addEventListener('click', e => task(e.currentTarget,async()=>{const result=await api('/api/sources/check',{ticker:$('ticker').value,analysis_date:$('download-date').value});const label={alpha_vantage:'Alpha Vantage',fnspid:'FNSPID'};notify(Object.entries(result).map(([key,value])=>`${label[key]}：${value.message}（${value.records} 筆）`).join('\n'));}));
+$('source-check-button').addEventListener('click', e => task(e.currentTarget,async()=>{const result=await api('/api/sources/check',{ticker:$('ticker').value,analysis_date:$('download-date').value});const label={alpha_vantage:'Alpha Vantage',alpha_vantage_cache:'Alpha Vantage 快取',fnspid:'FNSPID'};notify(Object.entries(result).map(([key,value])=>`${label[key]||key}：${value.message}（${value.records} 筆）`).join('\n'));}));
+async function pollAlphaVantageArchive(){
+  while(true){
+    const state=await api('/api/sources/alpha-vantage-archive');
+    $('av-archive-progress').textContent=state.stage==='idle'?'':`${state.completed??0}/${state.total??'?'} · ${state.current?state.current+' · ':''}${state.message||state.stage}`;
+    if(!['running'].includes(state.stage))return state;
+    await new Promise(resolve=>setTimeout(resolve,2000));
+  }
+}
+$('av-archive-button').addEventListener('click', e=>task(e.currentTarget,async()=>{
+  await api('/api/sources/alpha-vantage-archive/start',{});
+  const state=await pollAlphaVantageArchive();
+  if(state.stage==='complete')notify(`Alpha Vantage 新聞快取已更新，本輪新增 ${state.added_rows??0} 筆。`);
+  else if(state.stage==='rate_limited')notify(`今日額度已用完；${state.message||''}`,true);
+  else if(state.stage==='failed')notify(state.message||'更新失敗',true);
+}));
 $('import-file').addEventListener('change', e => task(null,async()=>{const f=e.target.files[0];if(!f)return;const useFinbert=$('use-finbert').checked;const r=await api(`/api/datasets/import?use_finbert=${useFinbert}`,JSON.parse(await f.text()));await refreshDatasets();await refreshReadiness();$('dataset').value=r.id;renderDatasetDetail();renderCollectionAgents(datasetRows.find(d=>d.id===r.id));notify(r.finbert_applied?'資料集已驗證，新聞標題已由 FinBERT 分類並保存。':'資料集已驗證並保存。');}));
 async function scoreSelectedDataset(id) {
   scoring=true;renderDatasetDetail();

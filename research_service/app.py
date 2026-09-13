@@ -77,6 +77,8 @@ def create_app(store=None, model_call=None, start_worker=True):
     trade_hub = TradeHub()
     finbert_tasks = {}
     finbert_task_lock = threading.RLock()
+    av_archive_task = {"stage": "idle", "message": "尚未開始"}
+    av_archive_lock = threading.RLock()
     injected_model_call = model_call is not None
     engine = Engine(store, model_call) if model_call else Engine(store)
     stop = threading.Event()
@@ -413,6 +415,36 @@ def create_app(store=None, model_call=None, start_worker=True):
     def source_check(payload: DownloadInput):
         validate_case(payload.ticker, payload.analysis_date)
         return check_sentiment_sources(payload.ticker, payload.analysis_date)
+
+    @app.get("/api/sources/alpha-vantage-archive")
+    def alpha_vantage_archive_status():
+        with av_archive_lock:
+            return dict(av_archive_task)
+
+    @app.post("/api/sources/alpha-vantage-archive/start", status_code=202)
+    def start_alpha_vantage_archive():
+        if not os.getenv("ALPHA_VANTAGE_API_KEY", "").strip():
+            raise ValueError("尚未設定 ALPHA_VANTAGE_API_KEY；請先在上方設定表單填入")
+        with av_archive_lock:
+            if av_archive_task.get("stage") == "running":
+                raise HTTPException(409, "新聞快取正在更新中，請查看進度")
+            av_archive_task.clear()
+            av_archive_task.update(stage="running", completed=0, total=0, message="準備中…", updated_at=now())
+
+        def run():
+            from .av_archive import refresh_archive
+
+            def progress(**values):
+                with av_archive_lock:
+                    av_archive_task.update(values, updated_at=now())
+            try:
+                refresh_archive(progress=progress)
+            except Exception as error:
+                logger.warning("alpha vantage archive refresh failed: %s: %s", type(error).__name__, error)
+                progress(stage="failed", message=f"{type(error).__name__}：更新未完成，已抓到的資料仍保留；可重試")
+        threading.Thread(target=run, daemon=True, name="av-archive-refresh").start()
+        with av_archive_lock:
+            return dict(av_archive_task)
 
     def prepare(payload):
         data = store.dataset(payload.dataset_id)

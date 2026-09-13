@@ -383,10 +383,21 @@ def _alpha_note(stats):
             f"因相關性不足排除 {stats['dropped_low_relevance']} 筆")
 
 
+def _resolve_alpha_vantage_cache_path():
+    """An explicit ALPHA_VANTAGE_NEWS_PATH always wins; otherwise fall back to
+    the background-refresh task's managed file if one has actually been built."""
+    configured = os.getenv("ALPHA_VANTAGE_NEWS_PATH", "").strip()
+    if configured:
+        return configured
+    from .av_archive import default_archive_path  # lazy: avoids a data<->av_archive import cycle
+    default_path = default_archive_path()
+    return str(default_path) if default_path.exists() else ""
+
+
 def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE):
     """Fetch point-in-time news without silently inventing sentiment evidence."""
     items, notes = [], []
-    cache_path = os.getenv("ALPHA_VANTAGE_NEWS_PATH", "").strip()
+    cache_path = _resolve_alpha_vantage_cache_path()
     cache_items = []
     if cache_path:
         try:
@@ -436,7 +447,7 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
 def check_sentiment_sources(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE):
     """Actively verify configured news sources without exposing credentials."""
     results = {}
-    cache_path = os.getenv("ALPHA_VANTAGE_NEWS_PATH", "").strip()
+    cache_path = _resolve_alpha_vantage_cache_path()
     if cache_path:
         try:
             items = _alpha_vantage_cached_news(cache_path, ticker, analysis_date)

@@ -37,6 +37,8 @@ Alpha Vantage 使用官方 `NEWS_SENTIMENT` 端點，查詢分析日前 90 天�
 .\scripts\collect-quarters.ps1 -DailyBudget 5   # 額度較保守時
 ```
 
+不想用終端機的話，網頁「設定資料來源與模型」展開後有「更新 Alpha Vantage 新聞快取」按鈕，會在伺服器背景執行同一套邏輯（9 檔 × 逐月，當月自動覆寫更新），額度用完會自動停止，進度存在伺服器的 `research-data/alpha_vantage_cache/`（Docker 具名資料卷內，重啟不會消失），按鈕下方會即時顯示目前處理到哪個股票／月份。這個快取只要存在就會被 `fetch_sentiment()` 自動優先讀取，不需要另外設定 `ALPHA_VANTAGE_NEWS_PATH`。
+
 Windows 使用者也可用統一終端入口：`.\research.ps1 setup` 設定憑證、`.\research.ps1 doctor` 檢查服務、`.\research.ps1 collect NVDA 2024-12-31` 取得資料、`.\research.ps1 run NVDA 2024-12-31` 以預設 14B 模型啟動實驗。小模型只用於流程檢查，例如 `.\research.ps1 run NVDA 2024-12-31 -Model ollama/qwen3:8b -AllowSmallModel`。
 
 在專案根目錄執行（PowerShell 用 `${PWD}`，Bash 用 `$(pwd)`）：
