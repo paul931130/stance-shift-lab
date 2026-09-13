@@ -16,7 +16,9 @@ services:
       OLLAMA_BASE_URL: "${OLLAMA_BASE_URL:-http://host.docker.internal:11434}"
     volumes:
       - research-data:/data
-      - ./research-inputs:/app/research-inputs:ro
+      # Web and terminal archive refreshers share the same checkpoint/CSV.
+      # This local single-user deployment writes only the Alpha archive files here.
+      - ./research-inputs:/app/research-inputs
     extra_hosts:
       - "host.docker.internal:host-gateway"
 volumes:

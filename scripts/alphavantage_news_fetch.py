@@ -6,7 +6,7 @@ Alpha Vantage 新聞抓取腳本 —— 補齊 FNSPID 資料 2023-12 之後到�
 還原自私人交接備份（曾誤刪，2026-09-13 尋回）。輸出的 alphavantage_news.csv
 現在會被 research_service/data.py 讀取（設定 ALPHA_VANTAGE_NEWS_PATH 指向它），
 在打即時 Alpha Vantage API 之前優先查這份本機快取，查得到就不消耗當日額度。
-執行完這支腳本後把 alphavantage_news.csv 複製到 research-inputs/ 即可生效。
+腳本會直接寫入 research-inputs/alphavantage_news.csv，完成後立即可供服務讀取。
 
 背景：
     - FNSPID 最後一筆新聞日期是 2023-12-16，這支腳本從 2023-12-17 開始抓
@@ -46,17 +46,36 @@ for _stream in (sys.stdout, sys.stderr):
     if hasattr(_stream, "reconfigure"):
         _stream.reconfigure(encoding="utf-8", errors="replace")
 
-# Prefers ALPHA_VANTAGE_API_KEY from the environment (e.g. already set in
-# .env.research) so a real key never has to be hardcoded into this file.
-# The literal below is only a fallback for manual editing.
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+
+
+def env_file_value(name):
+    """Read one value from .env.research without printing or persisting it elsewhere."""
+    path = PROJECT_ROOT / ".env.research"
+    if not path.exists():
+        return ""
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if key.strip() == name:
+            return value.strip().strip('"').strip("'")
+    return ""
+
+
+# Prefer the process environment, then the project's server-side .env file.
+# A real key never needs to be hardcoded into this script.
 API_KEYS = [
-    os.environ.get("ALPHA_VANTAGE_API_KEY") or "YOUR_API_KEY_HERE",
+    os.environ.get("ALPHA_VANTAGE_API_KEY")
+    or env_file_value("ALPHA_VANTAGE_API_KEY")
+    or "YOUR_API_KEY_HERE",
 ]
 TICKERS = ["AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "LLY", "GE"]
 START_DATE = datetime(2023, 12, 17)  # 接續 FNSPID 最後一筆之後
 END_DATE = datetime.now()
 
-RESEARCH_INPUTS_DIR = Path(__file__).resolve().parents[1] / "research-inputs"
+RESEARCH_INPUTS_DIR = PROJECT_ROOT / "research-inputs"
 CHECKPOINT_FILE = str(RESEARCH_INPUTS_DIR / "av_checkpoint.json")
 OUTPUT_FILE = str(RESEARCH_INPUTS_DIR / "alphavantage_news.csv")
 DAILY_LIMIT_PER_KEY = 25
@@ -106,6 +125,17 @@ def fetch_news(ticker, time_from, time_to, api_key):
     return r.json()
 
 
+def safe_api_message(data, api_key):
+    """Return a useful provider error without ever echoing the API key."""
+    message = next(
+        (str(data.get(field, "")) for field in ("Information", "Note", "Error Message") if data.get(field)),
+        "Alpha Vantage 回應缺少 feed",
+    )
+    if api_key:
+        message = message.replace(api_key, "[REDACTED]")
+    return message
+
+
 def purge_current_month_rows(ticker, month_str):
     """把 CSV 裡屬於「這檔股票 + 當月」的舊資料先移除，準備覆蓋寫入新的一批"""
     if not os.path.exists(OUTPUT_FILE):
@@ -135,7 +165,7 @@ def main():
     print(f"目前設定 {len(API_KEYS)} 組 key，每日總額度 {DAILY_LIMIT} 次。")
     print(f"當月（{CURRENT_MONTH_START:%Y-%m}）視為進行中，每次執行都會重新抓取覆蓋，不計入 checkpoint。")
 
-    done = load_checkpoint()
+    done = {item for item in load_checkpoint() if item[1] < CURRENT_MONTH_START.strftime("%Y-%m")}
     windows = month_windows(START_DATE, END_DATE)
     all_tasks = [(t, w[0], w[1]) for t in TICKERS for w in windows]
 
@@ -195,9 +225,11 @@ def main():
         calls_today += 1
 
         if "feed" not in data:
-            print(f"  ⚠️ 回應異常（可能是這組key額度用完或錯誤）：{data}")
-            if "Information" in data or "Note" in data:
-                print("  這組key今天額度可能用完了，繼續換下一組key試試。")
+            message = safe_api_message(data, api_key)
+            print(f"  ⚠️ 回應異常：{message}")
+            if "rate limit" in message.lower() or "requests per day" in message.lower():
+                print("  今日 Alpha Vantage 額度已用完；停止本輪，checkpoint 不會把失敗月份標成完成。")
+                break
             time.sleep(CALL_DELAY_SEC)
             continue
 

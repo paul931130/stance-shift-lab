@@ -188,9 +188,16 @@ def cases(tickers: tuple[str, ...] = STUDY_TICKERS) -> tuple[tuple[str, str], ..
     return tuple((ticker, analysis_date) for analysis_date in QUARTER_DATES for ticker in tickers)
 
 
+def is_live_case_date(analysis_date: str) -> bool:
+    """Today's date is the one non-quarter anchor allowed, for an ad-hoc,
+    current-day read on a ticker. It is never added to `cases()`, so it can
+    never enter the frozen 180-case study or its readiness statistics."""
+    return analysis_date == date.today().isoformat()
+
+
 def validate_case(ticker: str, analysis_date: str) -> None:
-    if ticker not in STUDY_TICKERS or analysis_date not in QUARTER_DATES:
-        raise ValueError("Case must use an approved ticker and 2021–2025 quarter anchor")
+    if ticker not in STUDY_TICKERS or (analysis_date not in QUARTER_DATES and not is_live_case_date(analysis_date)):
+        raise ValueError("Case must use an approved ticker and either a 2021–2025 quarter anchor or today's date")
     date.fromisoformat(analysis_date)
 
 

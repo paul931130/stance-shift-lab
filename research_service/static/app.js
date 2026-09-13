@@ -123,7 +123,10 @@ function renderDatasetDetail(alignDate = false) {
   if(alignDate && cut && [...$('analysis-date').options].some(option=>option.value===cut)) $('analysis-date').value=cut;
   $('analysis-date').disabled=Boolean(cut && d.kind==='historical');
   $('score-finbert-button').disabled=scoring || !finbertReady || !(d.evidence_by_domain?.sentiment > 0);
-  $('analysis-date-help').textContent=cut
+  const isLiveCase = cut && cut === new Date().toISOString().slice(0, 10);
+  $('analysis-date-help').textContent=isLiveCase
+    ? `這筆資料集的研究分析日是今天（${cut}）：屬於當下單次分析，未來交易日尚未發生，30／60／90 日回測會顯示「pending」，不計入正式研究統計。`
+    : cut
     ? `這筆資料集的研究分析日是 ${cut}；${d.price_end} 是未來行情終點，只拿來計算分析日後 30／60／90 個交易日的回測。`
     : `這筆舊版或匯入資料未記錄研究分析日；請選計劃書的季末切點。${d.price_end} 是未來行情終點，不能當分析日。`;
 }
@@ -378,8 +381,11 @@ async function initialize() {
   $('login').hidden = true; $('workspace').hidden = false;
   try { $('first-time-guide').hidden = localStorage.getItem('firstTimeGuideDismissed') === '1'; } catch { $('first-time-guide').hidden = false; }
   $('ticker').innerHTML = options(c.tickers); $('ticker').value = 'NVDA';
-  $('download-date').innerHTML = c.dates.map(v=>`<option value="${escape(v)}">${escape(v)} · 季末研究日</option>`).join('');
-  $('analysis-date').innerHTML = c.dates.map(v=>`<option value="${escape(v)}">${escape(v)} · 季末研究日</option>`).join('');
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const dateOptions = c.dates.map(v=>`<option value="${escape(v)}">${escape(v)} · 季末研究日</option>`).join('')
+    + `<option value="${escape(todayIso)}">${escape(todayIso)} · 今天（當下分析，非正式研究）</option>`;
+  $('download-date').innerHTML = dateOptions;
+  $('analysis-date').innerHTML = dateOptions;
   $('download-date').value = '2024-12-31'; $('analysis-date').value = '2024-12-31';
   const sourceLabels={sec:'SEC',alfred:'FRED／ALFRED',alpha_vantage:'Alpha Vantage',fnspid:'FNSPID',finbert_local:'本機 FinBERT',finnhub:'Finnhub 即時'};
   $('source-state').textContent=Object.entries(c.sources).map(([key,value])=>`${sourceLabels[key]||key}：${value?'已設定':'未設定'}`).join(' · ');

@@ -1,7 +1,9 @@
+from datetime import date, timedelta
 import unittest
 from dataclasses import FrozenInstanceError, asdict, replace
 
-from research_service.protocol import StudyProtocol, cases, decision_plan, decision_wave, visible_history, is_switched
+from research_service.protocol import (StudyProtocol, cases, decision_plan, decision_wave, visible_history,
+                                        is_switched, validate_case)
 
 
 class ProtocolTests(unittest.TestCase):
@@ -63,6 +65,17 @@ class ProtocolTests(unittest.TestCase):
             StudyProtocol(model="ollama/gemma3:4b")
         self.assertEqual(StudyProtocol(model="ollama/gemma3:4b", allow_small_model=True).model,
                          "ollama/gemma3:4b")
+
+    def test_validate_case_allows_todays_date_for_a_live_read(self):
+        validate_case("NVDA", "2024-12-31")  # a frozen quarter anchor still works
+        validate_case("NVDA", date.today().isoformat())  # today is allowed for an ad-hoc read
+        with self.assertRaises(ValueError):
+            validate_case("NVDA", (date.today() + timedelta(days=1)).isoformat())  # not tomorrow
+        with self.assertRaises(ValueError):
+            validate_case("NVDA", "2024-11-15")  # not an arbitrary past non-quarter date
+        with self.assertRaises(ValueError):
+            validate_case("ASTS", date.today().isoformat())  # still restricted to the approved universe
+        self.assertNotIn(date.today().isoformat(), {analysis_date for _ticker, analysis_date in cases()})
 
     def test_parallel_waves_respect_debate_round_dependencies(self):
         protocol, records = StudyProtocol(), []

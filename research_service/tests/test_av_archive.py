@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
-from research_service.av_archive import month_windows, refresh_archive
+from research_service.av_archive import default_archive_path, default_checkpoint_path, month_windows, refresh_archive
 
 
 class MonthWindowsTests(unittest.TestCase):
@@ -70,6 +70,23 @@ class RefreshArchiveTests(unittest.TestCase):
         self.assertEqual(result["status"], "rate_limited")
         self.assertEqual(len(calls), 2)
         self.assertGreater(result["remaining"], 0)
+
+    def test_provider_rate_limit_stops_immediately_and_redacts_key(self):
+        start = datetime(2024, 1, 1, tzinfo=timezone.utc)
+        end = datetime(2024, 3, 1, tzinfo=timezone.utc)
+        response = {"Information": "key test-key reached 25 requests per day rate limit"}
+        result, _, calls, events = self._run(["NVDA"], [response] * 3,
+                                            start_date=start, end_date=end)
+        self.assertEqual(result["status"], "rate_limited")
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("test-key", " ".join(str(event) for event in events))
+
+    def test_configured_archive_and_checkpoint_are_shared_with_terminal(self):
+        with tempfile.TemporaryDirectory() as directory:
+            archive = Path(directory) / "alphavantage_news.csv"
+            with patch.dict("os.environ", {"ALPHA_VANTAGE_NEWS_PATH": str(archive)}):
+                self.assertEqual(default_archive_path(), archive)
+                self.assertEqual(default_checkpoint_path(), archive.with_name("av_checkpoint.json"))
 
     def test_second_run_skips_already_checkpointed_past_months(self):
         # Two months in range: December (ends before end_date's month, so it

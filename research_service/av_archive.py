@@ -30,11 +30,24 @@ def default_archive_dir():
 
 
 def default_archive_path():
+    configured = os.getenv("ALPHA_VANTAGE_NEWS_PATH", "").strip()
+    if configured:
+        return Path(configured)
     return default_archive_dir() / "alphavantage_news.csv"
 
 
 def default_checkpoint_path():
+    configured = os.getenv("ALPHA_VANTAGE_NEWS_PATH", "").strip()
+    if configured:
+        return Path(configured).with_name("av_checkpoint.json")
     return default_archive_dir() / "av_checkpoint.json"
+
+
+def _safe_provider_message(payload, api_key):
+    """Return a provider error suitable for UI display without credentials."""
+    note = (payload.get("Information") or payload.get("Note")
+            or payload.get("Error Message") or "回應格式異常")
+    return str(note).replace(api_key, "[REDACTED]") if api_key else str(note)
 
 
 def month_windows(start, end):
@@ -117,7 +130,10 @@ def refresh_archive(output_path=None, checkpoint_path=None, tickers=STUDY_TICKER
     def is_current_month(window_start):
         return window_start >= current_month_start
 
-    done = _load_checkpoint(checkpoint_path)
+    # Older script versions could checkpoint an unfinished current month.
+    # Ignore those stale entries so the open month is always refreshed.
+    done = {item for item in _load_checkpoint(checkpoint_path)
+            if item[1] < current_month_start.strftime("%Y-%m")}
     windows = month_windows(start, end)
     all_tasks = [(ticker, *window) for ticker in tickers for window in windows]
 
@@ -161,7 +177,12 @@ def refresh_archive(output_path=None, checkpoint_path=None, tickers=STUDY_TICKER
         calls_used += 1
         feed = payload.get("feed") if isinstance(payload, dict) else None
         if feed is None:
-            note = payload.get("Information") or payload.get("Note") or payload.get("Error Message") or "回應格式異常"
+            note = _safe_provider_message(payload, api_key) if isinstance(payload, dict) else "回應格式異常"
+            if "rate limit" in note.lower() or "requests per day" in note.lower():
+                report(stage="rate_limited", completed=index, total=len(remaining),
+                       message=f"{ticker} {month_str}：今日 Alpha Vantage 額度已用完；可於額度重置後接續")
+                return {"status": "rate_limited", "added_rows": added_rows,
+                        "remaining": len(remaining) - index}
             report(stage="running", completed=index, total=len(remaining),
                    message=f"{ticker} {month_str}：{note}")
             sleep(call_delay)
