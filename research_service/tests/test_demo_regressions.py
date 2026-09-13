@@ -99,6 +99,11 @@ class DemoRegressionTests(unittest.TestCase):
         self.assertEqual(quality["target_relevance_rate"], 1.0)
         self.assertTrue(quality["passes_quality_gate"])
 
+        cached = deepcopy(data)
+        cached_item = next(item for item in cached["evidence"] if item["domain"] == "sentiment")
+        cached_item["relevance_basis"] = "alpha_vantage_cache_per_ticker_file"
+        self.assertTrue(coverage(cached)["sentiment_quality"]["passes_quality_gate"])
+
     def test_sentiment_quality_rejects_untrusted_or_low_relevance_mapping(self):
         for basis, score in (("manual", 1.0), ("alpha_vantage_provider_score", .2)):
             with self.subTest(basis=basis, score=score):

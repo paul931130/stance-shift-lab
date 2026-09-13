@@ -207,7 +207,8 @@ class NewsSourceTests(unittest.TestCase):
                 writer = csv.DictWriter(handle, fieldnames=["Date","Article_title","Stock_symbol","Url"])
                 writer.writeheader()
                 writer.writerow({"Date":"2024-12-15","Article_title":"FNSPID item","Stock_symbol":"NVDA","Url":"https://example.com/two"})
-            env = {"ALPHA_VANTAGE_API_KEY":"test-key", "FNSPID_NEWS_PATH":str(source)}
+            env = {"ALPHA_VANTAGE_API_KEY":"test-key", "ALPHA_VANTAGE_NEWS_PATH":"",
+                   "FNSPID_NEWS_PATH":str(source)}
             with patch.dict("os.environ", env, clear=False):
                 items, note = fetch_sentiment("NVDA", "2024-12-31", lambda _url: self.alpha_payload())
                 checks = check_sentiment_sources("NVDA", "2024-12-31", lambda _url: self.alpha_payload())
@@ -219,7 +220,7 @@ class NewsSourceTests(unittest.TestCase):
         self.assertIn(checks["alpha_vantage_cache"]["status"], {"ready", "unconfigured"})
 
     def test_missing_optional_fnspid_keeps_alpha_news_available(self):
-        with patch.dict("os.environ", {"ALPHA_VANTAGE_API_KEY":"test-key",
+        with patch.dict("os.environ", {"ALPHA_VANTAGE_API_KEY":"test-key", "ALPHA_VANTAGE_NEWS_PATH":"",
                                        "FNSPID_NEWS_PATH":"/missing/Stock_news.csv"}):
             items, note = fetch_sentiment("NVDA", "2024-12-31", lambda _url: self.alpha_payload())
             checks = check_sentiment_sources("NVDA", "2024-12-31", lambda _url: self.alpha_payload())
@@ -286,7 +287,8 @@ class NewsSourceTests(unittest.TestCase):
     def test_alpha_provider_limit_is_actionable_without_exposing_a_key(self):
         def limited(_url):
             return {"Information": "rate limited"}
-        with patch.dict("os.environ", {"ALPHA_VANTAGE_API_KEY":"secret-test-key", "FNSPID_NEWS_PATH":""}):
+        with patch.dict("os.environ", {"ALPHA_VANTAGE_API_KEY":"secret-test-key",
+                                       "ALPHA_VANTAGE_NEWS_PATH":"", "FNSPID_NEWS_PATH":""}):
             items, note = fetch_sentiment("NVDA", "2024-12-31", limited)
             checks = check_sentiment_sources("NVDA", "2024-12-31", limited)
         self.assertEqual(items, [])

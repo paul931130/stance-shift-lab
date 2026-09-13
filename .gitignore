@@ -18,6 +18,8 @@ __pycache__/
 # research runtime data and artifacts (persist in the Docker volume instead)
 /research-data/
 /_stance_shift_backups/
+/stance-shift-backup-*.zip
+/research-*.zip
 /release/
 /deliverables/
 /research-inputs/*.csv

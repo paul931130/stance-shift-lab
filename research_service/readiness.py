@@ -35,7 +35,8 @@ def _sentiment_quality(data, day):
             # are common), so use the auditable source mapping when available.
             mapped_ticker = str(item.get("target_ticker", "")).upper()
             basis = item.get("relevance_basis")
-            trusted_mapping = basis in ("alpha_vantage_provider_score", "fnspid_per_ticker_file")
+            trusted_mapping = basis in ("alpha_vantage_provider_score", "alpha_vantage_cache_per_ticker_file",
+                                        "fnspid_per_ticker_file")
             if mapped_ticker == str(data.get("ticker", "")).upper() and trusted_mapping and value >= .35:
                 mapped = True
                 source_mapped += 1

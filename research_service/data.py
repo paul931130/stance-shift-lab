@@ -398,19 +398,6 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
             notes.append("ALPHA_VANTAGE_NEWS_PATH 檔案不存在；請確認路徑或清空改用即時 API")
         except Exception as error:
             notes.append(f"Alpha Vantage 快取讀取失敗：{type(error).__name__}")
-    alpha_configured = bool(os.getenv("ALPHA_VANTAGE_API_KEY", ""))
-    # A cache read is free; a live call is metered. Only spend a live call
-    # when the local cache did not already cover this ticker/window.
-    if alpha_configured and not cache_items:
-        try:
-            alpha_items, alpha_stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor)
-            items.extend(alpha_items)
-            notes.append(_alpha_note(alpha_stats))
-            if not alpha_items:
-                notes.append("Alpha Vantage 在切點前 90 天無相符新聞")
-        except Exception as error:
-            detail = str(error) if isinstance(error, ValueError) else type(error).__name__
-            notes.append(f"Alpha Vantage 下載失敗：{detail[:180]}")
     path = os.getenv("FNSPID_NEWS_PATH", "").strip()
     if path:
         try:
@@ -422,6 +409,22 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
             notes.append("FNSPID 檔案不存在；請將 CSV 放入 research-inputs/Stock_news.csv，或清空 FNSPID_NEWS_PATH 改用 Alpha Vantage")
         except Exception as error:
             notes.append(f"FNSPID 讀取失敗：{type(error).__name__}")
+    alpha_configured = bool(os.getenv("ALPHA_VANTAGE_API_KEY", ""))
+    # Local archives are free and reproducible. Spend a metered live request
+    # only when the cache/FNSPID evidence does not already fill the 50-item
+    # source budget for this ticker and point-in-time window.
+    if alpha_configured and not cache_items and len(items) < 50:
+        try:
+            alpha_items, alpha_stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor)
+            items.extend(alpha_items)
+            notes.append(_alpha_note(alpha_stats))
+            if not alpha_items:
+                notes.append("Alpha Vantage 在切點前 90 天無相符新聞")
+        except Exception as error:
+            detail = str(error) if isinstance(error, ValueError) else type(error).__name__
+            notes.append(f"Alpha Vantage 下載失敗：{detail[:180]}")
+    elif alpha_configured:
+        notes.append("本機新聞已達 50 筆，略過 Alpha Vantage 計費請求")
     if not alpha_configured and not path and not cache_path:
         notes.append("未設定 ALPHA_VANTAGE_API_KEY、ALPHA_VANTAGE_NEWS_PATH 或 FNSPID_NEWS_PATH；可匯入具公開時間的新聞摘要")
     unique, aliases = _deduplicate_news(items)

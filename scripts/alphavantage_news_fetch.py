@@ -30,12 +30,21 @@ Alpha Vantage 新聞抓取腳本 —— 補齊 FNSPID 資料 2023-12 之後到�
 """
 
 import requests
+import sys
 import time
 import json
 import os
 import csv
 from datetime import datetime, timedelta
 from pathlib import Path
+
+# Windows' console/redirect encoding is often cp950/cp1252, not UTF-8; the
+# emoji in this script's own print() calls (⏸ etc.) crash on that with
+# UnicodeEncodeError. Force UTF-8 so a status message can never kill a run
+# that already did real, saved work.
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
 
 # Prefers ALPHA_VANTAGE_API_KEY from the environment (e.g. already set in
 # .env.research) so a real key never has to be hardcoded into this file.
