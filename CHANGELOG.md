@@ -2,6 +2,13 @@
 
 正式產品只有一條執行路徑：`research.ps1` → Docker Compose → `research_service` → `http://127.0.0.1:8000`。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## v3-0913.1（2026-09-13）— 本機 Alpha Vantage 新聞快取
+
+- 情緒面新增第三個可用來源：本機 Alpha Vantage 新聞快取（`ALPHA_VANTAGE_NEWS_PATH`，或未設定時自動使用伺服器管理的 `research-data/alpha_vantage_cache/`）。`fetch_sentiment()` 依序檢查快取、FNSPID、即時 API，快取或 FNSPID 已提供的證據不會再重複打即時 API。
+- 快取來源的 `alpha_vantage_cache_per_ticker_file` relevance basis 與既有的 `fnspid_per_ticker_file` 一樣視為可信的目標股票對應，計入新聞品質門檻的目標相關率。
+- 因為這改變了哪些證據會進入報告（新增一個資料來源、調整了 Alpha Vantage 即時呼叫的觸發時機），依專案慣例升版；舊協議的完成結果不受影響，仍可稽核與匯出，但不與 `v3-0913.1` 合併統計。
+- 網頁「設定資料來源與模型」新增「更新 Alpha Vantage 新聞快取」按鈕，可在伺服器背景執行與終端腳本相同的逐月抓取／checkpoint／當月覆寫邏輯，不需要終端機。
+
 ## v3-0912.1（2026-09-12）— 正式就緒、SEC 可比較證據與時間量測
 
 - 資料狀態分成四域證據完整、SEC 基本面可比較、FinBERT／新聞品質、60 日主要回測與 90 日次要回測；`formal_experiment_ready` 不再等同於只有四域資料。
