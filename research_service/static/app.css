@@ -141,7 +141,7 @@ footer{padding:26px 4vw;border-top:1px solid var(--line);font-size:12px;color:va
 #workspace-grid[data-active-tab="setup"] aside>.panel:first-of-type{border-top:3px solid var(--accent)}
 #workspace-grid[data-active-tab="setup"] aside>.panel:nth-of-type(2){border-top:3px solid var(--accent)}
 .source-settings{background:color-mix(in srgb,var(--surface-alt) 45%,transparent);padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius)}
-.source-settings summary{color:var(--accent)}
+.source-settings summary{color:var(--muted)}
 .source-settings>p:first-of-type{margin:8px 0;font-size:11px}
 .source-settings form>button{margin-top:4px}
 .flow-tabs{display:flex;align-items:center;gap:8px;margin:0 0 16px;padding:5px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-alt)}
