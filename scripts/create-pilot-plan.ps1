@@ -6,6 +6,7 @@ Create a balanced, importable formal pilot batch from readiness data.
 param(
     [ValidateRange(4, 30)][int]$Cases = 12,
     [string]$Model = 'ollama/qwen3:14b',
+    [switch]$AllowSmallModel,
     [string]$OutputFile = ''
 )
 
@@ -34,11 +35,16 @@ if ($selected.Count -lt 4) { throw '正式可用資料集不足 4 個，無法�
 $plan = [ordered]@{
     schema = 'stance-shift-formal-pilot/v1'
     created_at = (Get-Date).ToUniversalTime().ToString('o')
-    purpose = 'Balanced formal pilot; inspect action distribution, citations, failure rate, and runtime before the full batch.'
+    purpose = if ($AllowSmallModel) {
+        'Small-model smoke pilot; exercises the batch/import/run pipeline only. Results are not formal-quality and must not be merged into study statistics.'
+    } else {
+        'Balanced formal pilot; inspect action distribution, citations, failure rate, and runtime before the full batch.'
+    }
     cases = @($selected | ForEach-Object {
-        [ordered]@{ dataset_id=$_.dataset_id; analysis_date=$_.analysis_date; model=$Model; voting_samples=7; study='study1'; missing_data_policy='allow_decision'; anonymize_ticker=$false; allow_point_fundamental=$false; allow_small_model=$false; allow_low_quality_sentiment=$false }
+        [ordered]@{ dataset_id=$_.dataset_id; analysis_date=$_.analysis_date; model=$Model; voting_samples=7; study='study1'; missing_data_policy='allow_decision'; anonymize_ticker=$false; allow_point_fundamental=$false; allow_small_model=[bool]$AllowSmallModel; allow_low_quality_sentiment=$false }
     })
 }
 $plan | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $outputPath -Encoding utf8
 Write-Host "已建立 $($plan.cases.Count) 案例 formal pilot：$outputPath"
+if ($AllowSmallModel) { Write-Host '[WARN] 使用小模型冒煙測試；結果不計入正式研究統計，只用於驗證批次流程本身。' }
 Write-Host '在網頁「批次研究」匯入此 JSON；完成後查看同協議統計中的 Pilot 與 Hold 分布。'
