@@ -135,6 +135,25 @@ class ModelReliabilityTests(unittest.TestCase):
         self.assertEqual(audit["prior_failures"], ["JSONDecodeError"])
         self.assertEqual([call["options"]["seed"] for call in calls], [1234, 1234])
 
+    def test_gpu_tw_ollama_endpoint_is_used_only_when_explicitly_configured(self):
+        request = None
+
+        def requester(req, timeout):
+            nonlocal request
+            request = req
+            return Response(json.dumps({"message": {"content": json.dumps({
+                "action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
+                "rationale": "brief", "evidence_ids": ["e1"], "risks": []
+            })}, "model": "demo"}).encode())
+
+        protocol = StudyProtocol(model="ollama/demo", dataset_kind="synthetic", bootstrap_replicates=199)
+        with patch.dict("os.environ", {"GPUTW_OLLAMA_BASE_URL": "https://gpu.example/ollama",
+                                        "GPUTW_OLLAMA_API_KEY": "gpu-model-key"}, clear=False), \
+             patch("research_service.models.urlopen", side_effect=requester):
+            generate(protocol, [{"role": "system", "content": "decision"}, {"role": "user", "content": "{}"}])
+        self.assertEqual(request.full_url, "https://gpu.example/ollama/api/chat")
+        self.assertEqual(request.get_header("Authorization"), "Bearer gpu-model-key")
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -70,6 +70,8 @@
 
 第一次 clone 這個 repo，先照 [Clone 後首次啟動](docs/getting-started.md) 走一遍。只想驗證回測流程，可照 [本機回測 Demo](docs/demo-backtest.md) 操作；這份流程會固定在歷史資料模式，並說明如何辨認完整資料集 ID、暫停續跑與匯出研究產物。
 
+若要把模型推論移到 GPUtw，請參考 [GPUtw 整合指南](docs/gputw-integration.md)。研究台可讀取 GPUtw 執行個體狀態並使用受保護的遠端 Ollama；部署或停止 GPU 執行個體仍在 GPUtw 控制台手動完成。
+
 ## 驗證與部署
 
 ```powershell

@@ -312,8 +312,16 @@ def generate(protocol, messages, seed=None, temperature=None):
                     pass
                 body = {"model": model, "messages": messages, "stream": False, "format": output_schema,
                     "think": False, "keep_alive": keep_alive, "options": options}
-                base = os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/")
-                with urlopen(Request(base + "/api/chat", data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}), timeout=240) as response:
+                # A GPUtw Ollama template can be used without changing the
+                # experiment protocol.  The remote URL is optional and is
+                # deliberately preferred only when explicitly configured.
+                base = (os.getenv("GPUTW_OLLAMA_BASE_URL", "").strip()
+                        or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
+                headers = {"Content-Type": "application/json"}
+                remote_token = os.getenv("GPUTW_OLLAMA_API_KEY", "").strip()
+                if remote_token:
+                    headers["Authorization"] = f"Bearer {remote_token}"
+                with urlopen(Request(base + "/api/chat", data=json.dumps(body).encode(), headers=headers), timeout=240) as response:
                     provider_result = json.load(response)
                 content = provider_result["message"]["content"]
                 usage = {"prompt_tokens": provider_result.get("prompt_eval_count"),
