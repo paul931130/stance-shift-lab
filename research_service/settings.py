@@ -6,12 +6,22 @@ import threading
 
 FIELDS = {
     "SEC_USER_AGENT": "SEC 研究名稱與聯絡信箱", "FRED_API_KEY": "FRED API key",
-    "ALPHA_VANTAGE_API_KEY": "Alpha Vantage API key", "FINNHUB_API_KEY": "Finnhub API key",
+    "ALPHA_VANTAGE_API_KEY": "Alpha Vantage API key",
     "OPENROUTER_API_KEY": "OpenRouter API key", "OPENAI_API_KEY": "OpenAI API key",
     "GEMINI_API_KEY": "Gemini API key", "RESEARCH_MODEL": "預設模型",
+    "GPUTW_API_URL": "GPUtw API 位址（預設 https://gputw.ai）",
+    "GPUTW_API_KEY": "GPUtw API key（只讀狀態用）",
+    "GPUTW_INSTANCE_ID": "GPUtw 執行個體 ID",
+    "GPUTW_OLLAMA_BASE_URL": "GPUtw 遠端 Ollama 位址（選填）",
+    "GPUTW_OLLAMA_API_KEY": "遠端 Ollama 存取 key（若端點有保護）",
     "FNSPID_NEWS_PATH": "伺服器內 FNSPID CSV 路徑",
     "ALPHA_VANTAGE_NEWS_PATH": "伺服器內 Alpha Vantage 新聞快取 CSV 路徑（免消耗 API 額度）",
 }
+
+# These values identify an endpoint or instance, but are not credentials.
+# Showing them in the settings panel lets a user verify that the right GPUtw
+# instance is connected while keeping every token write-only.
+DISPLAY_FIELDS = {"GPUTW_API_URL", "GPUTW_INSTANCE_ID", "GPUTW_OLLAMA_BASE_URL"}
 
 
 class Settings:
@@ -28,7 +38,9 @@ class Settings:
 
     def public(self):
         return {"fields": [{"name": key, "label": label, "configured": bool(os.getenv(key, "")),
-                            "secret": key.endswith("KEY")} for key, label in FIELDS.items()],
+                            "secret": key.endswith("KEY"),
+                            **({"display_value": os.getenv(key, "")} if key in DISPLAY_FIELDS else {})}
+                           for key, label in FIELDS.items()],
                 "storage": "server_private", "restart_required": False,
                 "note": "留白保留原值；勾選清除才刪除。FinBERT 在本機執行，不需要 HF_TOKEN。"}
 

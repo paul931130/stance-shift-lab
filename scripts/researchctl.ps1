@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('help','setup','start','stop','status','doctor','repair-docker','logs','collect','readiness','splits','gaps','datasets','import','finbert','models','sources','run','batch','jobs','job','pause','resume','cancel','clone','export','verify-export','backup','statistics','live','watch')]
+    [ValidateSet('help','setup','start','stop','status','doctor','repair-docker','logs','collect','readiness','splits','gaps','datasets','import','finbert','models','sources','gputw-status','gputw-resources','gputw-active','run','batch','jobs','job','pause','resume','cancel','clone','export','verify-export','backup','statistics')]
     [string]$Command = 'help',
     [Parameter(Position = 1)][string]$Ticker = 'NVDA',
     [Parameter(Position = 2)][string]$AnalysisDate = '2024-12-31',
@@ -17,8 +17,7 @@ param(
     [switch]$AllowPointFundamental,
     [switch]$AllowSmallModel,
     [switch]$UseFinbert,
-    [switch]$Refresh,
-    [ValidateRange(5,3600)][int]$Duration = 60
+    [switch]$Refresh
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,8 +58,9 @@ function Save-Settings([System.Collections.IDictionary]$Values) {
         'OLLAMA_BASE_URL','OLLAMA_KEEP_ALIVE','RESEARCH_MODEL','RESEARCH_PARALLEL_WORKERS','RESEARCH_REMOTE',
         'RESEARCH_ACCESS_KEY','RESEARCH_ALLOWED_HOSTS','RESEARCH_PUBLIC_ORIGIN',
         'SEC_USER_AGENT','FRED_API_KEY','ALPHA_VANTAGE_API_KEY','ALPHA_VANTAGE_NEWS_PATH','FNSPID_NEWS_PATH',
-        'FINBERT_MODEL','FINBERT_REVISION','FINNHUB_API_KEY','FINNHUB_BASE_URL','FINNHUB_WS_URL','RESEARCH_ENABLE_LIVE',
+        'FINBERT_MODEL','FINBERT_REVISION',
         'OPENROUTER_API_KEY','OPENAI_API_KEY','GEMINI_API_KEY'
+        ,'GPUTW_API_URL','GPUTW_API_KEY','GPUTW_INSTANCE_ID','GPUTW_OLLAMA_BASE_URL','GPUTW_OLLAMA_API_KEY'
     )
     $lines = foreach ($name in $order) { "$name=$($Values[$name])" }
     Set-Content -LiteralPath $settingsPath -Value $lines -Encoding utf8
@@ -241,6 +241,9 @@ function Show-Help {
     Write-Host '.\research.ps1 datasets                   列出資料集版本與完整 ID'
     Write-Host '.\research.ps1 finbert -DatasetId ID      使用本機 FinBERT 建立新聞已評分的新版本'
     Write-Host '.\research.ps1 models                     列出可用模型'
+    Write-Host '.\research.ps1 gputw-status               唯讀檢查 GPUtw 執行個體或 active 清單'
+    Write-Host '.\research.ps1 gputw-resources            唯讀檢查指定 GPUtw 執行個體 GPU/CPU 用量'
+    Write-Host '.\research.ps1 gputw-active               列出目前 active GPUtw 執行個體'
     Write-Host '.\research.ps1 sources NVDA 2024-12-31    實機檢查資料來源'
     Write-Host '.\research.ps1 run NVDA 2024-12-31         使用最新相符資料集與 14B 以上模型啟動實驗'
     Write-Host '.\research.ps1 run NVDA 2024-12-31 -Model ollama/qwen3:8b -AllowSmallModel  僅供冒煙測試'
@@ -251,8 +254,6 @@ function Show-Help {
     Write-Host '.\research.ps1 verify-export -File ZIP     驗證研究產物或資料備份 ZIP 雜湊'
     Write-Host '.\research.ps1 backup -File ZIP            建立一致性的本機研究資料備份'
     Write-Host '.\research.ps1 statistics -ProtocolHash HASH  查看同協議統計'
-    Write-Host '.\research.ps1 live ASTS                   Finnhub 即時快照'
-    Write-Host '.\research.ps1 watch ASTS -Duration 60     Finnhub 即時成交串流'
     Write-Host '.\research.ps1 jobs                        查看實驗佇列'
     Write-Host '.\research.ps1 logs                        持續查看服務日誌'
     Write-Host '.\research.ps1 stop                        停止服務但保留資料'
@@ -276,13 +277,14 @@ function Setup-Research {
         FNSPID_NEWS_PATH = ''
         FINBERT_MODEL = 'ProsusAI/finbert'
         FINBERT_REVISION = '4556d13015211d73dccd3fdd39d39232506f3e43'
-        FINNHUB_API_KEY = ''
-        FINNHUB_BASE_URL = 'https://finnhub.io/api/v1'
-        FINNHUB_WS_URL = 'wss://ws.finnhub.io'
-        RESEARCH_ENABLE_LIVE = 'false'
         OPENROUTER_API_KEY = ''
         OPENAI_API_KEY = ''
         GEMINI_API_KEY = ''
+        GPUTW_API_URL = 'https://gputw.ai'
+        GPUTW_API_KEY = ''
+        GPUTW_INSTANCE_ID = ''
+        GPUTW_OLLAMA_BASE_URL = ''
+        GPUTW_OLLAMA_API_KEY = ''
     }
     foreach ($name in $defaults.Keys) { if (-not $values.Contains($name)) { $values[$name] = $defaults[$name] } }
 
@@ -290,8 +292,12 @@ function Setup-Research {
     $values['SEC_USER_AGENT'] = Read-PlainSetting 'SEC 研究名稱與聯絡信箱' $values['SEC_USER_AGENT']
     $values['FRED_API_KEY'] = Read-SecretSetting 'FRED API key' $values['FRED_API_KEY']
     $values['ALPHA_VANTAGE_API_KEY'] = Read-SecretSetting 'Alpha Vantage API key' $values['ALPHA_VANTAGE_API_KEY']
-    $values['FINNHUB_API_KEY'] = Read-SecretSetting 'Finnhub API key（上線即時功能，可略過）' $values['FINNHUB_API_KEY']
     $values['RESEARCH_MODEL'] = Read-PlainSetting '預設模型（例如 ollama/qwen3:14b）' $values['RESEARCH_MODEL']
+    $values['GPUTW_API_URL'] = Read-PlainSetting 'GPUtw API 位址（可略過）' $values['GPUTW_API_URL']
+    $values['GPUTW_API_KEY'] = Read-SecretSetting 'GPUtw API key（只讀狀態，可略過）' $values['GPUTW_API_KEY']
+    $values['GPUTW_INSTANCE_ID'] = Read-PlainSetting 'GPUtw 執行個體 ID（可略過）' $values['GPUTW_INSTANCE_ID']
+    $values['GPUTW_OLLAMA_BASE_URL'] = Read-PlainSetting 'GPUtw 遠端 Ollama 位址（可略過）' $values['GPUTW_OLLAMA_BASE_URL']
+    $values['GPUTW_OLLAMA_API_KEY'] = Read-SecretSetting '遠端 Ollama 存取 key（可略過）' $values['GPUTW_OLLAMA_API_KEY']
     $localNews = Join-Path $projectRoot 'research-inputs\Stock_news.csv'
     if (Test-Path -LiteralPath $localNews) { $values['FNSPID_NEWS_PATH'] = '/app/research-inputs/Stock_news.csv' }
     $localAlphaCache = Join-Path $projectRoot 'research-inputs\alphavantage_news.csv'
@@ -336,7 +342,7 @@ function Test-Research {
         if ($dockerExitCode -eq 0) { Write-Host '[OK] Docker Compose 指令可用' } else { Write-Host '[FAIL] Docker Compose 指令不可用' }
         if (Test-DockerEngine) { Write-Host '[OK] Docker Linux engine 已就緒' } else { Write-Host '[FAIL] Docker Linux engine 尚未就緒' }
     }
-    foreach ($name in @('SEC_USER_AGENT','FRED_API_KEY','ALPHA_VANTAGE_API_KEY','FINNHUB_API_KEY')) {
+    foreach ($name in @('SEC_USER_AGENT','FRED_API_KEY','ALPHA_VANTAGE_API_KEY')) {
         if ($settings[$name]) { Write-Host "[OK] $name 已設定" } else { Write-Host "[WARN] $name 未設定" }
     }
     $news = Join-Path $projectRoot 'research-inputs\Stock_news.csv'
@@ -414,6 +420,9 @@ switch ($Command) {
         Invoke-ResearchApi 'POST' "/api/datasets/$DatasetId/finbert" @{} | Format-List
     }
     'models' { Invoke-ResearchApi 'GET' '/api/models' | ConvertTo-Json -Depth 8 }
+    'gputw-status' { Invoke-ResearchApi 'GET' '/api/gputw/status' | ConvertTo-Json -Depth 12 }
+    'gputw-resources' { Invoke-ResearchApi 'GET' '/api/gputw/resources' | ConvertTo-Json -Depth 12 }
+    'gputw-active' { Invoke-ResearchApi 'GET' '/api/gputw/active' | ConvertTo-Json -Depth 12 }
     'sources' {
         Invoke-ResearchApi 'POST' '/api/sources/check' @{ ticker=$Ticker; analysis_date=$AnalysisDate } | ConvertTo-Json -Depth 8
         Invoke-ResearchApi 'GET' '/api/live/status' | Format-List
@@ -501,35 +510,4 @@ switch ($Command) {
         if (-not $ProtocolHash) { throw '請用 -ProtocolHash 指定協議雜湊。' }
         Invoke-ResearchApi 'GET' "/api/studies/$ProtocolHash" | ConvertTo-Json -Depth 20
     }
-    'live' { Invoke-ResearchApi 'GET' "/api/live/$($Ticker.ToUpperInvariant())" | ConvertTo-Json -Depth 20 }
-    'watch' {
-        $symbol = $Ticker.ToUpperInvariant()
-        $settings = Read-Settings
-        $socket = [System.Net.WebSockets.ClientWebSocket]::new()
-        if ($settings['RESEARCH_ACCESS_KEY']) { $socket.Options.SetRequestHeader('Authorization', "Bearer $($settings['RESEARCH_ACCESS_KEY'])") }
-        $cancelSource = [Threading.CancellationTokenSource]::new()
-        $cancelSource.CancelAfter([TimeSpan]::FromSeconds($Duration))
-        try {
-            $uri = [Uri]"ws://127.0.0.1:8000/ws/live?symbols=$([Uri]::EscapeDataString($symbol))"
-            $socket.ConnectAsync($uri, $cancelSource.Token).GetAwaiter().GetResult()
-            Write-Host "Finnhub $symbol 成交串流已連線；$Duration 秒後自動停止。"
-            $buffer = New-Object byte[] 65536
-            $messageBuffer = [System.IO.MemoryStream]::new()
-            while ($socket.State -eq [System.Net.WebSockets.WebSocketState]::Open -and -not $cancelSource.IsCancellationRequested) {
-                $messageBuffer.SetLength(0)
-                do {
-                    $segment = [ArraySegment[byte]]::new($buffer)
-                    $result = $socket.ReceiveAsync($segment, $cancelSource.Token).GetAwaiter().GetResult()
-                    if ($result.MessageType -eq [System.Net.WebSockets.WebSocketMessageType]::Close) { break }
-                    if ($result.Count -gt 0) { $messageBuffer.Write($buffer, 0, $result.Count) }
-                } while (-not $result.EndOfMessage)
-                if ($result.MessageType -eq [System.Net.WebSockets.WebSocketMessageType]::Close) { break }
-                if ($result.MessageType -eq [System.Net.WebSockets.WebSocketMessageType]::Text) {
-                    [Text.Encoding]::UTF8.GetString($messageBuffer.ToArray())
-                }
-            }
-        } catch [OperationCanceledException] { Write-Host '串流時間結束。' }
-        finally { if ($messageBuffer) { $messageBuffer.Dispose() }; $socket.Dispose(); $cancelSource.Dispose() }
-    }
 }
-

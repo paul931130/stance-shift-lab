@@ -14,7 +14,7 @@ import re
 import threading
 import zipfile
 
-from fastapi import FastAPI, Request, HTTPException, WebSocket
+from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response
 from pydantic import BaseModel, Field
 
@@ -22,9 +22,8 @@ from .data import (validate_dataset, download_prices, fetch_fundamental, fetch_s
                    fetch_macro, research_inputs, get_json, score_sentiment_finbert,
                    check_sentiment_sources)
 from .engine import Engine
-from .finnhub import configured as finnhub_configured, live_snapshot
 from .protocol import (DEFAULT_RESEARCH_MODEL, SMALL_MODEL_PATTERN, StudyProtocol, TICKERS,
-                       QUARTER_DATES, validate_case, validate_live_symbol)
+                       QUARTER_DATES, validate_case)
 from .reporting import (study_report, export_job, csv_text, pilot_diagnostics,
                         hold_band_sensitivity)
 from .storage import Store, now
@@ -32,9 +31,14 @@ from .settings import Settings
 from .finbert import status as finbert_status, prepare_model
 from .readiness import coverage, gap_inventory, study_readiness
 from .splits import classify_analysis_date
-from .live_stream import TradeHub
 from .logging_config import get_logger
 from .security import SessionAuth
+from .gputw import (active as gputw_active, api_url as gputw_api_url,
+                    configured as gputw_configured,
+                    instance_id as gputw_instance_id,
+                    ollama_base_url as gputw_ollama_base_url,
+                    resources as gputw_resources,
+                    status as gputw_status)
 
 logger = get_logger(__name__)
 
@@ -76,7 +80,6 @@ class BatchInput(BaseModel):
 def create_app(store=None, model_call=None, start_worker=True):
     store = store or Store(os.getenv("RESEARCH_DATA_DIR", "research-data"))
     settings = Settings(store.root)
-    trade_hub = TradeHub()
     finbert_tasks = {}
     finbert_task_lock = threading.RLock()
     av_archive_task = {"stage": "idle", "message": "尚未開始"}
@@ -87,7 +90,6 @@ def create_app(store=None, model_call=None, start_worker=True):
     access_key = os.getenv("RESEARCH_ACCESS_KEY", "")
     remote = os.getenv("RESEARCH_REMOTE", "false") == "true"
     container_local = os.getenv("RESEARCH_CONTAINER_LOCAL", "false") == "true"
-    live_enabled = os.getenv("RESEARCH_ENABLE_LIVE", "false").lower() == "true"
     public_origin = os.getenv("RESEARCH_PUBLIC_ORIGIN", "").rstrip("/")
     if remote and len(access_key) < 32:
         raise RuntimeError("Remote mode requires RESEARCH_ACCESS_KEY with at least 32 characters")
@@ -112,7 +114,8 @@ def create_app(store=None, model_call=None, start_worker=True):
                 # someone's identifying info and gets the same redaction treatment.
                 message = str(error).replace(access_key, "[redacted]") if access_key else str(error)
                 for name in ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "FRED_API_KEY",
-                             "ALPHA_VANTAGE_API_KEY", "FINNHUB_API_KEY", "HF_TOKEN", "SEC_USER_AGENT"):
+                             "ALPHA_VANTAGE_API_KEY", "GPUTW_API_KEY",
+                             "GPUTW_OLLAMA_API_KEY", "HF_TOKEN", "SEC_USER_AGENT"):
                     if os.getenv(name):
                         message = message.replace(os.environ[name], "[redacted]")
                 message = f"{type(error).__name__}: {message[:700]}"
@@ -128,7 +131,6 @@ def create_app(store=None, model_call=None, start_worker=True):
             thread.start()
         yield
         stop.set()
-        await trade_hub.close()
         if start_worker:
             await asyncio.to_thread(thread.join, 5)
 
@@ -211,21 +213,39 @@ def create_app(store=None, model_call=None, start_worker=True):
     def config():
         return {"tickers": TICKERS, "dates": QUARTER_DATES, "default_protocol": asdict(StudyProtocol()),
             "model": os.getenv("RESEARCH_MODEL", DEFAULT_RESEARCH_MODEL), "remote": remote,
-            "live_enabled": live_enabled,
             "parallel_workers": engine.parallel_workers,
             "study_cases": len(TICKERS) * len(QUARTER_DATES),
             "sources": {"sec": bool(os.getenv("SEC_USER_AGENT")), "alfred": bool(os.getenv("FRED_API_KEY")),
                 "alpha_vantage": bool(os.getenv("ALPHA_VANTAGE_API_KEY")),
                 "fnspid": bool(os.getenv("FNSPID_NEWS_PATH")), "finbert_local": finbert_status()["installed"],
-                "finnhub": finnhub_configured()},
+                "gputw": gputw_configured()},
             "cloud_models": {"openrouter": bool(os.getenv("OPENROUTER_API_KEY")),
                 "openai": bool(os.getenv("OPENAI_API_KEY")), "gemini": bool(os.getenv("GEMINI_API_KEY"))},
+            "gputw": {"configured": gputw_configured(), "api_url": gputw_api_url(),
+                "instance_configured": bool(gputw_instance_id()),
+                "ollama_configured": bool(gputw_ollama_base_url())},
             "capabilities": ["settings", "clone", "collect", "readiness", "temporal_splits", "import", "finbert", "run", "batch", "jobs",
-                "pause", "resume", "cancel", "export", "backup", "statistics", "live_snapshot", "live_trades"]}
+                "pause", "resume", "cancel", "export", "backup", "statistics",
+                "gputw_status", "gputw_resources", "gputw_active"]}
 
     @app.get("/api/settings")
     def get_settings():
         return settings.public()
+
+    @app.get("/api/gputw/status")
+    def gpu_cloud_status():
+        """Read GPUtw status; this endpoint never creates or stops compute."""
+        return gputw_status()
+
+    @app.get("/api/gputw/resources")
+    def gpu_cloud_resources():
+        """Read live GPU resources for the explicitly selected instance."""
+        return gputw_resources()
+
+    @app.get("/api/gputw/active")
+    def gpu_cloud_active():
+        """List active GPUtw instances using the read-only instances:read scope."""
+        return gputw_active()
 
     @app.post("/api/settings")
     async def save_settings(request: Request):
@@ -247,7 +267,12 @@ def create_app(store=None, model_call=None, start_worker=True):
     @app.get("/api/models")
     def models():
         try:
-            result = get_json(os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434").rstrip("/") + "/api/tags")
+            ollama_url = (gputw_ollama_base_url()
+                          or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
+            headers = {}
+            if os.getenv("GPUTW_OLLAMA_API_KEY", "").strip():
+                headers["Authorization"] = f"Bearer {os.getenv('GPUTW_OLLAMA_API_KEY').strip()}"
+            result = get_json(ollama_url + "/api/tags", headers=headers)
             details = [{"id": "ollama/" + m["name"], "name": m["name"], "digest": m.get("digest"),
                 "size": m.get("size"), "modified_at": m.get("modified_at"),
                 "parameter_size": (m.get("details") or {}).get("parameter_size"),
@@ -529,80 +554,6 @@ def create_app(store=None, model_call=None, start_worker=True):
         if len(set(keys)) != len(keys):
             raise ValueError("批次內不可重複 case")
         return [store.create(item)["id"] for item in prepared]
-
-    @app.get("/api/live/status")
-    def live_status():
-        if not live_enabled:
-            return {"enabled": False, "configured": False, "provider": "Finnhub",
-                    "mode": "backtest_only", "message": "目前是回測 demo 模式；即時 Finnhub 功能已停用。"}
-        return {"configured": finnhub_configured(), "provider": "Finnhub",
-            "mode": "server_managed_key",
-            "message": ("Finnhub 已設定；可取得即時快照並嘗試成交串流"
-                        if finnhub_configured() else "尚未設定 FINNHUB_API_KEY；執行 .\\research.ps1 setup 後重啟")}
-
-    @app.get("/api/live/{symbol}")
-    def live(symbol: str):
-        if not live_enabled:
-            raise HTTPException(404, "目前是回測 demo 模式；即時功能尚未開啟")
-        return live_snapshot(validate_live_symbol(symbol))
-
-    @app.websocket("/ws/live")
-    async def live_trades(websocket: WebSocket):
-        if not live_enabled:
-            await websocket.close(code=4404)
-            return
-        host = websocket.url.hostname or ""
-        origin = (websocket.headers.get("origin") or "").rstrip("/")
-        expected_origin = public_origin or f"{websocket.url.scheme.replace('ws', 'http')}://{websocket.url.netloc}"
-        local_clients = ("127.0.0.1", "::1", "testclient")
-        if host not in allowed_hosts or (not remote and not container_local and websocket.client and websocket.client.host not in local_clients):
-            await websocket.close(code=4403)
-            return
-        if origin and origin != expected_origin:
-            await websocket.close(code=4403)
-            return
-        if access_key:
-            bearer = websocket.headers.get("authorization", "").removeprefix("Bearer ")
-            if not auth.bearer_ok(bearer) and not auth.valid_session(websocket.cookies.get("research_session", "")):
-                await websocket.close(code=4401)
-                return
-        raw_symbols = (websocket.query_params.get("symbols") or "").split(",")
-        try:
-            symbols = list(dict.fromkeys(validate_live_symbol(symbol) for symbol in raw_symbols if symbol.strip()))
-        except ValueError:
-            await websocket.close(code=4400)
-            return
-        if not symbols or len(symbols) > 50:
-            await websocket.close(code=4400)
-            return
-        await websocket.accept()
-        if not finnhub_configured():
-            await websocket.send_json({"type": "error", "message": "尚未設定 FINNHUB_API_KEY"})
-            await websocket.close(code=1013)
-            return
-        queue = None
-        async def send_updates():
-            while True:
-                await websocket.send_json(await queue.get())
-        async def receive_disconnect():
-            while True:
-                message = await websocket.receive()
-                if message["type"] == "websocket.disconnect":
-                    return
-        try:
-            queue = await trade_hub.add(symbols)
-            sender = asyncio.create_task(send_updates())
-            receiver = asyncio.create_task(receive_disconnect())
-            done, pending = await asyncio.wait((sender, receiver), return_when=asyncio.FIRST_COMPLETED)
-            for task in pending:
-                task.cancel()
-            await asyncio.gather(sender, receiver, return_exceptions=True)
-        except ValueError as error:
-            await websocket.send_json({"type": "error", "message": str(error)})
-            await websocket.close(code=1013)
-        finally:
-            if queue is not None:
-                await trade_hub.remove(queue)
 
     def job_summaries():
         return [{"id": j["id"], "status": j["status"], "config": j["config"], "error": j["error"],

@@ -2,6 +2,14 @@
 
 正式產品只有一條執行路徑：`research.ps1` → Docker Compose → `research_service` → `http://127.0.0.1:8000`。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## v3-0913.1（後續，2026-09-15）— 移除 Finnhub 即時觀察
+
+不改變決策提示或可引用證據，因此不升版。
+
+- 移除「即時觀察」分頁與其後端：`research_service/finnhub.py`、`research_service/live_stream.py`（WebSocket 成交串流）、`/api/live/*`、`/ws/live`、`research.ps1 live`／`watch` 指令、`FINNHUB_API_KEY` 等三個環境變數，以及對應的專屬測試。
+- 理由：預設關閉（`RESEARCH_ENABLE_LIVE=false`），且功能本身與歷史回測快照刻意分開，不影響任何 A/B/C/D 實驗或統計結果；移除後介面與可維護的程式碼量更聚焦於這個專案的實際目的（歷史回測研究），不是即時交易輔助。
+- 回測、資料蒐集、實驗執行、匯出、統計與 preregistration 的行為完全不變；106/106 Python 測試與 10/10 JS 測試通過。
+
 ## v3-0913.1（後續，2026-09-15）— 時間切分、資料缺口盤點與部署韌性
 
 不改變決策提示或可引用證據，因此不升版；純屬操作與研究方法層的補強。

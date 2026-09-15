@@ -6,7 +6,6 @@ import unittest
 from unittest.mock import patch
 
 from research_service.data import _canonical_news_url, _deduplicate_news, score_sentiment_finbert
-from research_service.finnhub import live_snapshot
 from research_service.readiness import coverage, gap_inventory, study_readiness
 from research_service.splits import classify_analysis_date, split_for_date, temporal_split_summary
 from research_service.storage import Store
@@ -186,15 +185,6 @@ class DemoRegressionTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             score_sentiment_finbert(data, requester)
         self.assertEqual(data, original)
-
-    def test_empty_finnhub_panels_are_not_ready(self):
-        def empty(_url, _headers):
-            return {}
-
-        with patch.dict("os.environ", {"FINNHUB_API_KEY": "demo"}):
-            result = live_snapshot("ASTS", empty, today=date(2026, 9, 8))
-        self.assertEqual(result["status"], "unavailable")
-        self.assertTrue(all(panel["status"] != "ready" for panel in result["panels"].values()))
 
     def test_pause_running_job_changes_state_and_resume_queues_it(self):
         with tempfile.TemporaryDirectory() as directory:

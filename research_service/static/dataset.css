@@ -123,43 +123,12 @@
 .first-time-guide li { margin-bottom: 8px; font-size: 13px; }
 .first-time-guide li:last-child { margin-bottom: 0; }
 
-.live-controls {
-  display: grid;
-  grid-template-columns: minmax(160px, 1fr) auto auto;
-  gap: 10px;
-  align-items: end;
-}
-.live-controls label { margin: 0; }
-.live-metrics {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin: 14px 0;
-}
-.live-metrics article {
-  padding: 12px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-alt);
-}
-.live-metrics small,.live-metrics strong { display: block; }
-.live-metrics small { color: var(--muted); font-size: 11px; }
-.live-metrics strong { margin-top: 4px; font-size: 19px; }
-.live-grid { display: grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: 12px; }
-.live-grid article { min-width: 0; padding: 12px; border: 1px solid var(--line); border-radius: var(--radius); }
-.live-grid h3 { margin: 0 0 8px; font-size: 13px; }
-.live-grid p { margin: 4px 0; color: var(--muted); font-size: 12px; }
-.live-chrome { margin-top: 16px; border: 1px solid #21414b; border-bottom: 0; border-radius: var(--radius) var(--radius) 0 0; }
-.live-stream { min-height: 120px; max-height: 230px; border-radius: 0 0 var(--radius) var(--radius); }
-
 @media (max-width: 900px) {
   .group-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .live-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 500px) {
   .agent-grid,
   .group-grid { grid-template-columns: 1fr; }
   .terminal-line { grid-template-columns: 64px 68px minmax(0,1fr); font-size: 12px; }
-  .live-controls,.live-grid { grid-template-columns: 1fr; }
 }

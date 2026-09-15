@@ -45,7 +45,7 @@ ollama pull qwen3:14b
 
 **可以在網頁完成**：開啟 <http://127.0.0.1:8000/>，在「01/資料」面板展開「設定資料來源與模型」，可直接填入並儲存：
 
-- `SEC_USER_AGENT`、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`、`FINNHUB_API_KEY`
+- `SEC_USER_AGENT`、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`
 - `OPENROUTER_API_KEY`、`OPENAI_API_KEY`、`GEMINI_API_KEY`（雲端模型）
 - `RESEARCH_MODEL`（預設模型名稱）、`FNSPID_NEWS_PATH`（容器內路徑字串）
 

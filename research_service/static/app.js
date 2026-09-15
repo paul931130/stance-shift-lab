@@ -4,16 +4,41 @@ const percentage = value => value == null ? '—' : `${(value * 100).toFixed(1)}
 const number = value => value == null ? '—' : Number(value).toFixed(3);
 const statuses = {queued:'等待執行',running:'執行中',paused:'已暫停',complete:'已完成',cancelled:'已取消'};
 let selectedJob = null, selectedProtocol = null, busy = false, datasetRows = [], parallelWorkers = 1, currentProtocolVersion = '', terminalEvents = [];
-let currentTab = 'setup';
-const TABS = ['setup', 'runs', 'stats', 'live'];
+let currentTab = 'setup', currentFlow = 'data', autoStatsJob = null;
+const TABS = ['setup', 'runs', 'stats'];
 let modelDetails = new Map(), installedModels = new Set();
 let submitting = false, scoring = false;
-let hasActiveJobs = false, pollTimer = null, liveSocket = null, finbertReady = false, pollFailures = 0;
+let hasActiveJobs = false, pollTimer = null, finbertReady = false, pollFailures = 0;
 let allJobs = [];
 const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
 // Keep a stalled browser request from making the whole workspace look frozen.
 // GETs are safe to retry once because they do not create jobs or mutate data.
 const API_TIMEOUT_MS = 15000, API_GET_RETRY_LIMIT = 1;
+function syncNextAction() {
+  const box = $('next-action');
+  if (!box) return;
+  const active = allJobs.find(job => ['queued','running','paused'].includes(job.status));
+  const completed = allJobs.some(job => job.status === 'complete');
+  let step, title, detail, action = '';
+  if (active) {
+    step = '3 / 執行中'; title = '研究正在背景執行';
+    detail = `${active.config?.ticker || '案例'} · ${statuses[active.status] || active.status}`;
+    action = '<button type="button" data-next-tab="runs">查看執行紀錄</button>';
+  } else if (completed) {
+    step = '4 / 統計'; title = '已有完成案例可以檢視';
+    detail = '前往執行紀錄查看報告，或開啟同協議統計。';
+    action = '<button type="button" data-next-tab="runs">查看結果</button>';
+  } else if ($('dataset')?.value || datasetRows.length) {
+    step = '2 / 建立實驗'; title = $('dataset')?.value ? '資料集已選好，可以開始實驗' : '資料已就緒，請選一筆資料集';
+    detail = $('dataset')?.value ? '確認模型與缺資料策略後，按下開始研究實驗。' : '進入下一步選擇資料集。';
+    action = '<button type="button" data-next-flow="experiment">前往建立實驗</button>';
+  } else {
+    step = '1 / 資料準備'; title = '先準備第一筆研究資料';
+    detail = '選股票與分析日，啟動四個資料 Agent。';
+    action = '<button type="button" data-next-flow="data">開始準備資料</button>';
+  }
+  box.innerHTML = `<div class="next-step">${escape(step)}</div><strong>${escape(title)}</strong><span>${escape(detail)}</span>${action}`;
+}
 let notices = [], noticeSeq = 0;
 function renderNotices() {
   const el = $('notice');
@@ -39,6 +64,8 @@ function syncUrl() {
 function setTab(tab, opts = {}) {
   if (!TABS.includes(tab)) tab = 'setup';
   currentTab = tab;
+  const grid = $('workspace-grid');
+  if (grid) grid.dataset.activeTab = tab;
   for (const name of TABS) {
     for (const el of document.querySelectorAll(`[data-tab-panel="${name}"]`)) el.hidden = name !== tab;
   }
@@ -47,8 +74,24 @@ function setTab(tab, opts = {}) {
     btn.classList.toggle('active', active);
     btn.setAttribute('aria-selected', active ? 'true' : 'false');
   }
-  $('workspace-grid').classList.toggle('full-width', tab !== 'setup');
+  if (grid) grid.classList.toggle('full-width', tab !== 'setup');
+  syncModeBanner();
   if (!opts.skipUrl) syncUrl();
+}
+function syncModeBanner() {
+  const el = $('mode-banner');
+  if (!el) return;
+  const modes={
+    setup:['操作台','在這裡準備資料、選模型、設定缺資料策略，最後啟動一筆回測實驗。'],
+    runs:['監控台','在這裡查看四個研究 Agent、背景佇列、錯誤、決策與回測結果。'],
+    stats:['統計報告','在這裡查看同協議統計、準確率、Hold 比例與研究限制。'],
+    live:['即時觀察（選用）','這是上線資料觀察區，和歷史回測操作完全分開。'],
+  };
+  const [title,detail]=modes[currentTab]||modes.setup;
+  const selectedStatus = allJobs.find(job=>job.id===selectedJob)?.status;
+  const active = allJobs.some(job=>['queued','running','paused'].includes(job.status)) ? 3 : (selectedStatus==='complete' && currentTab==='stats' ? 4 : (currentTab==='setup' && currentFlow==='experiment' ? 2 : 1));
+  const steps=[['1','準備資料'],['2','建立實驗'],['3','監控執行'],['4','查看統計']];
+  el.innerHTML=`<div class="mode-copy"><strong>${escape(title)}</strong><span>${escape(detail)}</span></div><div class="workflow-steps">${steps.map(([n,label])=>`<span class="workflow-step ${n<=active?'done':''} ${Number(n)===active?'current':''}"><b>${n}</b>${label}</span>`).join('<i aria-hidden="true">›</i>')}</div>`;
 }
 async function api(path, body, method) {
   const verb = (method || (body === undefined ? 'GET' : 'POST')).toUpperCase();
@@ -91,6 +134,17 @@ async function api(path, body, method) {
     await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)));
   }
   throw lastError || new Error('服務請求失敗');
+}
+function setFlow(flow) {
+  currentFlow = flow === 'experiment' ? 'experiment' : 'data';
+  for (const name of ['data','experiment']) {
+    for (const el of document.querySelectorAll(`[data-flow-panel="${name}"]`)) el.hidden = name !== currentFlow;
+  }
+  for (const btn of document.querySelectorAll('[data-flow-tab]')) {
+    const active = btn.dataset.flowTab === currentFlow;
+    btn.classList.toggle('active', active);
+    btn.setAttribute('aria-selected', active ? 'true' : 'false');
+  }
 }
 async function task(button, fn) { if (button) button.disabled = true; try { await fn(); } catch(error) { notify(error.message, true); } finally { if(button) button.disabled = false; syncExperimentGuard(); } }
 function options(items) { return items.map(v => `<option value="${escape(v)}">${escape(v)}</option>`).join(''); }
@@ -238,6 +292,7 @@ async function refreshDatasets() {
   const selected=datasetRows.find(d=>d.id===$('dataset').value);
   $('score-finbert-button').disabled=scoring || !finbertReady || !(selected?.evidence_by_domain?.sentiment > 0);
   syncExperimentGuard();
+  syncNextAction();
 }
 async function refreshJobs() {
   let dashboard;
@@ -255,6 +310,12 @@ async function refreshJobs() {
   allJobs = dashboard.jobs;
   hasActiveJobs=allJobs.some(job=>job.status==='queued'||job.status==='running');
   renderJobList();
+  syncNextAction();
+  const completed = allJobs.find(job=>job.status==='complete');
+  if (completed && autoStatsJob !== completed.id) {
+    autoStatsJob = completed.id;
+    if (currentTab === 'runs' && selectedJob === completed.id) setTab('stats');
+  }
   if(dashboard.selected) await showJob(selectedJob,dashboard.selected);
   schedulePoll();
 }
@@ -372,51 +433,25 @@ async function showStatistics() {
     : `<p class="hint">尚未凍結 preregistration。凍結後會鎖住目前已分析的資料集清單，之後新增的案例會被標記，避免看完結果後偷偷擴大樣本。</p><button class="quiet" type="button" data-freeze="${escape(selectedProtocol)}">凍結目前的 preregistration</button>`;
   element.innerHTML = `<div class="section-label">PRIMARY ENDPOINT / 60 交易日</div><h2>同協議研究比較</h2><p class="hint">候選決策、60 日、Corwin–Schultz、固定權重投組。${report.unique_cases || 0} 個已完成案例；後續重跑保留供稽核。</p>${insufficient}${preregBlock}<div class="table-wrap"><table><thead><tr><th>方法</th><th>覆蓋率</th><th>條件準確率</th><th>Hold</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div><p class="hint">Pilot：${escape(pilot.verdict||'—')} · ${escape((pilot.blocking_reasons||[]).join(' / ')||'無阻擋原因')}。中性帶敏感性已用既有預測重算，不重新呼叫模型。</p><div class="actions"><a href="/api/studies/${selectedProtocol}/summary.csv">下載 summary.csv</a><a href="/api/studies/${selectedProtocol}" download="statistics.json">下載 statistics.json</a></div><details><summary>Pilot、hold band 與完整性診斷</summary><pre>${escape(JSON.stringify({pilot,hold_band:band,completeness:report.completeness},null,2))}</pre></details><details><summary>統計檢定與口徑</summary><pre>${escape(JSON.stringify({comparisons:report.comparisons,conventions:report.conventions},null,2))}</pre></details>`;
 }
-function panelData(snapshot,name) { return snapshot.panels?.[name]?.status==='ready' ? snapshot.panels[name].data : null; }
-function unavailable(snapshot,name) { return snapshot.panels?.[name]?.message || '目前方案或來源未回傳資料'; }
-function renderLiveSnapshot(snapshot) {
-  const quote=panelData(snapshot,'quote'), market=panelData(snapshot,'market_status');
-  const earnings=panelData(snapshot,'earnings_calendar')?.earningsCalendar||[];
-  const recommendationData=panelData(snapshot,'recommendation_trends');const recommendations=Array.isArray(recommendationData)?recommendationData:[];
-  const target=panelData(snapshot,'price_target'), holidays=panelData(snapshot,'market_holidays')?.data||[];
-  const nextEarnings=[...earnings].sort((a,b)=>String(a.date).localeCompare(String(b.date)))[0];
-  const latestRecommendation=[...recommendations].sort((a,b)=>String(b.period).localeCompare(String(a.period)))[0];
-  $('live-badge').className=`status ${snapshot.status==='ready'?'complete':'paused'}`; $('live-badge').textContent=`${snapshot.symbol} · ${snapshot.status==='ready'?'已更新':snapshot.status==='partial'?'部分可用':'尚無可用資料'}`;
-  $('live-overview').innerHTML=`<article><small>最新價</small><strong>${quote?Number(quote.current).toFixed(2):'—'}</strong><small>${quote&&quote.change_percent!=null?`${Number(quote.change_percent).toFixed(2)}%`:'Quote 無資料'}</small><small>${quote?`${escape(formatStamp(new Date(quote.timestamp*1000)))} · ${quote.stale?'過期／可能為休市最後成交':'5 分鐘內'}`:escape(unavailable(snapshot,'quote'))}</small></article><article><small>美股市場</small><strong>${market?(market.isOpen?'開市':'休市'):'—'}</strong><small>${escape(market?.session||unavailable(snapshot,'market_status'))}</small></article><article><small>下一筆財報</small><strong>${escape(nextEarnings?.date||'—')}</strong><small>${escape(nextEarnings?.hour||unavailable(snapshot,'earnings_calendar'))}</small></article><article><small>目標價均值</small><strong>${target?.targetMean?Number(target.targetMean).toFixed(2):'—'}</strong><small>${target?.numberAnalysts?`${target.numberAnalysts} 位分析師`:escape(unavailable(snapshot,'price_target'))}</small></article>`;
-  const rec=latestRecommendation?`Strong buy ${latestRecommendation.strongBuy||0} · Buy ${latestRecommendation.buy||0} · Hold ${latestRecommendation.hold||0} · Sell ${(latestRecommendation.sell||0)+(latestRecommendation.strongSell||0)}`:unavailable(snapshot,'recommendation_trends');
-  const holidayText=holidays.slice(0,4).map(row=>`${row.atDate} ${row.eventName}`).join('；')||unavailable(snapshot,'market_holidays');
-  const panelStates=Object.entries(snapshot.panels||{}).map(([name,panel])=>`${name}: ${panel.status}${panel.message?' · '+panel.message:''}`).join('；');
-  const earningText=earnings.slice(0,4).map(row=>`${row.date} ${row.hour||''} · EPS est. ${row.epsEstimate??'—'}`).join('；')||unavailable(snapshot,'earnings_calendar');
-  $('live-details').innerHTML=`<p class="hint">${escape(panelStates)}</p><div class="live-grid"><article><h3>分析師評等趨勢</h3><p>${escape(rec)}</p></article><article><h3>近期交易日曆</h3><p>${escape(holidayText)}</p></article><article><h3>財報發布日曆</h3><p>${escape(earningText)}</p></article><article><h3>資料隔離</h3><p>${escape(snapshot.note)}</p></article></div>`;
-}
-async function refreshLive() {
-  const symbol=$('live-ticker').value.trim().toUpperCase(); $('live-ticker').value=symbol;
-  const snapshot=await api(`/api/live/${encodeURIComponent(symbol)}`); renderLiveSnapshot(snapshot);
-}
-function stopLiveStream(message='成交串流已停止') {
-  if(liveSocket){liveSocket.onclose=null;liveSocket.close();liveSocket=null;}
-  $('live-stream-toggle').textContent='開始成交串流';
-  $('live-stream').innerHTML+=`<div class="terminal-line warn"><time>${escape(terminalStamp())}</time><b>[LIVE]</b><span>${escape(message)}</span></div>`;
-}
-function toggleLiveStream() {
-  if(liveSocket){stopLiveStream();return;}
-  const symbol=$('live-ticker').value.trim().toUpperCase(); $('live-ticker').value=symbol;
-  const scheme=location.protocol==='https:'?'wss':'ws';
-  liveSocket=new WebSocket(`${scheme}://${location.host}/ws/live?symbols=${encodeURIComponent(symbol)}`);
-  $('live-stream').innerHTML=''; $('live-stream-toggle').textContent='停止成交串流';
-  liveSocket.onmessage=event=>{let payload;try{payload=JSON.parse(event.data);}catch{payload={type:'message',data:event.data};}
-    if(payload.type==='heartbeat'||payload.type==='ping')return;
-    if(payload.type==='trade'&&Array.isArray(payload.data)){
-      for(const trade of payload.data.slice(-20))$('live-stream').innerHTML+=`<div class="terminal-line ok"><time>${escape(terminalStamp(new Date(trade.t)))}</time><b>[TRADE]</b><span>${escape(trade.s||symbol)} · ${escape(trade.p)} × ${escape(trade.v)}</span></div>`;
-    }else $('live-stream').innerHTML+=`<div class="terminal-line ${payload.type==='error'?'error':'active'}"><time>${escape(terminalStamp())}</time><b>[${escape((payload.type||'LIVE').toUpperCase())}]</b><span>${escape(payload.message||payload.status||JSON.stringify(payload))}</span></div>`;
-    while($('live-stream').children.length>80)$('live-stream').firstElementChild.remove();$('live-stream').scrollTop=$('live-stream').scrollHeight;
-  };
-  liveSocket.onerror=()=>notify('Finnhub 成交串流無法連線；請確認金鑰與方案權限。',true);
-  liveSocket.onclose=()=>{liveSocket=null;$('live-stream-toggle').textContent='開始成交串流';};
+function ensureGpuTwPanel() {
+  if($('gputw-state')) return;
+  const form=$('settings-form'); if(!form) return;
+  const block=document.createElement('div');
+  block.className='gputw-block';
+  block.innerHTML='<p class="hint">GPUtw 只負責 GPU 執行個體管理；本服務提供唯讀狀態與資源檢查，不會從網頁自動建立、停止或重啟付費執行個體。若使用 GPUtw Ollama 範本，將遠端位址填入設定後即可沿用同一個模型欄位。</p><button id="gputw-check-button" class="quiet" type="button">檢查 GPUtw 狀態</button><p id="gputw-state" class="hint">尚未檢查 GPUtw。</p>';
+  form.insertAdjacentElement('afterend',block);
+  $('gputw-check-button').addEventListener('click', e=>task(e.currentTarget,async()=>{
+    const [state,resources]=await Promise.all([api('/api/gputw/status'),api('/api/gputw/resources')]);
+    const statusText=state.status==='ready'?'API 已連線':state.status==='not_configured'?'尚未設定 GPUtw key':(state.message||'狀態查詢失敗');
+    const usage=resources.status==='ready'?' · GPU 資源已回傳':resources.status==='needs_instance'?' · 尚未指定執行個體':resources.status==='not_configured'?'':' · 資源查詢失敗';
+    $('gputw-state').textContent=`${statusText}${usage}`;
+    if(state.status==='ready' && state.instance) notify(`GPUtw 執行個體狀態已取得：${state.instance.status||state.instance.state||'已回傳'}。`);
+    else if(state.status==='error') notify(state.message||'GPUtw 查詢失敗',true);
+  }));
 }
 async function initialize() {
   const c = await api('/api/config');
-  document.querySelector('.live-panel')?.classList.toggle('demo-disabled', !c.live_enabled);
+  ensureGpuTwPanel();
   parallelWorkers = c.parallel_workers || 1;
   currentProtocolVersion = c.default_protocol?.version || '';
   const protocolTag = document.querySelector('.tag');
@@ -435,16 +470,20 @@ async function initialize() {
   $('download-date').innerHTML = dateOptions;
   $('analysis-date').innerHTML = dateOptions;
   $('download-date').value = '2024-12-31'; $('analysis-date').value = '2024-12-31';
-  const sourceLabels={sec:'SEC',alfred:'FRED／ALFRED',alpha_vantage:'Alpha Vantage',fnspid:'FNSPID',finbert_local:'本機 FinBERT',finnhub:'Finnhub 即時'};
+  const sourceLabels={sec:'SEC',alfred:'FRED／ALFRED',alpha_vantage:'Alpha Vantage',fnspid:'FNSPID',finbert_local:'本機 FinBERT',gputw:'GPUtw'};
   $('source-state').textContent=Object.entries(c.sources).map(([key,value])=>`${sourceLabels[key]||key}：${value?'已設定':'未設定'}`).join(' · ');
   $('download-finbert').checked=finbertReady;
-  $('live-source-state').textContent=c.sources.finnhub?'Finnhub 已由伺服器安全設定；Web 與終端共用同一資料代理。':'尚未設定 FINNHUB_API_KEY。可在上方設定表單或終端 settings 指令填入，立即套用。';
   const cloudLabels={openrouter:'OpenRouter',openai:'OpenAI',gemini:'Gemini'};
   const readyCloud=Object.entries(c.cloud_models||{}).filter(([,value])=>value).map(([key])=>cloudLabels[key]||key);
   $('cloud-model-state').textContent=readyCloud.length?`可用雲端憑證：${readyCloud.join('、')}。輸入 LiteLLM 模型名稱即可切換。`:'尚未設定常用雲端模型金鑰；可先使用 Ollama，或在上方設定表單填入金鑰。';
+  if($('gputw-state')) $('gputw-state').textContent=c.gputw?.configured
+    ? `GPUtw key 已設定${c.gputw.instance_configured?' · 已指定執行個體':''}${c.gputw.ollama_configured?' · 遠端 Ollama 已設定':''}；按「檢查 GPUtw 狀態」測試連線。`
+    : 'GPUtw 尚未設定；可留白使用本機 Ollama。';
   const urlParams = new URLSearchParams(location.search);
+  const requestedTab = urlParams.get('tab');
   selectedJob = urlParams.get('selected') || null;
-  setTab(urlParams.get('tab') || (selectedJob ? 'runs' : 'setup'), { skipUrl: true });
+  setTab(requestedTab || (selectedJob ? 'runs' : 'setup'), { skipUrl: true });
+  setFlow('data');
   // These reads are independent. Loading them together prevents a slow
   // readiness scan or Ollama probe from blocking the rest of the workspace.
   const initialResults = await Promise.allSettled([
@@ -475,10 +514,18 @@ async function initialize() {
   $('model').value=installedModels.has(c.model)?c.model:(formal[0]?.id||largest||c.model);
   if(!m.default_available&&largest) $('model-state').textContent+=`；設定的預設模型 ${c.model} 尚未安裝，畫面已先選 ${$('model').value}`;
   syncExperimentGuard();
+  if (!requestedTab) {
+    const selected = allJobs.find(job => job.id === selectedJob);
+    const active = allJobs.some(job => ['queued','running','paused'].includes(job.status));
+    if (selected?.status === 'complete') setTab('stats');
+    else if (active) setTab('runs');
+    else if (datasetRows.length) { setTab('setup'); setFlow('experiment'); }
+    else { setTab('setup'); setFlow('data'); }
+  }
   schedulePoll();
 }
 $('login-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{await api('/api/login',{key:$('access-key').value}); $('access-key').value=''; await initialize();}); });
-$('download-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{const ticker=$('ticker').value,analysisDate=$('download-date').value,refresh=$('refresh-data').checked,useFinbert=$('download-finbert').checked;resetAgentTerminal();terminalLine('YOU',`collect --ticker ${ticker} --as-of ${analysisDate} --domains all${refresh?' --refresh':''}${useFinbert?' --finbert':''}`,'command');terminalLine('COORD',refresh?`強制建立 ${analysisDate} 新快照，派發 4 個資料 Agent`:`先搜尋 ${ticker}／${analysisDate} 可重用的四域完整快照`);notify('資料 Agent 正在檢查快照與來源…');renderCollectionAgents(null,'running');let r;try{r=await api('/api/datasets/download',{ticker,analysis_date:analysisDate,refresh,use_finbert:useFinbert});}catch(error){terminalLine('ERROR',error.message,'error');renderCollectionAgents(datasetRows.find(d=>d.id===$('dataset').value)||null);throw error;}if(r.reused){terminalLine('CACHE',`HIT dataset v${r.version} · ${r.id.slice(0,12)}… · 未呼叫外部 API`,'ok');}else{terminalLine('COORD','已完成四域來源派工：Yahoo／SEC／Alpha+FNSPID／ALFRED');}const codes={technical:'TECH',fundamental:'FUND',sentiment:'SENT',macro:'MACRO'};for(const [domain,item] of Object.entries(r.agents))terminalLine(codes[domain],`${item.status.toUpperCase()} · ${item.records} records · ${item.message}`,item.status==='complete'?'ok':'warn');for(const limitation of r.limitations)terminalLine('AUDIT',limitation,'warn');if(!r.reused)terminalLine('STORE',`SAVED dataset ${r.id.slice(0,12)}… · immutable snapshot`,'ok');await refreshDatasets();await refreshReadiness();$('dataset').value=r.id;$('analysis-date').value=r.analysis_date;renderDatasetDetail();renderCollectionAgents(datasetRows.find(d=>d.id===r.id));notify(r.reused?'已重用符合條件的既有資料快照；未重新呼叫來源 API。':'資料 Agent 已完成本輪工作，資料集已保存。\n'+r.limitations.join('\n'));}); });
+$('download-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{const ticker=$('ticker').value,analysisDate=$('download-date').value,refresh=$('refresh-data').checked,useFinbert=$('download-finbert').checked;resetAgentTerminal();terminalLine('YOU',`collect --ticker ${ticker} --as-of ${analysisDate} --domains all${refresh?' --refresh':''}${useFinbert?' --finbert':''}`,'command');terminalLine('COORD',refresh?`強制建立 ${analysisDate} 新快照，派發 4 個資料 Agent`:`先搜尋 ${ticker}／${analysisDate} 可重用的四域完整快照`);notify('資料 Agent 正在檢查快照與來源…');renderCollectionAgents(null,'running');let r;try{r=await api('/api/datasets/download',{ticker,analysis_date:analysisDate,refresh,use_finbert:useFinbert});}catch(error){terminalLine('ERROR',error.message,'error');renderCollectionAgents(datasetRows.find(d=>d.id===$('dataset').value)||null);throw error;}if(r.reused){terminalLine('CACHE',`HIT dataset v${r.version} · ${r.id.slice(0,12)}… · 未呼叫外部 API`,'ok');}else{terminalLine('COORD','已完成四域來源派工：Yahoo／SEC／Alpha+FNSPID／ALFRED');}const codes={technical:'TECH',fundamental:'FUND',sentiment:'SENT',macro:'MACRO'};for(const [domain,item] of Object.entries(r.agents))terminalLine(codes[domain],`${item.status.toUpperCase()} · ${item.records} records · ${item.message}`,item.status==='complete'?'ok':'warn');for(const limitation of r.limitations)terminalLine('AUDIT',limitation,'warn');if(!r.reused)terminalLine('STORE',`SAVED dataset ${r.id.slice(0,12)}… · immutable snapshot`,'ok');await refreshDatasets();await refreshReadiness();$('dataset').value=r.id;$('analysis-date').value=r.analysis_date;renderDatasetDetail();renderCollectionAgents(datasetRows.find(d=>d.id===r.id));setFlow('experiment');notify(r.reused?'已重用符合條件的既有資料快照；未重新呼叫來源 API。':'資料 Agent 已完成本輪工作，資料集已保存。\n'+r.limitations.join('\n'));}); });
 $('source-check-button').addEventListener('click', e => task(e.currentTarget,async()=>{const result=await api('/api/sources/check',{ticker:$('ticker').value,analysis_date:$('download-date').value});const label={alpha_vantage:'Alpha Vantage',alpha_vantage_cache:'Alpha Vantage 快取',fnspid:'FNSPID'};notify(Object.entries(result).map(([key,value])=>`${label[key]||key}：${value.message}（${value.records} 筆）`).join('\n'));}));
 async function pollAlphaVantageArchive(){
   while(true){
@@ -517,13 +564,25 @@ $('news-view').addEventListener('click',e=>task(e.currentTarget,async()=>{
 }));
 async function refreshSettings(){
   const settings=await api('/api/settings');
-  $('settings-fields').innerHTML=settings.fields.map(field=>`<label>${escape(field.label)} · ${field.configured?'已設定':'未設定'}<input data-setting="${escape(field.name)}" type="${field.secret?'password':'text'}" autocomplete="off" placeholder="留白保留原值"></label><label class="check"><input type="checkbox" data-clear-setting="${escape(field.name)}">清除此設定</label>`).join('');
+  const groups=[
+    {title:'回測資料來源',names:['SEC_USER_AGENT','FRED_API_KEY','ALPHA_VANTAGE_API_KEY']},
+    {title:'回測模型',names:['DEFAULT_MODEL']},
+    {title:'GPUtw／遠端 Ollama',names:['GPUTW_API_URL','GPUTW_API_KEY','GPUTW_INSTANCE_ID','GPUTW_OLLAMA_BASE_URL','GPUTW_OLLAMA_API_KEY']},
+    {title:'本機研究資料路徑',names:['FNSPID_NEWS_PATH','ALPHA_VANTAGE_NEWS_PATH']},
+    {title:'雲端模型金鑰（進階）',names:['OPENROUTER_API_KEY','OPENAI_API_KEY','GEMINI_API_KEY'],collapsed:true},
+  ];
+  const renderField=field=>`<div class="setting-item"><label>${escape(field.label)} · <span class="setting-state">${field.configured?'已設定':'未設定'}</span><input data-setting="${escape(field.name)}" type="${field.secret?'password':'text'}" autocomplete="off" value="${escape(field.display_value||'')}" placeholder="留白保留原值"></label><label class="check"><input type="checkbox" data-clear-setting="${escape(field.name)}">清除此設定</label></div>`;
+  const grouped=groups.map(group=>{const fields=settings.fields.filter(field=>group.names.includes(field.name));if(!fields.length)return '';return group.collapsed?`<details class="settings-group settings-advanced"><summary>${group.title}</summary><div class="settings-grid">${fields.map(renderField).join('')}</div></details>`:`<section class="settings-group"><h3>${group.title}</h3><div class="settings-grid">${fields.map(renderField).join('')}</div></section>`;}).join('');
+  const known=new Set(groups.flatMap(group=>group.names));
+  const other=settings.fields.filter(field=>!known.has(field.name));
+  $('settings-fields').innerHTML=grouped+(other.length?`<section class="settings-group"><h3>其他設定</h3><div class="settings-grid">${other.map(renderField).join('')}</div></section>`:'');
 }
 $('settings-form').addEventListener('submit',e=>{e.preventDefault();task(e.submitter,async()=>{
   const values={};document.querySelectorAll('[data-setting]').forEach(input=>{if(input.value.trim())values[input.dataset.setting]=input.value.trim();});
   const clear=[...document.querySelectorAll('[data-clear-setting]:checked')].map(input=>input.dataset.clearSetting);
   await api('/api/settings',{values,clear});await refreshSettings();notify('設定已儲存在伺服器並立即生效。');
-  const c=await api('/api/config');$('live-source-state').textContent=c.sources.finnhub?'Finnhub 已設定，可進行真實連線檢查':'尚未設定 Finnhub 金鑰';
+  const c=await api('/api/config');
+  const remote=$('gputw-state');if(remote)remote.textContent=c.gputw?.configured?`GPUtw key 已設定${c.gputw.instance_configured?' · 已指定執行個體':''}${c.gputw.ollama_configured?' · 遠端 Ollama 已設定':''}；按「檢查 GPUtw 狀態」測試連線。`:'GPUtw 尚未設定；可留白使用本機 Ollama。';
 });});
 $('batch-file').addEventListener('change', e => task(null,async()=>{
   const f=e.target.files[0];if(!f)return;
@@ -539,10 +598,8 @@ $('batch-file').addEventListener('change', e => task(null,async()=>{
   await refreshJobs();
   e.target.value='';
 }));
-$('job-form').addEventListener('submit', e => {e.preventDefault();if(submitting)return;if(!$('dataset').value){notify('請先選擇一筆資料集，才能開始研究實驗。',true);syncExperimentGuard();return;}submitting=true;task(e.submitter,async()=>{try{const model=$('cloud-model').value.trim()||$('model').value;const j=await api('/api/jobs',{dataset_id:$('dataset').value,analysis_date:$('analysis-date').value,model,study:$('study').value,voting_samples:Number($('voting').value),missing_data_policy:$('missing-policy').value,anonymize_ticker:$('anonymize').checked,allow_point_fundamental:$('allow-point-fundamental').checked,allow_small_model:$('allow-small-model').checked,allow_low_quality_sentiment:$('allow-low-quality-sentiment').checked});selectedJob=j.id;notify(`研究已加入背景佇列，模型為 ${model}。候選決策、風控決策與品質覆寫會一起鎖定於協議。`);await refreshJobs();}finally{submitting=false;}});});
-document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.tabButton){setTab(b.dataset.tabButton);return;}if(b.dataset.dismissNotice){dismissNotice(Number(b.dataset.dismissNotice));return;}if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);if(b.dataset.freeze)task(b,async()=>{if(!window.confirm('凍結此協議目前分析的資料集清單？凍結後不可撤銷，之後新增的案例會被標記為凍結後追加。'))return;await api(`/api/studies/${b.dataset.freeze}/freeze`,{});await showStatistics();});});
-$('live-refresh').addEventListener('click', e=>task(e.currentTarget,refreshLive));
-$('live-stream-toggle').addEventListener('click', toggleLiveStream);
+$('job-form').addEventListener('submit', e => {e.preventDefault();if(submitting)return;if(!$('dataset').value){notify('請先選擇一筆資料集，才能開始研究實驗。',true);syncExperimentGuard();return;}submitting=true;task(e.submitter,async()=>{try{const model=$('cloud-model').value.trim()||$('model').value;const j=await api('/api/jobs',{dataset_id:$('dataset').value,analysis_date:$('analysis-date').value,model,study:$('study').value,voting_samples:Number($('voting').value),missing_data_policy:$('missing-policy').value,anonymize_ticker:$('anonymize').checked,allow_point_fundamental:$('allow-point-fundamental').checked,allow_small_model:$('allow-small-model').checked,allow_low_quality_sentiment:$('allow-low-quality-sentiment').checked});selectedJob=j.id;notify(`研究已加入背景佇列，模型為 ${model}。候選決策、風控決策與品質覆寫會一起鎖定於協議。`);setTab('runs');await refreshJobs();}finally{submitting=false;}});});
+document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.tabButton){setTab(b.dataset.tabButton);return;}if(b.dataset.flowTab){setFlow(b.dataset.flowTab);return;}if(b.dataset.nextTab){setTab(b.dataset.nextTab);return;}if(b.dataset.nextFlow){setFlow(b.dataset.nextFlow);return;}if(b.dataset.dismissNotice){dismissNotice(Number(b.dataset.dismissNotice));return;}if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);if(b.dataset.freeze)task(b,async()=>{if(!window.confirm('凍結此協議目前分析的資料集清單？凍結後不可撤銷，之後新增的案例會被標記為凍結後追加。'))return;await api(`/api/studies/${b.dataset.freeze}/freeze`,{});await showStatistics();});});
 $('refresh').addEventListener('click', e=>task(e.currentTarget,async()=>{await refreshDatasets();await refreshReadiness();await refreshJobs();}));
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){if(pollTimer)clearTimeout(pollTimer);pollTimer=null;return;}

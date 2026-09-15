@@ -13,13 +13,11 @@ import re
 from typing import Literal
 
 # The current backtest deliberately excludes ASTS because the frozen FNSPID
-# input does not cover it.  The live workspace validates symbols separately and
-# can still inspect ASTS or another US ticker.
+# input does not cover it.
 STUDY_TICKERS = ("AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "LLY", "GE")
 TICKERS = STUDY_TICKERS  # Backwards-compatible name used by the API and tests.
 QUARTER_DATES = tuple(f"{year}-{suffix}" for year in range(2021, 2026) for suffix in ("03-31", "06-30", "09-30", "12-31"))
 DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
-LIVE_SYMBOL = re.compile(r"^[A-Z0-9][A-Z0-9.:-]{0,31}$")
 DEFAULT_RESEARCH_MODEL = "ollama/qwen3:14b"
 SMALL_MODEL_PATTERN = re.compile(r"[:\-/](?:0\.\d+|[1-9]|1[0-3])b\b", re.IGNORECASE)
 SWITCH_ROUND = 2
@@ -199,10 +197,3 @@ def validate_case(ticker: str, analysis_date: str) -> None:
     if ticker not in STUDY_TICKERS or (analysis_date not in QUARTER_DATES and not is_live_case_date(analysis_date)):
         raise ValueError("Case must use an approved ticker and either a 2021–2025 quarter anchor or today's date")
     date.fromisoformat(analysis_date)
-
-
-def validate_live_symbol(symbol: str) -> str:
-    symbol = str(symbol).strip().upper()
-    if not LIVE_SYMBOL.fullmatch(symbol):
-        raise ValueError("股票代號格式不正確")
-    return symbol
