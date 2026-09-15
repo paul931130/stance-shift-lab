@@ -6,12 +6,12 @@
 <div id="notice" role="status" aria-live="polite" hidden></div>
 <section id="login" class="panel" hidden><h2>開啟私人研究室</h2><form id="login-form"><label>存取金鑰<input id="access-key" type="password" autocomplete="current-password" required></label><button>登入</button></form></section>
 <div class="workspace" id="workspace">
-<div id="persistent-terminal" class="persistent-terminal" aria-label="Agent 即時狀態"><div class="persistent-terminal-head"><span>AGENT STATUS</span><small id="model-state" role="status">正在檢查模型連線…</small></div><div id="next-action" class="terminal-next-action" role="status" aria-live="polite"></div><div id="persistent-terminal-output" class="persistent-terminal-output"></div></div>
 <nav class="tabs" role="tablist" aria-label="主要功能區">
 <button type="button" data-tab-button="data" role="tab" aria-selected="true">1．資料準備</button>
 <button type="button" data-tab-button="experiment" role="tab" aria-selected="false">2．建立實驗</button>
 <button type="button" data-tab-button="runs" role="tab" aria-selected="false">3．Agent 終端</button><button type="button" data-tab-button="stats" role="tab" aria-selected="false">4．統計結果</button>
-</nav><div id="mode-banner" class="mode-banner" role="status" aria-live="polite"></div>
+<small id="model-state" class="model-status" role="status">正在檢查模型連線…</small>
+</nav>
 <div class="workspace-grid" id="workspace-grid">
 <aside data-tab-panel="setup">
 <section id="first-time-guide" class="panel first-time-guide" hidden><div class="section-label">$ 第一次使用</div><ol><li>展開下方「設定資料來源與模型」，填入至少一組資料來源金鑰。</li><li>選股票與研究分析日，按「啟動資料 Agent」蒐集資料。</li><li>資料完整後，切到「建立實驗」分頁選同一筆資料集，按「開始研究實驗」。</li><li>切到第 3 步查看進度；完成後進入第 4 步查看統計。</li></ol><button id="dismiss-first-time-guide" class="quiet" type="button">知道了，不用再顯示</button></section>

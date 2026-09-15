@@ -36,31 +36,6 @@ const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
 // Keep a stalled browser request from making the whole workspace look frozen.
 // GETs are safe to retry once because they do not create jobs or mutate data.
 const API_TIMEOUT_MS = 15000, API_GET_RETRY_LIMIT = 1;
-function syncNextAction() {
-  const box = $('next-action');
-  if (!box) return;
-  const active = allJobs.find(job => ['queued','running','paused'].includes(job.status));
-  const completed = allJobs.some(job => job.status === 'complete');
-  let step, title, detail, action = '';
-  if (active) {
-    step = '3 / 執行中'; title = '研究正在背景執行';
-    detail = `${active.config?.ticker || '案例'} · ${statuses[active.status] || active.status}`;
-    action = '<button type="button" data-next-tab="runs">查看執行進度</button>';
-  } else if (completed) {
-    step = '4 / 統計'; title = '已有完成案例可以檢視';
-    detail = '前往執行紀錄查看報告，或開啟同協議統計。';
-    action = '<button type="button" data-next-tab="stats">查看統計結果</button>';
-  } else if ($('dataset')?.value || datasetRows.length) {
-    step = '2 / 建立實驗'; title = $('dataset')?.value ? '資料集已選好，可以開始實驗' : '資料已就緒，請選一筆資料集';
-    detail = $('dataset')?.value ? '確認模型與缺資料策略後，按下開始研究實驗。' : '進入下一步選擇資料集。';
-    action = '<button type="button" data-next-tab="experiment">前往建立實驗</button>';
-  } else {
-    step = '1 / 資料準備'; title = '先準備第一筆研究資料';
-    detail = '選股票與分析日，啟動四個資料 Agent。';
-    action = '<button type="button" data-next-tab="data">開始準備資料</button>';
-  }
-  box.innerHTML = `<div class="next-step">${escape(step)}</div><strong>${escape(title)}</strong><span>${escape(detail)}</span>${action}`;
-}
 let notices = [], noticeSeq = 0;
 function renderNotices() {
   const el = $('notice');
@@ -114,23 +89,7 @@ function setTab(tab, opts = {}) {
     // and visibly cancel a smooth scroll partway through.
     if (target) target.scrollIntoView({behavior: 'auto', block: 'start'});
   }
-  syncModeBanner();
   if (!opts.skipUrl) syncUrl();
-}
-function syncModeBanner() {
-  const el = $('mode-banner');
-  if (!el) return;
-  const modes={
-    data:['第 1 步：資料準備','選股票與分析日，建立可追溯的研究資料快照。'],
-    experiment:['第 2 步：建立實驗','選資料集與模型，確認後啟動 A/B/C/D 回測。'],
-    runs:['第 3 步：監控執行','查看四個研究 Agent、背景佇列與即時進度。'],
-    stats:['第 4 步：統計結果','查看完成案例的準確率、Hold 比例與研究限制。'],
-  };
-  const [title,detail]=modes[currentTab]||modes.setup;
-  const selectedStatus = allJobs.find(job=>job.id===selectedJob)?.status;
-  const active = allJobs.some(job=>['queued','running','paused'].includes(job.status)) ? 3 : (selectedStatus==='complete' && currentTab==='stats' ? 4 : (currentTab==='experiment' ? 2 : 1));
-  const steps=[['1','準備資料'],['2','建立實驗'],['3','監控執行'],['4','查看統計']];
-  el.innerHTML=`<div class="mode-copy"><strong>${escape(title)}</strong><span>${escape(detail)}</span></div><div class="workflow-steps">${steps.map(([n,label])=>`<span class="workflow-step ${n<=active?'done':''} ${Number(n)===active?'current':''}"><b>${n}</b>${label}</span>`).join('<i aria-hidden="true">›</i>')}</div>`;
 }
 async function api(path, body, method) {
   const verb = (method || (body === undefined ? 'GET' : 'POST')).toUpperCase();
@@ -198,7 +157,8 @@ function formatStamp(value) { try { return new Intl.DateTimeFormat('zh-TW',{mont
 function terminalStamp(value=new Date()) { try { return new Intl.DateTimeFormat('zh-TW',{hour:'2-digit',minute:'2-digit',second:'2-digit',hour12:false}).format(value); } catch { return '--:--:--'; } }
 function renderAgentTerminal() {
   const markup=terminalEvents.map(item=>`<div class="terminal-line ${escape(item.tone)}"><time>${escape(item.at)}</time><b>[${escape(item.agent)}]</b><span>${escape(item.message)}</span></div>`).join('')+'<div class="terminal-cursor" aria-hidden="true"><span>›</span><i></i></div>';
-  for(const output of [$('agent-terminal-output'),$('persistent-terminal-output')]){if(!output)continue;output.innerHTML=markup;output.scrollTop=output.scrollHeight;}
+  const output=$('agent-terminal-output');
+  if(output){output.innerHTML=markup;output.scrollTop=output.scrollHeight;}
 }
 function resetAgentTerminal() { terminalEvents=[]; renderAgentTerminal(); }
 function terminalLine(agent,message,tone='') { terminalEvents.push({at:terminalStamp(),agent,message,tone}); if(terminalEvents.length>12)terminalEvents.shift(); renderAgentTerminal(); }
@@ -351,7 +311,6 @@ async function refreshDatasets() {
   const selected=datasetRows.find(d=>d.id===$('dataset').value);
   $('score-finbert-button').disabled=scoring || !finbertReady || !(selected?.evidence_by_domain?.sentiment > 0);
   syncExperimentGuard();
-  syncNextAction();
 }
 async function refreshJobs() {
   let dashboard;
@@ -369,7 +328,6 @@ async function refreshJobs() {
   allJobs = dashboard.jobs;
   hasActiveJobs=allJobs.some(job=>job.status==='queued'||job.status==='running');
   renderJobList();
-  syncNextAction();
   const completed = allJobs.find(job=>job.status==='complete');
   if (completed && autoStatsJob !== completed.id) {
     autoStatsJob = completed.id;
@@ -491,7 +449,6 @@ async function showStatistics() {
     ? `<p class="${prereg.post_freeze_dataset_ids.length?'protocol-warning':'hint'}">Preregistration 已於 ${escape(formatStamp(prereg.frozen_at))} 凍結，涵蓋 ${prereg.dataset_ids.length} 個資料集。${prereg.post_freeze_dataset_ids.length?`⚠️ 凍結後又新增了 ${prereg.post_freeze_dataset_ids.length} 個資料集的實驗，這些案例不應計入凍結後的正式分析結論。`:'目前所有案例都在凍結範圍內。'}</p>`
     : `<p class="hint">尚未凍結 preregistration。凍結後會鎖住目前已分析的資料集清單，之後新增的案例會被標記，避免看完結果後偷偷擴大樣本。</p><button class="quiet" type="button" data-freeze="${escape(selectedProtocol)}">凍結目前的 preregistration</button>`;
   element.innerHTML = `<section class="stats-substep"><div class="section-label">3.2 / 回測摘要</div><h2>同協議研究比較</h2><p class="hint">候選決策、60 日、Corwin–Schultz、固定權重投組。${report.unique_cases || 0} 個已完成案例；後續重跑保留供稽核。</p>${insufficient}${preregBlock}<div class="table-wrap"><table><thead><tr><th>方法</th><th>覆蓋率</th><th>條件準確率</th><th>Hold</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div></section><section class="stats-substep"><div class="section-label">3.3 / 品質與匯出</div><p class="hint">Pilot：${escape(pilot.verdict||'—')} · ${escape((pilot.blocking_reasons||[]).join(' / ')||'無阻擋原因')}。中性帶敏感性已用既有預測重算，不重新呼叫模型。</p><div class="actions"><a href="/api/studies/${selectedProtocol}/summary.csv">下載 summary.csv</a><a href="/api/studies/${selectedProtocol}" download="statistics.json">下載 statistics.json</a></div></section><section class="stats-substep"><div class="section-label">3.4 / 詳細稽核</div><details><summary>Pilot、hold band 與完整性診斷</summary><pre>${escape(JSON.stringify({pilot,hold_band:band,completeness:report.completeness},null,2))}</pre></details><details><summary>統計檢定與口徑</summary><pre>${escape(JSON.stringify({comparisons:report.comparisons,conventions:report.conventions},null,2))}</pre></details></section>`;
-  placeTerminalWithResults();
   organizeWorkflowSections();
   const statLabels = element.querySelectorAll('.stats-substep .section-label');
   ['4.1 / 回測摘要', '4.2 / 品質與匯出', '4.3 / 詳細稽核'].forEach((text, index) => {
@@ -520,10 +477,6 @@ function placeStudyDesign() {
   if (protocol && tabs && protocol.parentElement !== tabs.parentElement) {
     tabs.parentElement.insertBefore(protocol, tabs);
   }
-}
-function placeTerminalWithResults() {
-  const terminal = document.getElementById('persistent-terminal');
-  if (terminal) terminal.hidden = true;
 }
 function addSubstep(id, text, target) {
   if (!target || document.getElementById(id)) return;
@@ -561,7 +514,6 @@ function setupScrollNavigation() {
 async function initialize() {
   const c = await api('/api/config');
   placeStudyDesign();
-  placeTerminalWithResults();
   organizeWorkflowSections();
   document.body.classList.add('scroll-layout');
   setupScrollNavigation();
@@ -716,7 +668,7 @@ $('batch-file').addEventListener('change', e => task(null,async()=>{
   e.target.value='';
 }));
 $('job-form').addEventListener('submit', e => {e.preventDefault();if(submitting)return;if(!$('dataset').value){notify('請先選擇一筆資料集，才能開始研究實驗。',true);syncExperimentGuard();return;}submitting=true;task(e.submitter,async()=>{try{const model=$('cloud-model').value.trim()||$('model').value;const j=await api('/api/jobs',{dataset_id:$('dataset').value,analysis_date:$('analysis-date').value,model,study:$('study').value,voting_samples:Number($('voting').value),missing_data_policy:$('missing-policy').value,anonymize_ticker:$('anonymize').checked,allow_point_fundamental:$('allow-point-fundamental').checked,allow_small_model:$('allow-small-model').checked,allow_low_quality_sentiment:$('allow-low-quality-sentiment').checked});selectedJob=j.id;notify(`研究已加入背景佇列，模型為 ${model}。候選決策、風控決策與品質覆寫會一起鎖定於協議。`);setTab('runs');await refreshJobs();}finally{submitting=false;}});});
-document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.tabButton){setTab(b.dataset.tabButton);return;}if(b.dataset.flowTab){setFlow(b.dataset.flowTab);return;}if(b.dataset.nextTab){setTab(b.dataset.nextTab);return;}if(b.dataset.nextFlow){setFlow(b.dataset.nextFlow);return;}if(b.dataset.dismissNotice){dismissNotice(Number(b.dataset.dismissNotice));return;}if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);if(b.dataset.freeze)task(b,async()=>{if(!window.confirm('凍結此協議目前分析的資料集清單？凍結後不可撤銷，之後新增的案例會被標記為凍結後追加。'))return;await api(`/api/studies/${b.dataset.freeze}/freeze`,{});await showStatistics();});});
+document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.tabButton){setTab(b.dataset.tabButton);return;}if(b.dataset.flowTab){setFlow(b.dataset.flowTab);return;}if(b.dataset.dismissNotice){dismissNotice(Number(b.dataset.dismissNotice));return;}if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);if(b.dataset.freeze)task(b,async()=>{if(!window.confirm('凍結此協議目前分析的資料集清單？凍結後不可撤銷，之後新增的案例會被標記為凍結後追加。'))return;await api(`/api/studies/${b.dataset.freeze}/freeze`,{});await showStatistics();});});
 $('refresh').addEventListener('click', e=>task(e.currentTarget,async()=>{await refreshDatasets();await refreshReadiness();await refreshJobs();}));
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){if(pollTimer)clearTimeout(pollTimer);pollTimer=null;return;}

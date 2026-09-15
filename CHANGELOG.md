@@ -2,6 +2,18 @@
 
 正式產品只有一條執行路徑：`research.ps1` → Docker Compose → `research_service` → `http://127.0.0.1:8000`。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## v3-0913.1（後續，2026-09-16）— 清除已被取代的隱藏 GUI 子系統
+
+不改變決策提示或可引用證據，因此不升版。
+
+- 拿掉「設定資料來源與模型」摺疊選單的綠色標題，改用跟其他次要摺疊選單一致的灰色。
+- 徹底移除兩套改版後已被新版編號導覽列取代、但被 CSS 焊死看不到（`display:none!important`）的舊系統：狀態橫幅（`.mode-banner`）與浮動狀態列（`.persistent-terminal` / `.terminal-next-action`，含「下一步該做什麼」提示與 CTA 按鈕）。兩者原本每次分頁切換、每次背景輪詢都會重新計算並寫入 DOM，使用者卻完全看不到。
+- 模型連線狀態文字（`#model-state`）保留並搬到導覽列右側，改成一直看得到的樣子，不再依附在已刪除的浮動狀態列裡。
+- 同時清掉更早一版就已經沒有任何 HTML 元素在用的殘留樣式（`.intro`、`.intro-actions`、`.top-status`、`.connection`、`.next-action`），以及對應的響應式版型規則。
+- `app.js` 少了 `syncNextAction()`、`syncModeBanner()`、`placeTerminalWithResults()` 三個函式與其呼叫點；`renderAgentTerminal()` 不再重複寫入兩份輸出。
+
+驗證：全新 build 後 106/106 Python 測試、10/10 JS 測試通過；瀏覽器實測確認導覽列跳轉、模型狀態文字顯示均正常，無 console 錯誤。
+
 ## v3-0913.1（後續，2026-09-15）— GUI 改為連續捲動流程，修正導覽失效
 
 不改變決策提示或可引用證據，因此不升版。
