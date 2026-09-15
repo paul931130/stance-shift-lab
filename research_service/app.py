@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import threading
 import zipfile
+from urllib.error import HTTPError, URLError
 
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, Response
@@ -285,6 +286,24 @@ def create_app(store=None, model_call=None, start_worker=True):
                     "configured_default": configured_default,
                     "default_available": configured_default in model_ids,
                     "formal_ready": bool(formal_models), "formal_models": formal_models}
+        except HTTPError as error:
+            if error.code in (401, 403):
+                message = (f"遠端 Ollama 拒絕連線（HTTP {error.code}）。"
+                           "請確認 GPUtw 的 11434 連接埠可從本機存取，"
+                           "或填入遠端 Ollama 存取 key；這不是 NoTrade。")
+            elif error.code == 429:
+                message = "遠端 Ollama 暫時限流（HTTP 429），請稍後重試；這不是 NoTrade。"
+            else:
+                message = f"模型服務回應 HTTP {error.code}；請稍後重試。這不是 NoTrade。"
+            return {"ready": False, "models": [], "details": [], "formal_models": [],
+                    "formal_ready": False, "default_available": False,
+                    "error_code": "model_endpoint_http_error", "http_status": error.code,
+                    "message": message}
+        except (URLError, TimeoutError, OSError) as error:
+            return {"ready": False, "models": [], "details": [], "formal_models": [],
+                    "formal_ready": False, "default_available": False,
+                    "error_code": "model_endpoint_unreachable",
+                    "message": "模型服務目前無法連線；請確認 Ollama／GPUtw 執行個體仍在執行。這不是 NoTrade。"}
         except Exception:
             return {"ready": False, "models": [], "details": [], "formal_models": [],
                     "formal_ready": False, "default_available": False,

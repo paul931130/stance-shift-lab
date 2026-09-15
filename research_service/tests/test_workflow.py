@@ -232,7 +232,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(client.get('/health').status_code,200)
             home = client.get('/').text
             self.assertIn('研究分析日（季末或今天）', home)
-            self.assertIn('啟動四個資料 Agent', home)
+            self.assertIn('準備研究資料', home)
             self.assertIn('id="agent-terminal-output"', home)
             self.assertIn('id="refresh-data"', home)
             self.assertIn('實驗對照 · 保留模型決策', home)
