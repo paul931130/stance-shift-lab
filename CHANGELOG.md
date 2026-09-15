@@ -2,6 +2,17 @@
 
 正式產品只有一條執行路徑：`research.ps1` → Docker Compose → `research_service` → `http://127.0.0.1:8000`。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## v3-0913.1（後續，2026-09-15）— 時間切分、資料缺口盤點與部署韌性
+
+不改變決策提示或可引用證據，因此不升版；純屬操作與研究方法層的補強。
+
+- 新增 Training（2021–2023）／Validation（2024）／Test（2025，凍結）三段時間切分（`research_service/splits.py`），依 `requested_analysis_date` 分類，即時（非季末）分析一律排除，不會混入任何切分統計。`research.ps1 splits` 查看、`create-temporal-split-plan.ps1` 產生可審查批次清單。
+- 修正 `study_readiness()` 的計數錯誤：先前 `backtest_ready_cases`、`finbert_ready_cases` 等欄位會因為同一案例的「其他」領域缺資料而被連帶排除，即使該欄位本身其實已完成；現在各欄位各自獨立計數。
+- 新增 `/api/readiness/gaps`（`research.ps1 gaps`）：列出每個未達正式門檻的案例、缺少的具體條件，以及可直接複製執行的補資料指令。
+- 新增 `.\scripts\start-native.ps1`：Docker 不可用時的本機備援路徑，使用獨立的 `research-data-native`，不會讀寫 Docker 服務的資料庫。僅作復原／demo 用途；正式部署仍以 Docker 為準。
+- `research.ps1 start` 改為等待 `/health` 通過才視為啟動完成；新增 `research.ps1 repair-docker`，在保留 `research-data` 具名 volume 的前提下自動修復 Docker Desktop 的 stale socket 問題。
+- 網頁 API 讀取請求加上逾時與單次重試；寫入請求（建立實驗、下載資料、儲存設定）不自動重送，避免重複建立工作或快照。
+
 ## v3-0913.1（2026-09-13）— 本機 Alpha Vantage 新聞快取
 
 - 情緒面新增第三個可用來源：本機 Alpha Vantage 新聞快取（`ALPHA_VANTAGE_NEWS_PATH`，或未設定時自動使用伺服器管理的 `research-data/alpha_vantage_cache/`）。`fetch_sentiment()` 依序檢查快取、FNSPID、即時 API，快取或 FNSPID 已提供的證據不會再重複打即時 API。

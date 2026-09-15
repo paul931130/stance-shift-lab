@@ -284,6 +284,19 @@ class NewsSourceTests(unittest.TestCase):
         self.assertIn("Alpha Vantage 取得", note)
         self.assertTrue(any(item["source_type"] == "alpha_vantage_news_sentiment" for item in items))
 
+    def test_offline_news_mode_never_calls_live_alpha(self):
+        with tempfile.TemporaryDirectory() as directory:
+            cache = Path(directory) / "empty.csv"
+            cache.write_text("ticker,time_published,title,url,relevance_score\n", encoding="utf-8")
+            with patch.dict("os.environ", {"ALPHA_VANTAGE_API_KEY": "test-key",
+                                             "ALPHA_VANTAGE_NEWS_PATH": str(cache),
+                                             "FNSPID_NEWS_PATH": ""}):
+                items, note = fetch_sentiment(
+                    "NVDA", "2024-12-31", lambda _url: self.fail("live Alpha was called"),
+                    allow_live=False)
+        self.assertEqual(items, [])
+        self.assertIn("離線新聞模式", note)
+
     def test_alpha_provider_limit_is_actionable_without_exposing_a_key(self):
         def limited(_url):
             return {"Information": "rate limited"}

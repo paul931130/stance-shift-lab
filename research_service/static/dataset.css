@@ -74,6 +74,10 @@
 .agent-card.complete span,
 .group-card.complete span { background: var(--pill-complete-bg); color: var(--card-complete-fg); }
 .readiness { margin: 10px 0 15px; padding: 9px 11px; border-left: 3px solid var(--accent); background: var(--surface-alt); color: var(--ink); font-size: 12px; }
+.gap-inventory { margin: -5px 0 14px; font-size: 12px; }
+.gap-inventory summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+.gap-table { max-height: 300px; overflow: auto; }
+.gap-table code { display: block; min-width: 245px; white-space: normal; overflow-wrap: anywhere; font-size: 10px; }
 .guard { border-left-color: var(--focus); background: var(--card-warn-bg); }
 .guard.ready { border-left-color: var(--accent); background: var(--card-complete-bg); }
 .protocol-warning { padding: 10px 12px; border-left: 3px solid var(--focus); background: var(--card-warn-bg); color: var(--ink); font-size: 13px; }

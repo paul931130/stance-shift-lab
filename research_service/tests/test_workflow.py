@@ -231,7 +231,7 @@ class WorkflowTests(unittest.TestCase):
         with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
             self.assertEqual(client.get('/health').status_code,200)
             home = client.get('/').text
-            self.assertIn('研究分析日（計劃書固定季末）', home)
+            self.assertIn('研究分析日（季末或今天）', home)
             self.assertIn('啟動四個資料 Agent', home)
             self.assertIn('id="agent-terminal-output"', home)
             self.assertIn('id="refresh-data"', home)
@@ -372,7 +372,7 @@ class WorkflowTests(unittest.TestCase):
         technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         with patch("research_service.app.download_prices", side_effect=lambda *_: tracked(technical)), \
              patch("research_service.app.fetch_fundamental", side_effect=lambda *_: tracked(([], "SEC not configured"))), \
-             patch("research_service.app.fetch_sentiment", side_effect=lambda *_: tracked(([], "news not configured"))), \
+             patch("research_service.app.fetch_sentiment", side_effect=lambda *_, **__: tracked(([], "news not configured"))), \
              patch("research_service.app.fetch_macro", side_effect=lambda *_: tracked(([], "FRED not configured"))):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 response = client.post('/api/datasets/download', json={"ticker":"NVDA", "analysis_date":"2024-12-31"})

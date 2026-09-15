@@ -4,6 +4,7 @@ import re
 from statistics import median
 
 from .protocol import COMPANY_NAMES, TICKERS, QUARTER_DATES
+from .splits import split_for_date, temporal_split_summary
 
 
 def _mentions_target(item, ticker):
@@ -134,7 +135,8 @@ def study_readiness(rows):
             by_case[key] = {**c, "rank": rank, "status": "complete" if c["research_ready"] else "partial",
                             "formal_status": "ready" if c.get("formal_experiment_ready") else
                                              "evidence_only" if c["research_ready"] else "partial",
-                            "dataset_id": row["id"], "version": row["version"], "ticker": key[0]}
+                            "dataset_id": row["id"], "version": row["version"], "ticker": key[0],
+                            "split": split_for_date(key[1])}
     tickers = []
     for ticker in TICKERS:
         complete = [day for day in QUARTER_DATES if by_case.get((ticker, day), {}).get("status") == "complete"]
@@ -147,16 +149,69 @@ def study_readiness(rows):
     complete = sum(row["research_ready"] for row in by_case.values())
     target = len(TICKERS) * len(QUARTER_DATES)
     formal = sum(row.get("formal_experiment_ready", False) for row in by_case.values())
+    cases = [{k: v for k, v in row.items() if k != "rank"} for row in by_case.values()]
     return {"universe": list(TICKERS), "dates": list(QUARTER_DATES), "target_cases": target,
             "complete_cases": complete, "evidence_complete_cases": complete,
             "formal_experiment_ready_cases": formal,
             "partial_cases": len(by_case) - complete, "missing_cases": target - len(by_case),
-            "backtest_ready_cases": sum(row["backtest_ready"] and row["research_ready"] for row in by_case.values()),
-            "all_horizons_ready_cases": sum(row.get("all_horizons_ready", False) and row["research_ready"]
-                                            for row in by_case.values()),
+            # These counters describe independent data dimensions.  Do not
+            # suppress available outcome, FinBERT, or SEC coverage merely
+            # because another research domain is missing for the same case.
+            "backtest_ready_cases": sum(row["backtest_ready"] for row in by_case.values()),
+            "all_horizons_ready_cases": sum(row.get("all_horizons_ready", False) for row in by_case.values()),
             "finbert_ready_cases": sum(row.get("sentiment_quality", {}).get("finbert_complete", False)
-                                       and row["research_ready"] for row in by_case.values()),
+                                       for row in by_case.values()),
             "comparable_fundamental_cases": sum(row.get("fundamental_quality", {}).get("passes_quality_gate", False)
-                                                and row["research_ready"] for row in by_case.values()),
-            "cases": [{k: v for k, v in row.items() if k != "rank"} for row in by_case.values()], "tickers": tickers,
+                                                for row in by_case.values()),
+            "cases": cases, "tickers": tickers,
+            "temporal_splits": temporal_split_summary(cases),
             "note": "四域完整、可比較 SEC 基本面、FinBERT／新聞品質、60 日主要回測與 90 日次要回測分開計數；正式主分析需通過前四項，90 日另計。ASTS 只用於即時查詢。"}
+
+
+def gap_inventory(rows):
+    """Return every formal-study gap with an explicit, reproducible repair path."""
+    readiness = study_readiness(rows)
+    available = {(item["ticker"], item["analysis_date"]): item for item in readiness["cases"]}
+    gaps = []
+    for ticker in TICKERS:
+        for analysis_date in QUARTER_DATES:
+            item = available.get((ticker, analysis_date))
+            if item is None:
+                deficits = ["dataset", "technical", "fundamental", "sentiment", "macro"]
+                status = "missing"
+                dataset_id = None
+            elif item.get("formal_experiment_ready"):
+                continue
+            else:
+                status = item.get("formal_status", item.get("status", "partial"))
+                dataset_id = item.get("dataset_id")
+                domains = item.get("domains", {})
+                deficits = [domain for domain in ("technical", "fundamental", "sentiment", "macro")
+                            if not domains.get(domain)]
+                sentiment = item.get("sentiment_quality", {})
+                fundamental = item.get("fundamental_quality", {})
+                if domains.get("sentiment") and not sentiment.get("passes_quality_gate"):
+                    deficits.append("sentiment_relevance")
+                if domains.get("sentiment") and not sentiment.get("finbert_complete"):
+                    deficits.append("finbert")
+                if domains.get("fundamental") and not fundamental.get("passes_quality_gate"):
+                    deficits.append("fundamental_comparability")
+                if item.get("research_ready") and not item.get("backtest_ready"):
+                    deficits.append("60d_outcome")
+                if not deficits:
+                    deficits.append("formal_quality")
+            gaps.append({
+                "ticker": ticker,
+                "analysis_date": analysis_date,
+                "status": status,
+                "dataset_id": dataset_id,
+                "deficits": deficits,
+                "collect_command": f".\\research.ps1 collect {ticker} {analysis_date} -UseFinbert",
+            })
+    return {
+        "target_cases": readiness["target_cases"],
+        "formal_ready_cases": readiness["formal_experiment_ready_cases"],
+        "gap_cases": gaps,
+        "gap_count": len(gaps),
+        "note": "重新蒐集會建立不可變新版資料集；舊版本與既有實驗不會被改寫。",
+    }

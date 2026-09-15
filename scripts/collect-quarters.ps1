@@ -39,8 +39,13 @@ param(
         '2025-03-31','2025-06-30','2025-09-30','2025-12-31'
     ),
     [ValidateRange(1, 500)][int]$DailyBudget = 20,
+    [ValidateRange(0, 20)][int]$MaxRateLimited = 3,
+    [switch]$RetryRateLimited,
+    [switch]$OfflineNewsOnly,
+    [switch]$RetryMissingNews,
     [string]$CheckpointFile = '',
     [switch]$UseFinbert = $true,
+    [switch]$SkipFinbert,
     [switch]$Refresh
 )
 
@@ -97,12 +102,16 @@ $checkpoint = Read-Checkpoint
 $combinations = @(foreach ($date in $Dates) { foreach ($ticker in $Tickers) { [pscustomobject]@{ Ticker = $ticker; Date = $date } } })
 $remaining = @($combinations | Where-Object {
     $key = "$($_.Ticker)_$($_.Date)"
-    -not ($checkpoint.ContainsKey($key) -and $checkpoint[$key].status -eq 'done')
+    if (-not $checkpoint.ContainsKey($key)) { return $true }
+    $status = $checkpoint[$key].status
+    $status -ne 'done' -and ($RetryRateLimited -or $status -ne 'rate_limited') -and
+        ($RetryMissingNews -or $status -ne 'needs_news')
 })
 
 Write-Host "共 $($combinations.Count) 組合；已完成 $($combinations.Count - $remaining.Count)；本次待處理 $($remaining.Count)（每日預算 $DailyBudget 次新呼叫）"
 
 $budgetUsed = 0
+$rateLimitedCount = 0
 foreach ($combo in $remaining) {
     if ($budgetUsed -ge $DailyBudget) {
         Write-Host "已達本次執行的每日預算（$DailyBudget 次新呼叫），停止。之後重跑同一指令會從這裡繼續。"
@@ -113,7 +122,8 @@ foreach ($combo in $remaining) {
     try {
         $result = Invoke-ResearchApi 'POST' '/api/datasets/download' @{
             ticker = $combo.Ticker; analysis_date = $combo.Date
-            refresh = [bool]$Refresh; use_finbert = [bool]$UseFinbert
+            refresh = [bool]$Refresh; use_finbert = ([bool]$UseFinbert -and -not [bool]$SkipFinbert)
+            offline_news_only = [bool]$OfflineNewsOnly
         }
     } catch {
         # A genuine transport/HTTP failure (container down, 500, etc.) — not
@@ -125,8 +135,19 @@ foreach ($combo in $remaining) {
         Write-Host "  -> 請求失敗：$errorMessage"
         continue
     }
-    if (-not $result.reused) { $budgetUsed++ }
     $sentiment = $result.agents.sentiment
+    if ($OfflineNewsOnly -and ([int]$sentiment.records -le 0)) {
+        $checkpoint[$key] = @{
+            status = 'needs_news'; dataset_id = $result.id; reused = [bool]$result.reused
+            sentiment_status = $sentiment.status; sentiment_records = $sentiment.records
+            message = '其他資料域已保存；待 Alpha Vantage 或其他授權新聞來源補齊'
+            updated_at = (Get-Date).ToUniversalTime().ToString('o')
+        }
+        Save-Checkpoint $checkpoint
+        Write-Host '  -> 技術／基本／總經已保存；本機無新聞，標記 needs_news 待之後補齊。'
+        continue
+    }
+    if (-not $result.reused) { $budgetUsed++ }
     # research_service/data.py's fetch_sentiment() catches Alpha Vantage
     # failures itself and reports them through this message string; the
     # API never raises an HTTP error for a rate-limited news call, so this
@@ -136,9 +157,14 @@ foreach ($combo in $remaining) {
     if ($rateLimited) {
         $checkpoint[$key] = @{ status = 'rate_limited'; message = $sentiment.message; updated_at = (Get-Date).ToUniversalTime().ToString('o') }
         Save-Checkpoint $checkpoint
-        Write-Host "  -> Alpha Vantage 疑似已達流量限制，提前停止本次執行：$($sentiment.message)"
-        Write-Host "已儲存進度到 $CheckpointFile；額度重置後重跑同一指令即可繼續（此組合不會被標記為完成）。"
-        exit 0
+        $rateLimitedCount++
+        Write-Host "  -> Alpha Vantage 疑似已達流量限制，保留此組合待續跑：$($sentiment.message)"
+        if ($rateLimitedCount -ge $MaxRateLimited) {
+            Write-Host "已遇到 $rateLimitedCount 次限流，停止以避免重複消耗來源額度。已儲存進度到 $CheckpointFile。"
+            break
+        }
+        Write-Host "  -> 繼續下一組，讓已有 FNSPID／本機快取的案例仍可完成。"
+        continue
     }
     $checkpoint[$key] = @{
         status = 'done'; dataset_id = $result.id; reused = [bool]$result.reused

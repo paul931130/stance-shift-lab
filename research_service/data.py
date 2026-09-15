@@ -394,7 +394,8 @@ def _resolve_alpha_vantage_cache_path():
     return str(default_path) if default_path.exists() else ""
 
 
-def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE):
+def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE,
+                    allow_live=True):
     """Fetch point-in-time news without silently inventing sentiment evidence."""
     items, notes = [], []
     cache_path = _resolve_alpha_vantage_cache_path()
@@ -424,7 +425,7 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
     # Local archives are free and reproducible. Spend a metered live request
     # only when the cache/FNSPID evidence does not already fill the 50-item
     # source budget for this ticker and point-in-time window.
-    if alpha_configured and not cache_items and len(items) < 50:
+    if allow_live and alpha_configured and not cache_items and len(items) < 50:
         try:
             alpha_items, alpha_stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor)
             items.extend(alpha_items)
@@ -434,8 +435,10 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
         except Exception as error:
             detail = str(error) if isinstance(error, ValueError) else type(error).__name__
             notes.append(f"Alpha Vantage 下載失敗：{detail[:180]}")
-    elif alpha_configured:
+    elif alpha_configured and (cache_items or len(items) >= 50):
         notes.append("本機新聞已達 50 筆，略過 Alpha Vantage 計費請求")
+    elif alpha_configured and not allow_live:
+        notes.append("離線新聞模式：未呼叫 Alpha Vantage 即時 API")
     if not alpha_configured and not path and not cache_path:
         notes.append("未設定 ALPHA_VANTAGE_API_KEY、ALPHA_VANTAGE_NEWS_PATH 或 FNSPID_NEWS_PATH；可匯入具公開時間的新聞摘要")
     unique, aliases = _deduplicate_news(items)

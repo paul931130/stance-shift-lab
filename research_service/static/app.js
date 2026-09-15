@@ -11,6 +11,9 @@ let submitting = false, scoring = false;
 let hasActiveJobs = false, pollTimer = null, liveSocket = null, finbertReady = false, pollFailures = 0;
 let allJobs = [];
 const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
+// Keep a stalled browser request from making the whole workspace look frozen.
+// GETs are safe to retry once because they do not create jobs or mutate data.
+const API_TIMEOUT_MS = 15000, API_GET_RETRY_LIMIT = 1;
 let notices = [], noticeSeq = 0;
 function renderNotices() {
   const el = $('notice');
@@ -48,13 +51,46 @@ function setTab(tab, opts = {}) {
   if (!opts.skipUrl) syncUrl();
 }
 async function api(path, body, method) {
-  const response = await fetch(path, {method: method || (body === undefined ? 'GET' : 'POST'), headers: body === undefined ? {} : {'Content-Type':'application/json'}, body: body === undefined ? undefined : JSON.stringify(body)});
-  const data = await response.json();
-  if (!response.ok) {
-    if (response.status === 401) { $('login').hidden = false; $('workspace').hidden = true; }
-    throw new Error(typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data));
+  const verb = (method || (body === undefined ? 'GET' : 'POST')).toUpperCase();
+  const retryable = verb === 'GET';
+  let lastError;
+  for (let attempt = 0; attempt <= (retryable ? API_GET_RETRY_LIMIT : 0); attempt += 1) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), API_TIMEOUT_MS);
+    try {
+      const response = await fetch(path, {
+        method: verb,
+        headers: body === undefined ? {} : {'Content-Type':'application/json'},
+        body: body === undefined ? undefined : JSON.stringify(body),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      let data;
+      try { data = await response.json(); }
+      catch { data = {detail: `服務回傳了無法讀取的內容（HTTP ${response.status}）`}; }
+      if (!response.ok) {
+        if (response.status === 401) { $('login').hidden = false; $('workspace').hidden = true; }
+        const detail = typeof data.detail === 'string' ? data.detail : JSON.stringify(data.detail || data);
+        const error = new Error(detail || `服務請求失敗（HTTP ${response.status}）`);
+        // A transient upstream error should get one quiet retry; validation and
+        // authentication errors are returned immediately so users see the cause.
+        if (!(retryable && (response.status === 408 || response.status === 429 || response.status >= 500) && attempt < API_GET_RETRY_LIMIT)) {
+          error.noRetry = true;
+          throw error;
+        }
+        lastError = error;
+      } else return data;
+    } catch (error) {
+      clearTimeout(timeout);
+      const timedOut = error?.name === 'AbortError';
+      lastError = timedOut
+        ? new Error(`服務回應逾時（${API_TIMEOUT_MS / 1000} 秒）；請確認 Docker Desktop 與研究服務仍在執行。`)
+        : error;
+      if (error?.noRetry || !(retryable && attempt < API_GET_RETRY_LIMIT)) throw lastError;
+    }
+    await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)));
   }
-  return data;
+  throw lastError || new Error('服務請求失敗');
 }
 async function task(button, fn) { if (button) button.disabled = true; try { await fn(); } catch(error) { notify(error.message, true); } finally { if(button) button.disabled = false; syncExperimentGuard(); } }
 function options(items) { return items.map(v => `<option value="${escape(v)}">${escape(v)}</option>`).join(''); }
@@ -163,7 +199,19 @@ function syncExperimentGuard() {
 async function refreshReadiness() {
   const r=await api('/api/readiness'), done=r.evidence_complete_cases??r.complete_cases, formal=r.formal_experiment_ready_cases??0, total=r.target_cases;
   const covered=r.tickers.filter(row=>row.complete>0).map(row=>`${row.ticker} 四域 ${row.complete}／正式 ${row.formal_ready||0}`).join('、') || '尚無完整案例';
-  $('study-readiness').innerHTML=`<strong>正式主實驗可跑 ${formal}/${total}</strong> · 四域證據完整 ${done} · SEC 可比較 ${r.comparable_fundamental_cases??0} · FinBERT 完整 ${r.finbert_ready_cases??0} · 60 日行情齊全 ${r.backtest_ready_cases} · 90 日也齊全 ${r.all_horizons_ready_cases??0}<br><small>部分 ${r.partial_cases} · 尚缺 ${r.missing_cases}。${escape(covered)}。${escape(r.note)}</small>`;
+  const split=r.temporal_splits?.splits||{};
+  const splitLine=['training','validation','test'].filter(name=>split[name]).map(name=>`${escape(split[name].label)} ${split[name].formal_ready_cases}/${split[name].target_cases}`).join(' · ');
+  $('study-readiness').innerHTML=`<strong>正式主實驗可跑 ${formal}/${total}</strong> · 四域證據完整 ${done} · SEC 可比較 ${r.comparable_fundamental_cases??0} · FinBERT 完整 ${r.finbert_ready_cases??0} · 60 日行情齊全 ${r.backtest_ready_cases} · 90 日也齊全 ${r.all_horizons_ready_cases??0}<br><small>時間切分：${splitLine||'尚未建立'}（Test 案例在最終評估前凍結）<br>本系統是固定模型推論；Training 只用於建構設定，Validation 用於調整，Test 最後才評估。<br>部分 ${r.partial_cases} · 尚缺 ${r.missing_cases}。${escape(covered)}。${escape(r.note)}</small>`;
+  const gaps=await api('/api/readiness/gaps');
+  const rows=(gaps.gap_cases||[]).map(row=>`<tr><td>${escape(row.ticker)}</td><td>${escape(row.analysis_date)}</td><td>${escape(row.status)}</td><td>${escape((row.deficits||[]).join('、'))}</td><td><code>${escape(row.collect_command)}</code></td></tr>`).join('');
+  let gapBody=$('gap-inventory-body');
+  if(!gapBody){
+    $('study-readiness').insertAdjacentHTML('afterend','<details id="gap-inventory" class="gap-inventory"><summary>查看資料缺口與補資料指令</summary><p class="hint">每列只顯示尚未達正式主實驗門檻的案例；重新蒐集會建立新版快照，不會改寫舊實驗。</p><div id="gap-inventory-body"></div></details>');
+    gapBody=$('gap-inventory-body');
+  }
+  gapBody.innerHTML=rows
+    ? `<p class="hint">共 ${gaps.gap_count} 個缺口。先補「dataset」案例，再處理新聞品質或 SEC 可比較性。</p><div class="table-wrap gap-table"><table><thead><tr><th>股票</th><th>分析日</th><th>狀態</th><th>缺少項目</th><th>終端補資料指令</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    : '<p class="hint">全部研究案例均已達正式主實驗門檻。</p>';
 }
 function renderDatasetOptions(preserveValue) {
   const value = preserveValue !== undefined ? preserveValue : $('dataset').value;
@@ -397,9 +445,25 @@ async function initialize() {
   const urlParams = new URLSearchParams(location.search);
   selectedJob = urlParams.get('selected') || null;
   setTab(urlParams.get('tab') || (selectedJob ? 'runs' : 'setup'), { skipUrl: true });
-  await refreshSettings(); await refreshDatasets(); await refreshReadiness(); await refreshJobs();
+  // These reads are independent. Loading them together prevents a slow
+  // readiness scan or Ollama probe from blocking the rest of the workspace.
+  const initialResults = await Promise.allSettled([
+    refreshSettings(),
+    refreshDatasets(),
+    refreshReadiness(),
+    refreshJobs(),
+    api('/api/models'),
+  ]);
+  const initialLabels = ['設定', '資料集', '資料完整度', '實驗佇列', '模型'];
+  const initialFailures = initialResults
+    .map((result, index) => result.status === 'rejected' ? `${initialLabels[index]}：${result.reason?.message || '讀取失敗'}` : '')
+    .filter(Boolean);
+  if (initialFailures.length) notify(`部分頁面資料暫時無法載入；可稍後按重新整理重試。${initialFailures.join('、')}`, true);
   api('/api/sources/alpha-vantage-archive').then(state=>{if(state.stage==='running')pollAlphaVantageArchive();}).catch(()=>{});
-  const m = await api('/api/models');
+  const modelResult = initialResults[4];
+  const m = modelResult.status === 'fulfilled'
+    ? modelResult.value
+    : {ready:false, models:[], details:[], message:'Ollama 暫時無法連線；可稍後重試或改用雲端模型。'};
   modelDetails=new Map((m.details||[]).map(item=>[item.id,item]));
   installedModels=new Set(m.models||[]);
   const formal=(m.details||[]).filter(item=>Number.parseFloat(item.parameter_size)>=14);
@@ -411,6 +475,7 @@ async function initialize() {
   $('model').value=installedModels.has(c.model)?c.model:(formal[0]?.id||largest||c.model);
   if(!m.default_available&&largest) $('model-state').textContent+=`；設定的預設模型 ${c.model} 尚未安裝，畫面已先選 ${$('model').value}`;
   syncExperimentGuard();
+  schedulePoll();
 }
 $('login-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{await api('/api/login',{key:$('access-key').value}); $('access-key').value=''; await initialize();}); });
 $('download-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{const ticker=$('ticker').value,analysisDate=$('download-date').value,refresh=$('refresh-data').checked,useFinbert=$('download-finbert').checked;resetAgentTerminal();terminalLine('YOU',`collect --ticker ${ticker} --as-of ${analysisDate} --domains all${refresh?' --refresh':''}${useFinbert?' --finbert':''}`,'command');terminalLine('COORD',refresh?`強制建立 ${analysisDate} 新快照，派發 4 個資料 Agent`:`先搜尋 ${ticker}／${analysisDate} 可重用的四域完整快照`);notify('資料 Agent 正在檢查快照與來源…');renderCollectionAgents(null,'running');let r;try{r=await api('/api/datasets/download',{ticker,analysis_date:analysisDate,refresh,use_finbert:useFinbert});}catch(error){terminalLine('ERROR',error.message,'error');renderCollectionAgents(datasetRows.find(d=>d.id===$('dataset').value)||null);throw error;}if(r.reused){terminalLine('CACHE',`HIT dataset v${r.version} · ${r.id.slice(0,12)}… · 未呼叫外部 API`,'ok');}else{terminalLine('COORD','已完成四域來源派工：Yahoo／SEC／Alpha+FNSPID／ALFRED');}const codes={technical:'TECH',fundamental:'FUND',sentiment:'SENT',macro:'MACRO'};for(const [domain,item] of Object.entries(r.agents))terminalLine(codes[domain],`${item.status.toUpperCase()} · ${item.records} records · ${item.message}`,item.status==='complete'?'ok':'warn');for(const limitation of r.limitations)terminalLine('AUDIT',limitation,'warn');if(!r.reused)terminalLine('STORE',`SAVED dataset ${r.id.slice(0,12)}… · immutable snapshot`,'ok');await refreshDatasets();await refreshReadiness();$('dataset').value=r.id;$('analysis-date').value=r.analysis_date;renderDatasetDetail();renderCollectionAgents(datasetRows.find(d=>d.id===r.id));notify(r.reused?'已重用符合條件的既有資料快照；未重新呼叫來源 API。':'資料 Agent 已完成本輪工作，資料集已保存。\n'+r.limitations.join('\n'));}); });

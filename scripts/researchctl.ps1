@@ -1,7 +1,7 @@
 ﻿[CmdletBinding()]
 param(
     [Parameter(Position = 0)]
-    [ValidateSet('help','setup','start','stop','status','doctor','logs','collect','readiness','datasets','import','finbert','models','sources','run','batch','jobs','job','pause','resume','cancel','clone','export','verify-export','backup','statistics','live','watch')]
+    [ValidateSet('help','setup','start','stop','status','doctor','repair-docker','logs','collect','readiness','splits','gaps','datasets','import','finbert','models','sources','run','batch','jobs','job','pause','resume','cancel','clone','export','verify-export','backup','statistics','live','watch')]
     [string]$Command = 'help',
     [Parameter(Position = 1)][string]$Ticker = 'NVDA',
     [Parameter(Position = 2)][string]$AnalysisDate = '2024-12-31',
@@ -99,6 +99,54 @@ function Test-DockerEngine {
     finally { $ErrorActionPreference = $previousPreference }
 }
 
+function Test-DockerSocketFailure {
+    if (-not $IsWindows -and $PSVersionTable.PSVersion.Major -ge 6) { return $false }
+    $errorPath = Join-Path $env:LOCALAPPDATA 'Docker\backend.error.json'
+    if (-not (Test-Path -LiteralPath $errorPath)) { return $false }
+    try {
+        $text = Get-Content -LiteralPath $errorPath -Raw -ErrorAction Stop
+        return ($text -match '\.sock' -and $text -match 'file cannot be accessed|cannot access the file|無法存取')
+    } catch { return $false }
+}
+
+function Repair-DockerSocketRuntime {
+    $dockerDesktop = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
+    if (-not (Test-Path -LiteralPath $dockerDesktop)) {
+        throw '找不到 Docker Desktop 執行檔，無法自動修復 socket。'
+    }
+    Write-Host '[WARN] 偵測到 Docker Desktop stale socket；正在保留資料並自動修復…'
+    Stop-Process -Name 'Docker Desktop','com.docker.backend','com.docker.proxy','vpnkit','dockerd' -Force -ErrorAction SilentlyContinue
+    Stop-Service -Name 'com.docker.service' -Force -ErrorAction SilentlyContinue
+    & wsl.exe --terminate docker-desktop 2>$null | Out-Null
+    & wsl.exe --shutdown 2>$null | Out-Null
+    Start-Sleep -Seconds 4
+
+    $localRoot = [IO.Path]::GetFullPath($env:LOCALAPPDATA)
+    $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+    foreach ($relative in @('Docker\run','docker-secrets-engine')) {
+        $source = [IO.Path]::GetFullPath((Join-Path $localRoot $relative))
+        if (-not $source.StartsWith($localRoot, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "拒絕處理非預期的 Docker runtime 路徑：$source"
+        }
+        if (Test-Path -LiteralPath $source) {
+            $destination = Join-Path (Split-Path $source -Parent) ((Split-Path $source -Leaf) + "-auto-recovery-$stamp")
+            $destination = [IO.Path]::GetFullPath($destination)
+            if (-not $destination.StartsWith($localRoot, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "拒絕移動到非預期路徑：$destination"
+            }
+            Move-Item -LiteralPath $source -Destination $destination
+            Write-Host "[BACKUP] Docker runtime：$destination"
+        }
+        New-Item -ItemType Directory -Path $source -Force | Out-Null
+    }
+    Start-Process -FilePath $dockerDesktop -WindowStyle Hidden
+    foreach ($attempt in 1..30) {
+        if (Test-DockerEngine) { Write-Host '[OK] Docker stale socket 已自動修復'; return }
+        Start-Sleep -Seconds 2
+    }
+    throw 'Docker socket 自動修復後仍未就緒；請執行 Gather diagnostics，避免使用 Factory Reset。'
+}
+
 function Start-DockerEngine {
     if (Test-DockerEngine) { return }
     $docker = Get-Command docker -ErrorAction SilentlyContinue
@@ -111,6 +159,10 @@ function Start-DockerEngine {
     foreach ($attempt in 1..15) {
         if (Test-DockerEngine) { Write-Host '[OK] Docker Linux engine 已就緒'; return }
         Start-Sleep -Seconds 2
+    }
+    if (Test-DockerSocketFailure) {
+        Repair-DockerSocketRuntime
+        return
     }
     throw 'Docker Desktop 未能完成啟動。請在桌面開啟 Docker Desktop，接受可能出現的 Windows 權限提示，再重跑 .\research.ps1 start。'
 }
@@ -148,6 +200,29 @@ function Invoke-ResearchApi([string]$Method, [string]$Path, $Body = $null) {
     return $content | ConvertFrom-Json
 }
 
+function Wait-ResearchHealth([int]$TimeoutSec = 90) {
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $attempt = 0
+    $lastError = ''
+    Write-Host "[INFO] 等待研究服務健康檢查（最多 $TimeoutSec 秒）…"
+    while ((Get-Date) -lt $deadline) {
+        $attempt++
+        try {
+            $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health' -TimeoutSec 5
+            if ($health.status -eq 'ok') {
+                Write-Host "[OK] 網站服務 healthy · $($health.version)"
+                return $health
+            }
+            $lastError = "服務狀態為 $($health.status)"
+        } catch {
+            $lastError = $_.Exception.Message
+        }
+        if ($attempt -eq 1 -or $attempt % 5 -eq 0) { Write-Host '[INFO] 尚未就緒，持續等待…' }
+        Start-Sleep -Seconds 2
+    }
+    throw "研究服務在 $TimeoutSec 秒內未通過健康檢查：$lastError。請執行 .\research.ps1 status 或 logs 查看原因。"
+}
+
 function Show-Help {
     Write-Host 'Stance Shift Research · Agent CLI'
     Write-Host ''
@@ -155,10 +230,14 @@ function Show-Help {
     Write-Host '.\research.ps1 start                       建置並啟動網站'
     Write-Host '.\research.ps1 status                      查看服務狀態'
     Write-Host '.\research.ps1 doctor                      檢查 Docker、Ollama、來源設定與資料檔'
+    Write-Host '.\research.ps1 repair-docker               保留資料並修復 Docker Desktop stale socket'
     Write-Host '.\research.ps1 collect NVDA 2024-12-31     取得或重用四域資料快照'
     Write-Host '.\research.ps1 collect NVDA 2024-12-31 -UseFinbert  對新聞標題套用 FinBERT'
     Write-Host '.\research.ps1 collect NVDA 2024-12-31 -Refresh  強制建立新版快照'
     Write-Host '.\research.ps1 readiness                  查看 180 個回測案例的資料完整度'
+    Write-Host '.\research.ps1 splits                     查看 Training／Validation／Test 時間切分'
+    Write-Host '.\scripts\create-temporal-split-plan.ps1  建立可審查的時間切分批次計畫'
+    Write-Host '.\research.ps1 gaps                       列出每個未達正式門檻案例與補資料指令'
     Write-Host '.\research.ps1 datasets                   列出資料集版本與完整 ID'
     Write-Host '.\research.ps1 finbert -DatasetId ID      使用本機 FinBERT 建立新聞已評分的新版本'
     Write-Host '.\research.ps1 models                     列出可用模型'
@@ -280,6 +359,7 @@ switch ($Command) {
     'start' {
         Start-DockerEngine
         Invoke-DockerCompose @('up','-d','--build')
+        Wait-ResearchHealth
         Write-Host '研究台已啟動：http://127.0.0.1:8000/'
         if ((Read-Settings)['RESEARCH_REMOTE'] -ne 'true') { Start-Process 'http://127.0.0.1:8000/' }
     }
@@ -289,6 +369,12 @@ switch ($Command) {
         try { Invoke-ResearchApi 'GET' '/health' | Format-List } catch { Write-Host '[WARN] 健康檢查尚未就緒。' }
     }
     'doctor' { Test-Research }
+    'repair-docker' { Repair-DockerSocketRuntime }
+    'gaps' {
+        $inventory = Invoke-ResearchApi 'GET' '/api/readiness/gaps'
+        Write-Host "正式可用 $($inventory.formal_ready_cases)/$($inventory.target_cases) · 待補 $($inventory.gap_count)"
+        $inventory.gap_cases | Select-Object ticker,analysis_date,status,@{n='缺口';e={$_.deficits -join ','}},collect_command | Format-Table -Wrap -AutoSize
+    }
     'logs' { Invoke-DockerCompose @('logs','-f','--tail','100','research') }
     'collect' {
         $result = Invoke-ResearchApi 'POST' '/api/datasets/download' @{ ticker=$Ticker; analysis_date=$AnalysisDate; refresh=[bool]$Refresh; use_finbert=[bool]$UseFinbert }
@@ -301,6 +387,14 @@ switch ($Command) {
         Write-Host "SEC 可比較 $($result.comparable_fundamental_cases) · FinBERT 完整 $($result.finbert_ready_cases) · 60 日行情 $($result.backtest_ready_cases) · 90 日行情 $($result.all_horizons_ready_cases)"
         $result.tickers | Format-Table ticker,formal_ready,complete,partial,missing -AutoSize
         Write-Host $result.note
+    }
+    'splits' {
+        $result = Invoke-ResearchApi 'GET' '/api/readiness/splits'
+        foreach ($name in @('training','validation','test')) {
+            $item = $result.splits.$name
+            Write-Host ("{0}: {1}/{2} 正式可用 · 四域 {3} · FinBERT {4} · 60 日行情 {5} · 缺少 {6}" -f $item.label,$item.formal_ready_cases,$item.target_cases,$item.evidence_complete_cases,$item.finbert_ready_cases,$item.backtest_ready_cases,$item.missing_cases)
+        }
+        Write-Host 'Test 已標記為凍結；執行 scripts\create-temporal-split-plan.ps1 建立批次清單。'
     }
     'datasets' {
         $rows = Invoke-ResearchApi 'GET' '/api/datasets'
@@ -438,8 +532,4 @@ switch ($Command) {
         finally { if ($messageBuffer) { $messageBuffer.Dispose() }; $socket.Dispose(); $cancelSource.Dispose() }
     }
 }
-
-
-
-
 

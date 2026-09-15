@@ -30,7 +30,8 @@ from .reporting import (study_report, export_job, csv_text, pilot_diagnostics,
 from .storage import Store, now
 from .settings import Settings
 from .finbert import status as finbert_status, prepare_model
-from .readiness import coverage
+from .readiness import coverage, gap_inventory, study_readiness
+from .splits import classify_analysis_date
 from .live_stream import TradeHub
 from .logging_config import get_logger
 from .security import SessionAuth
@@ -52,6 +53,7 @@ class DownloadInput(BaseModel):
     analysis_date: str
     refresh: bool = False
     use_finbert: bool = False
+    offline_news_only: bool = False
 
 
 class JobInput(BaseModel):
@@ -218,7 +220,7 @@ def create_app(store=None, model_call=None, start_worker=True):
                 "finnhub": finnhub_configured()},
             "cloud_models": {"openrouter": bool(os.getenv("OPENROUTER_API_KEY")),
                 "openai": bool(os.getenv("OPENAI_API_KEY")), "gemini": bool(os.getenv("GEMINI_API_KEY"))},
-            "capabilities": ["settings", "clone", "collect", "readiness", "import", "finbert", "run", "batch", "jobs",
+            "capabilities": ["settings", "clone", "collect", "readiness", "temporal_splits", "import", "finbert", "run", "batch", "jobs",
                 "pause", "resume", "cancel", "export", "backup", "statistics", "live_snapshot", "live_trades"]}
 
     @app.get("/api/settings")
@@ -273,8 +275,16 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @app.get("/api/readiness")
     def readiness():
-        from .readiness import study_readiness
         return study_readiness(store.datasets())
+
+    @app.get("/api/readiness/gaps")
+    def readiness_gaps():
+        return gap_inventory(store.datasets())
+
+    @app.get("/api/readiness/splits")
+    def readiness_splits():
+        """Expose the train/validation/test manifest without changing datasets."""
+        return study_readiness(store.datasets())["temporal_splits"]
 
     @app.get("/api/template")
     def template():
@@ -370,7 +380,8 @@ def create_app(store=None, model_call=None, start_worker=True):
             futures = {
                 "technical": pool.submit(download_prices, payload.ticker, payload.analysis_date),
                 "fundamental": pool.submit(fetch_fundamental, payload.ticker, payload.analysis_date),
-                "sentiment": pool.submit(fetch_sentiment, payload.ticker, payload.analysis_date),
+                "sentiment": pool.submit(fetch_sentiment, payload.ticker, payload.analysis_date,
+                                         allow_live=not payload.offline_news_only),
                 "macro": pool.submit(fetch_macro, cutoff),
             }
             data = futures["technical"].result()
@@ -496,7 +507,8 @@ def create_app(store=None, model_call=None, start_worker=True):
         else:
             model_identity = {"id": payload.model, "provider": "test_override" if injected_model_call else "cloud_alias",
                               "resolved_at": now()}
-        return {"ticker": data["ticker"], "analysis_date": payload.analysis_date, "dataset_id": payload.dataset_id,
+        return {"ticker": data["ticker"], "analysis_date": payload.analysis_date,
+            "evaluation_split": classify_analysis_date(payload.analysis_date), "dataset_id": payload.dataset_id,
             "dataset_hash": payload.dataset_id, "protocol": asdict(protocol), "protocol_hash": protocol.fingerprint,
             "model_identity": model_identity,
             "quality_overrides": {

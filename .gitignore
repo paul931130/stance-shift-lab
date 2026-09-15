@@ -10,6 +10,7 @@
 
 # python
 .venv/
+.native-venv/
 __pycache__/
 *.py[cod]
 /.pytest_cache/
@@ -17,6 +18,7 @@ __pycache__/
 
 # research runtime data and artifacts (persist in the Docker volume instead)
 /research-data/
+/research-data-native/
 /_stance_shift_backups/
 /stance-shift-backup-*.zip
 /research-*.zip

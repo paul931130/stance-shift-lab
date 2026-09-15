@@ -7,7 +7,8 @@ from unittest.mock import patch
 
 from research_service.data import _canonical_news_url, _deduplicate_news, score_sentiment_finbert
 from research_service.finnhub import live_snapshot
-from research_service.readiness import coverage, study_readiness
+from research_service.readiness import coverage, gap_inventory, study_readiness
+from research_service.splits import classify_analysis_date, split_for_date, temporal_split_summary
 from research_service.storage import Store
 
 
@@ -28,6 +29,42 @@ def historical_fixture(kind="historical", evidence_date="2024-12-01"):
 
 
 class DemoRegressionTests(unittest.TestCase):
+    def test_temporal_roles_are_chronological_and_live_is_excluded(self):
+        self.assertEqual(split_for_date("2021-03-31"), "training")
+        self.assertEqual(split_for_date("2023-12-31"), "training")
+        self.assertEqual(split_for_date("2024-12-31"), "validation")
+        self.assertEqual(split_for_date("2025-03-31"), "test")
+        self.assertEqual(classify_analysis_date("2026-09-15"), "live")
+        with self.assertRaises(ValueError):
+            split_for_date("2026-09-15")
+
+    def test_temporal_summary_has_the_full_180_case_target(self):
+        summary = temporal_split_summary([])
+        self.assertEqual(summary["schema"], "stance-shift-temporal-split/v1")
+        self.assertTrue(summary["test_frozen"])
+        self.assertEqual(summary["splits"]["training"]["target_cases"], 108)
+        self.assertEqual(summary["splits"]["validation"]["target_cases"], 36)
+        self.assertEqual(summary["splits"]["test"]["target_cases"], 36)
+
+    def test_readiness_cases_expose_temporal_role(self):
+        data = historical_fixture()
+        row = {"id": data["id"], "ticker": data["ticker"], "kind": data["kind"],
+               "requested_analysis_date": data["requested_analysis_date"], "version": 1,
+               "coverage": coverage(data)}
+        result = study_readiness([row])
+        self.assertEqual(result["cases"][0]["split"], "validation")
+        self.assertEqual(result["temporal_splits"]["splits"]["validation"]["available_cases"], 1)
+
+    def test_gap_inventory_lists_every_missing_case_with_reproducible_collection(self):
+        inventory = gap_inventory([])
+        self.assertEqual(inventory["target_cases"], 180)
+        self.assertEqual(inventory["gap_count"], 180)
+        first = inventory["gap_cases"][0]
+        self.assertEqual(first["ticker"], "AAPL")
+        self.assertEqual(first["status"], "missing")
+        self.assertEqual(first["deficits"], ["dataset", "technical", "fundamental", "sentiment", "macro"])
+        self.assertEqual(first["collect_command"], ".\\research.ps1 collect AAPL 2021-03-31 -UseFinbert")
+
     def test_readiness_excludes_synthetic_and_future_only_cases(self):
         synthetic = historical_fixture("synthetic")
         future = historical_fixture("historical", "2025-01-01")
@@ -37,6 +74,23 @@ class DemoRegressionTests(unittest.TestCase):
                     "coverage": coverage(data)}
         self.assertEqual(study_readiness([summary(synthetic)])["complete_cases"], 0)
         self.assertEqual(study_readiness([summary(future)])["complete_cases"], 0)
+
+    def test_outcome_counts_are_independent_from_research_domain_completeness(self):
+        data = historical_fixture()
+        data["evidence"] = [item for item in data["evidence"] if item["domain"] != "sentiment"]
+        start = date(2025, 1, 1)
+        for offset in range(140):
+            day = start + timedelta(days=offset)
+            if day.weekday() < 5:
+                data["prices"].append({"date": day.isoformat(), "open": 1, "high": 2,
+                                       "low": 1, "close": 1.5})
+        row = {"id": "outcomes-without-news", "ticker": "NVDA", "kind": "historical",
+               "requested_analysis_date": "2024-12-31", "version": 1,
+               "coverage": coverage(data)}
+        readiness = study_readiness([row])
+        self.assertEqual(readiness["evidence_complete_cases"], 0)
+        self.assertEqual(readiness["backtest_ready_cases"], 1)
+        self.assertEqual(readiness["all_horizons_ready_cases"], 1)
 
     def test_formal_readiness_requires_comparable_sec_finbert_quality_and_outcomes(self):
         data = historical_fixture()

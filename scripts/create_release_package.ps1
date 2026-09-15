@@ -26,9 +26,11 @@ New-Item -ItemType Directory -Path $outputDirectory -Force | Out-Null
 
 $files = @(
     '.dockerignore', '.gitignore', 'Dockerfile.research', 'compose.research.yaml',
-    'README.md', 'research.cmd', 'research.ps1', 'start-research.cmd', 'start-local.cmd',
+    'README.md', 'research.cmd', 'research.ps1', 'start-research.cmd',
     'research.env.example', 'research-inputs\README.md', 'deploy\Caddyfile.example',
-    'scripts\researchctl.ps1', 'scripts\prepare_fnspid_news.py', 'scripts\create_release_package.ps1'
+    'scripts\researchctl.ps1', 'scripts\prepare_fnspid_news.py', 'scripts\create_release_package.ps1',
+    'scripts\start-native.ps1', 'scripts\create-pilot-plan.ps1', 'scripts\collect-quarters.ps1',
+    'scripts\alphavantage_news_fetch.py', 'scripts\score-missing-finbert.ps1'
 )
 $directories = @('research_service', 'docs')
 
