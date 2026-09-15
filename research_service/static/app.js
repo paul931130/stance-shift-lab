@@ -17,7 +17,7 @@ function friendlyJobError(error) {
   return value;
 }
 let selectedJob = null, selectedProtocol = null, busy = false, datasetRows = [], parallelWorkers = 1, currentProtocolVersion = '', terminalEvents = [];
-let currentTab = 'data', currentFlow = 'data', autoStatsJob = null;
+let currentTab = 'data', autoStatsJob = null;
 const TABS = ['data', 'experiment', 'runs', 'stats'];
 function tabTarget(tab) {
   return document.querySelector(
@@ -63,7 +63,6 @@ function setTab(tab, opts = {}) {
   currentTab = tab;
   const scrolling = document.body.classList.contains('scroll-layout');
   const panelTab = (tab === 'data' || tab === 'experiment') ? 'setup' : tab;
-  if (tab === 'data' || tab === 'experiment') setFlow(tab);
   const grid = $('workspace-grid');
   if (grid) grid.dataset.activeTab = tab;
   for (const name of ['setup','runs','stats']) {
@@ -133,18 +132,6 @@ async function api(path, body, method) {
   }
   throw lastError || new Error('服務請求失敗');
 }
-function setFlow(flow) {
-  currentFlow = flow === 'experiment' ? 'experiment' : 'data';
-  const scrolling = document.body.classList.contains('scroll-layout');
-  for (const name of ['data','experiment']) {
-    for (const el of document.querySelectorAll(`[data-flow-panel="${name}"]`)) el.hidden = scrolling ? false : name !== currentFlow;
-  }
-  for (const btn of document.querySelectorAll('[data-flow-tab]')) {
-    const active = btn.dataset.flowTab === currentFlow;
-    btn.classList.toggle('active', active);
-    btn.setAttribute('aria-selected', active ? 'true' : 'false');
-  }
-}
 async function task(button, fn) { if (button) button.disabled = true; try { await fn(); } catch(error) { notify(error.message, true); } finally { if(button) button.disabled = false; syncExperimentGuard(); } }
 function options(items) { return items.map(v => `<option value="${escape(v)}">${escape(v)}</option>`).join(''); }
 function modelOptions(items, details) {
@@ -164,24 +151,16 @@ function resetAgentTerminal() { terminalEvents=[]; renderAgentTerminal(); }
 function terminalLine(agent,message,tone='') { terminalEvents.push({at:terminalStamp(),agent,message,tone}); if(terminalEvents.length>12)terminalEvents.shift(); renderAgentTerminal(); }
 function datasetCut(d) { return d.requested_analysis_date || (d.used_analysis_dates || []).slice(-1)[0] || null; }
 function datasetLabel(d) { const cut=datasetCut(d); return `${d.ticker} · ${d.kind === 'synthetic' ? '合成測試' : '歷史資料'} v${d.version} · ${cut ? `研究日 ${cut}` : '研究日未記錄'} · 未來行情終點 ${d.price_end}（只供回測）`; }
-const collectorInfo={technical:['技術面 Agent','Yahoo 還原 OHLC'],fundamental:['基本面 Agent','SEC XBRL'],sentiment:['情緒面 Agent','Alpha Vantage／FNSPID'],macro:['總經面 Agent','ALFRED vintage']};
-const collectorStatus={idle:'尚未啟動',running:'收集中',complete:'完成',needs_input:'待補資料',needs_configuration:'未設定來源',missing:'缺資料',error:'失敗'};
+const COLLECTION_DOMAINS = ['technical','fundamental','sentiment','macro'];
 function missingPolicyLabel(protocol={}) { return (protocol.missing_data_policy||'force_no_trade')==='allow_decision'?'缺資料對照 · 保留模型決策':'保守門檻 · 強制 NoTrade'; }
 function protocolLabel(protocol={}) { const version=protocol.version||'未記錄'; return `協議 ${version}${currentProtocolVersion&&version!==currentProtocolVersion?' · 舊版結果':''}`; }
 function renderCollectionAgents(dataset=null, phase='idle') {
   const counts=dataset?.coverage?.domains||{};
   let complete=0, gaps=0;
-  for(const [domain,[title,source]] of Object.entries(collectorInfo)){
-    let status=phase;
-    let message=phase==='running'?'正在並行蒐集與驗證…':source;
-    if(dataset){
-      const count=counts[domain]||0;
-      status=(domain==='technical'?count>=61:count>0)?'complete':'missing';
-      message=status==='complete'?`分析日前 ${count} 筆可用資料`:'分析日前資料不足';
-    }
-    if(status==='complete')complete++; else if(dataset)gaps++;
-    const card=$(`collector-${domain}`); card.className=`agent-card ${status}`;
-    card.innerHTML=`<b>${escape(title)}</b><small>${escape(source)}</small><span>${escape(collectorStatus[status]||status)}</span><p>${escape(message)}</p>`;
+  for(const domain of COLLECTION_DOMAINS){
+    const count=counts[domain]||0;
+    const ok=dataset ? (domain==='technical'?count>=61:count>0) : false;
+    if(ok)complete++; else if(dataset)gaps++;
   }
   const readiness=$('data-readiness');
   if(phase==='running') readiness.textContent='四個資料 Agent 已啟動；技術、基本面與總經來源正在並行處理，情緒 Agent 同時檢查可用摘要。';
@@ -550,7 +529,6 @@ async function initialize() {
   const requestedTab = urlParams.get('tab');
   selectedJob = urlParams.get('selected') || null;
   setTab(requestedTab || (selectedJob ? 'runs' : 'data'), { skipUrl: true });
-  setFlow('data');
   // These reads are independent. Loading them together prevents a slow
   // readiness scan or Ollama probe from blocking the rest of the workspace.
   const initialResults = await Promise.allSettled([
@@ -594,7 +572,7 @@ async function initialize() {
   schedulePoll();
 }
 $('login-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{await api('/api/login',{key:$('access-key').value}); $('access-key').value=''; await initialize();}); });
-$('download-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{const ticker=$('ticker').value,analysisDate=$('download-date').value,refresh=$('refresh-data').checked,useFinbert=$('download-finbert').checked;resetAgentTerminal();terminalLine('YOU',`collect --ticker ${ticker} --as-of ${analysisDate} --domains all${refresh?' --refresh':''}${useFinbert?' --finbert':''}`,'command');terminalLine('COORD',refresh?`強制建立 ${analysisDate} 新快照，派發 4 個資料 Agent`:`先搜尋 ${ticker}／${analysisDate} 可重用的四域完整快照`);notify('資料 Agent 正在檢查快照與來源…');renderCollectionAgents(null,'running');let r;try{r=await api('/api/datasets/download',{ticker,analysis_date:analysisDate,refresh,use_finbert:useFinbert});}catch(error){terminalLine('ERROR',error.message,'error');renderCollectionAgents(datasetRows.find(d=>d.id===$('dataset').value)||null);throw error;}if(r.reused){terminalLine('CACHE',`HIT dataset v${r.version} · ${r.id.slice(0,12)}… · 未呼叫外部 API`,'ok');}else{terminalLine('COORD','已完成四域來源派工：Yahoo／SEC／Alpha+FNSPID／ALFRED');}const codes={technical:'TECH',fundamental:'FUND',sentiment:'SENT',macro:'MACRO'};for(const [domain,item] of Object.entries(r.agents))terminalLine(codes[domain],`${item.status.toUpperCase()} · ${item.records} records · ${item.message}`,item.status==='complete'?'ok':'warn');for(const limitation of r.limitations)terminalLine('AUDIT',limitation,'warn');if(!r.reused)terminalLine('STORE',`SAVED dataset ${r.id.slice(0,12)}… · immutable snapshot`,'ok');await refreshDatasets();await refreshReadiness();$('dataset').value=r.id;$('analysis-date').value=r.analysis_date;renderDatasetDetail();renderCollectionAgents(datasetRows.find(d=>d.id===r.id));setFlow('experiment');notify(r.reused?'已重用符合條件的既有資料快照；未重新呼叫來源 API。':'資料 Agent 已完成本輪工作，資料集已保存。\n'+r.limitations.join('\n'));}); });
+$('download-form').addEventListener('submit', e => { e.preventDefault(); task(e.submitter, async()=>{const ticker=$('ticker').value,analysisDate=$('download-date').value,refresh=$('refresh-data').checked,useFinbert=$('download-finbert').checked;resetAgentTerminal();terminalLine('YOU',`collect --ticker ${ticker} --as-of ${analysisDate} --domains all${refresh?' --refresh':''}${useFinbert?' --finbert':''}`,'command');terminalLine('COORD',refresh?`強制建立 ${analysisDate} 新快照，派發 4 個資料 Agent`:`先搜尋 ${ticker}／${analysisDate} 可重用的四域完整快照`);notify('資料 Agent 正在檢查快照與來源…');renderCollectionAgents(null,'running');let r;try{r=await api('/api/datasets/download',{ticker,analysis_date:analysisDate,refresh,use_finbert:useFinbert});}catch(error){terminalLine('ERROR',error.message,'error');renderCollectionAgents(datasetRows.find(d=>d.id===$('dataset').value)||null);throw error;}if(r.reused){terminalLine('CACHE',`HIT dataset v${r.version} · ${r.id.slice(0,12)}… · 未呼叫外部 API`,'ok');}else{terminalLine('COORD','已完成四域來源派工：Yahoo／SEC／Alpha+FNSPID／ALFRED');}const codes={technical:'TECH',fundamental:'FUND',sentiment:'SENT',macro:'MACRO'};for(const [domain,item] of Object.entries(r.agents))terminalLine(codes[domain],`${item.status.toUpperCase()} · ${item.records} records · ${item.message}`,item.status==='complete'?'ok':'warn');for(const limitation of r.limitations)terminalLine('AUDIT',limitation,'warn');if(!r.reused)terminalLine('STORE',`SAVED dataset ${r.id.slice(0,12)}… · immutable snapshot`,'ok');await refreshDatasets();await refreshReadiness();$('dataset').value=r.id;$('analysis-date').value=r.analysis_date;renderDatasetDetail();renderCollectionAgents(datasetRows.find(d=>d.id===r.id));setTab('experiment');notify(r.reused?'已重用符合條件的既有資料快照；未重新呼叫來源 API。':'資料 Agent 已完成本輪工作，資料集已保存。\n'+r.limitations.join('\n'));}); });
 $('source-check-button').addEventListener('click', e => task(e.currentTarget,async()=>{const result=await api('/api/sources/check',{ticker:$('ticker').value,analysis_date:$('download-date').value});const label={alpha_vantage:'Alpha Vantage',alpha_vantage_cache:'Alpha Vantage 快取',fnspid:'FNSPID'};notify(Object.entries(result).map(([key,value])=>`${label[key]||key}：${value.message}（${value.records} 筆）`).join('\n'));}));
 async function pollAlphaVantageArchive(){
   while(true){
@@ -668,7 +646,7 @@ $('batch-file').addEventListener('change', e => task(null,async()=>{
   e.target.value='';
 }));
 $('job-form').addEventListener('submit', e => {e.preventDefault();if(submitting)return;if(!$('dataset').value){notify('請先選擇一筆資料集，才能開始研究實驗。',true);syncExperimentGuard();return;}submitting=true;task(e.submitter,async()=>{try{const model=$('cloud-model').value.trim()||$('model').value;const j=await api('/api/jobs',{dataset_id:$('dataset').value,analysis_date:$('analysis-date').value,model,study:$('study').value,voting_samples:Number($('voting').value),missing_data_policy:$('missing-policy').value,anonymize_ticker:$('anonymize').checked,allow_point_fundamental:$('allow-point-fundamental').checked,allow_small_model:$('allow-small-model').checked,allow_low_quality_sentiment:$('allow-low-quality-sentiment').checked});selectedJob=j.id;notify(`研究已加入背景佇列，模型為 ${model}。候選決策、風控決策與品質覆寫會一起鎖定於協議。`);setTab('runs');await refreshJobs();}finally{submitting=false;}});});
-document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.tabButton){setTab(b.dataset.tabButton);return;}if(b.dataset.flowTab){setFlow(b.dataset.flowTab);return;}if(b.dataset.dismissNotice){dismissNotice(Number(b.dataset.dismissNotice));return;}if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);if(b.dataset.freeze)task(b,async()=>{if(!window.confirm('凍結此協議目前分析的資料集清單？凍結後不可撤銷，之後新增的案例會被標記為凍結後追加。'))return;await api(`/api/studies/${b.dataset.freeze}/freeze`,{});await showStatistics();});});
+document.addEventListener('click', e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.tabButton){setTab(b.dataset.tabButton);return;}if(b.dataset.dismissNotice){dismissNotice(Number(b.dataset.dismissNotice));return;}if(b.dataset.open)task(b,()=>showJob(b.dataset.open));if(b.dataset.control)task(b,async()=>{if(b.dataset.control==='cancel'&&!window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。'))return;await api(`/api/jobs/${selectedJob}/${b.dataset.control}`,{});await refreshJobs();});if(b.dataset.clone)task(b,async()=>{const j=await api(`/api/jobs/${b.dataset.clone}/clone`,{});selectedJob=j.id;await refreshJobs();});if(b.dataset.statistics)task(b,showStatistics);if(b.dataset.freeze)task(b,async()=>{if(!window.confirm('凍結此協議目前分析的資料集清單？凍結後不可撤銷，之後新增的案例會被標記為凍結後追加。'))return;await api(`/api/studies/${b.dataset.freeze}/freeze`,{});await showStatistics();});});
 $('refresh').addEventListener('click', e=>task(e.currentTarget,async()=>{await refreshDatasets();await refreshReadiness();await refreshJobs();}));
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){if(pollTimer)clearTimeout(pollTimer);pollTimer=null;return;}

@@ -17,7 +17,6 @@ main{max-width:1320px;margin:auto;padding:30px 4vw}
 .tabs button:hover{color:var(--ink)}
 .tabs button.active{color:var(--ink);border-bottom-color:var(--ink);background:color-mix(in srgb,var(--surface-alt) 58%,transparent)}
 .model-status{margin-left:auto;color:var(--muted);font-size:11px;white-space:nowrap}
-.flow-tabs{display:none!important}
 .scroll-layout .agent-console-panel{display:block!important;border-top:5px solid var(--accent);scroll-margin-top:64px}
 body.scroll-layout [data-flow-panel="data"],body.scroll-layout [data-flow-panel="experiment"],body.scroll-layout [data-tab-panel="setup"],body.scroll-layout [data-tab-panel="stats"]{display:block!important}
 .scroll-layout [data-flow-panel="data"],.scroll-layout [data-flow-panel="experiment"],.scroll-layout #statistics{scroll-margin-top:64px}
@@ -102,10 +101,6 @@ footer{padding:26px 4vw;border-top:1px solid var(--line);font-size:12px;color:va
 .source-settings summary{color:var(--muted)}
 .source-settings>p:first-of-type{margin:8px 0;font-size:11px}
 .source-settings form>button{margin-top:4px}
-.flow-tabs{display:flex;align-items:center;gap:8px;margin:0 0 16px;padding:5px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-alt)}
-.flow-tabs button{min-height:38px;padding:8px 16px;border-color:transparent;background:transparent;color:var(--muted);font-size:13px}
-.flow-tabs button.active{background:var(--surface);border-color:var(--line);color:var(--accent);box-shadow:0 1px 3px color-mix(in srgb,var(--ink) 10%,transparent)}
-.flow-tabs .hint{margin-left:auto;padding-right:10px;font-size:11px}
 .gputw-block{margin-top:14px;padding:14px 16px;border:1px dashed var(--border-input);border-radius:var(--radius);background:color-mix(in srgb,var(--surface-alt) 55%,transparent)}
 .gputw-block .hint{margin-top:0}
 .settings-group{margin:18px 0 0;padding:14px 16px 16px;border:1px solid var(--line);border-radius:var(--radius);background:color-mix(in srgb,var(--surface-alt) 34%,transparent)}
@@ -119,9 +114,6 @@ footer{padding:26px 4vw;border-top:1px solid var(--line);font-size:12px;color:va
 .setting-item .check{font-size:11px;font-weight:500;color:var(--muted);margin:0}
 #settings-fields{display:block;margin:12px 0 16px}
 .setting-state{font-size:11px;font-weight:600;color:var(--muted)}
-.data-explainer{margin:16px 0;padding:14px 16px;border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:var(--radius);background:var(--surface-alt)}
-.data-explainer strong{display:block;margin-bottom:3px;color:var(--accent);font-size:13px}
-.data-explainer p{margin:0;color:var(--muted);font-size:12px;line-height:1.55}
 .secondary-data-tools{margin-top:16px;padding:12px 16px;border:1px solid var(--line);border-radius:var(--radius);background:color-mix(in srgb,var(--surface-alt) 30%,transparent)}
 .secondary-data-tools>summary{color:var(--muted);font-size:12px}
 .secondary-data-tools[open]>summary{color:var(--accent);margin-bottom:10px}
@@ -132,14 +124,9 @@ footer{padding:26px 4vw;border-top:1px solid var(--line);font-size:12px;color:va
 .panel[data-flow-panel="data"] .hint{line-height:1.45}
 .panel[data-flow-panel="data"]{border-top:5px solid var(--accent)}
 .panel[data-flow-panel="data"] #study-readiness{margin-top:0}
-.panel[data-flow-panel="data"] #collection-agents{margin:18px 0;padding:14px;border:1px solid var(--line);border-radius:var(--radius);background:color-mix(in srgb,var(--surface-alt) 42%,transparent)}
-.panel[data-flow-panel="data"] #collection-agents::before{content:"四域資料 Agent 狀態";display:block;grid-column:1/-1;margin:0 0 2px;color:var(--accent);font-size:12px;font-weight:800;letter-spacing:.3px}
 .panel[data-flow-panel="data"] #download-form{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
 .panel[data-flow-panel="data"] #download-form::before{content:"下載／驗證研究資料";display:block;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line);color:var(--ink);font-size:14px;font-weight:800}
-.panel[data-flow-panel="data"] .data-explainer,.panel[data-flow-panel="data"] .source-settings,.panel[data-flow-panel="data"] .secondary-data-tools{margin-top:18px}
-.panel[data-flow-panel="data"] #data-readiness{display:none}
-.panel[data-flow-panel="data"] .data-explainer{display:none}
-.panel[data-flow-panel="data"] #collection-agents{display:none!important}
+.panel[data-flow-panel="data"] .source-settings,.panel[data-flow-panel="data"] .secondary-data-tools{margin-top:18px}
 .panel[data-flow-panel="experiment"]{border-top:5px solid var(--accent)}
 .panel[data-flow-panel="experiment"] form{padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:color-mix(in srgb,var(--surface-alt) 25%,transparent)}
 .file-label{display:flex;align-items:center;gap:12px;margin:14px 0 8px!important;padding:10px 12px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface-alt);font-size:12px!important}
@@ -151,12 +138,10 @@ footer{padding:26px 4vw;border-top:1px solid var(--line);font-size:12px;color:va
 .agent-grid article{padding:14px;border-radius:var(--radius)}
 .readiness{border-radius:var(--radius);line-height:1.55}
 .readiness span{display:block;margin-top:3px;color:var(--muted);font-size:11px}
-@media(max-width:1000px){.workspace-grid{grid-template-columns:1fr}.methods,.decisions{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:1000px){.methods,.decisions{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:720px){.settings-grid{grid-template-columns:1fr}.pair{grid-template-columns:1fr}}
-@media(max-width:520px){.flow-tabs{align-items:stretch;flex-direction:column}.flow-tabs button{width:100%}.flow-tabs .hint{margin:0;padding:4px 8px}}
 [hidden]{display:none!important}
-@media(max-width:1000px){.workspace-grid{grid-template-columns:310px minmax(0,1fr)}.methods,.decisions{grid-template-columns:repeat(2,1fr)}}
-@media(max-width:720px){header{gap:12px}.tag{display:none}.brand{margin-right:auto}.brand small{font-size:9px}main{padding:22px 16px}.workspace-grid{grid-template-columns:1fr}.panel{padding:20px}.panel-heading{align-items:flex-start;flex-direction:column;gap:0}.job{align-items:flex-start}.actions{gap:9px}}
+@media(max-width:720px){header{gap:12px}.tag{display:none}.brand{margin-right:auto}.brand small{font-size:9px}main{padding:22px 16px}.panel{padding:20px}.panel-heading{align-items:flex-start;flex-direction:column;gap:0}.job{align-items:flex-start}.actions{gap:9px}}
 
 /* Workflow hierarchy: grey navigation, clear section/subsection/action levels. */
 .panel>.section-label,.panel-heading .section-label{color:var(--muted)!important;font-size:11px!important;letter-spacing:1.5px}
