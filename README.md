@@ -66,6 +66,8 @@
 
 更完整的整理原則見 [專案結構](docs/project-layout.md)，目前驗證結果、正式研究缺口與公開發布優先序見 [v3-0912.1 最終審查](docs/final-review-2026-09-12.md)。
 
+**Repo 大小**：git 歷史約 7 MB、追蹤的程式碼約 1.5 MB（`research_service/`、`scripts/`、`docs/`）；`research-inputs/`、下載的行情快照、備份 zip 等大型檔案都被 `.gitignore` 排除，不會進 repo，clone 下來很小。**Docker image 約 2.3 GB**——主要是 PyTorch（CPU 版）＋ transformers，用來跑本機 FinBERT 離線評分；這是刻意的取捨（不需要外部 GPU 或付費 API 就能評分新聞情緒），不是意外堆出來的體積，但 build 時第一次要下載這些套件，網路慢的話會花一點時間。
+
 第一次 clone 這個 repo，先照 [Clone 後首次啟動](docs/getting-started.md) 走一遍。只想驗證回測流程，可照 [本機回測 Demo](docs/demo-backtest.md) 操作；這份流程會固定在歷史資料模式，並說明如何辨認完整資料集 ID、暫停續跑與匯出研究產物。
 
 ## 驗證與部署
@@ -76,6 +78,22 @@ docker compose -f compose.research.yaml run --rm --no-deps research python -m un
 node --check research_service\static\app.js
 node --test research_service\tests_js\*.test.js
 ```
+
+### 全新環境可重現性驗證
+
+每次重大變更後，會另外把當時的最新 commit clone 到暫存目錄，模擬「別人第一次拿到這個 repo」的情況，確認流程本身沒有依賴任何本機殘留狀態：
+
+```powershell
+git clone https://github.com/paul931130/stance-shift-lab.git <暫存路徑>
+cd <暫存路徑>
+docker compose -f compose.research.yaml build research
+docker compose -f compose.research.yaml run --rm --no-deps research python -m unittest discover -s research_service/tests -p test_*.py
+docker run -d --rm -p 127.0.0.1:8020:8000 -e RESEARCH_CONTAINER_LOCAL=true -v <暫存卷>:/data <image>
+curl http://127.0.0.1:8020/health   # 應為 {"status":"ok",...}
+curl http://127.0.0.1:8020/api/datasets   # 應為空陣列，確認初始狀態乾淨
+```
+
+最近一次（`c94c88a`，2026-09-15）結果：103/103 Python 測試通過、10/10 JS 測試通過、全新容器啟動後資料集數為 0、0/180 正式案例（符合全新環境預期）、無 `.env`／API key／原始新聞 CSV outside `.gitignore` 範圍。驗證完成後會刪除暫存 clone、容器、image 與 volume，不留殘留。
 
 公開伺服器需使用 HTTPS 反向代理、至少 32 字元的研究室存取金鑰與持久化備份。GitHub Pages、純 Cloudflare Workers 以及靜態網站無法執行此 Python/Ollama 後端。詳見 [部署指南](docs/deploy-v3.md) 與 [GitHub 發布檢查表](docs/github-release-checklist.md)。
 
