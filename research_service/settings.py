@@ -18,11 +18,6 @@ FIELDS = {
     "ALPHA_VANTAGE_NEWS_PATH": "伺服器內 Alpha Vantage 新聞快取 CSV 路徑（免消耗 API 額度）",
 }
 
-# These values identify an endpoint or instance, but are not credentials.
-# Showing them in the settings panel lets a user verify that the right GPUtw
-# instance is connected while keeping every token write-only.
-DISPLAY_FIELDS = {"GPUTW_API_URL", "GPUTW_INSTANCE_ID", "GPUTW_OLLAMA_BASE_URL"}
-
 
 class Settings:
     def __init__(self, root):
@@ -37,11 +32,17 @@ class Settings:
         return json.loads(self.path.read_text(encoding="utf-8")) if self.path.exists() else {}
 
     def public(self):
-        return {"fields": [{"name": key, "label": label, "configured": bool(os.getenv(key, "")),
-                            "secret": key.endswith("KEY"),
-                            **({"display_value": os.getenv(key, "")} if key in DISPLAY_FIELDS else {})}
-                           for key, label in FIELDS.items()],
-                "storage": "server_private", "restart_required": False,
+        fields = []
+        for key, label in FIELDS.items():
+            secret = key.endswith("KEY")
+            field = {"name": key, "label": label, "configured": bool(os.getenv(key, "")), "secret": secret}
+            # Non-secret values (contact strings, endpoints, server-side file
+            # paths) are safe to echo back so the operator can actually see
+            # what is currently configured, not just an "已設定" pill.
+            if not secret:
+                field["display_value"] = os.getenv(key, "")
+            fields.append(field)
+        return {"fields": fields, "storage": "server_private", "restart_required": False,
                 "note": "留白保留原值；勾選清除才刪除。FinBERT 在本機執行，不需要 HF_TOKEN。"}
 
     def save(self, values, clear=()):
