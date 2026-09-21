@@ -1,7 +1,7 @@
 version: 2
 updates:
   - package-ecosystem: "pip"
-    directory: "/research_service"
+    directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
@@ -16,8 +16,7 @@ updates:
       - dependency-name: "pandas"
       - dependency-name: "transformers"
       - dependency-name: "torch"
-      # Everything else (fastapi, uvicorn, litellm, yfinance, websockets,
-      # langgraph) may propose minor/patch bumps, but not majors.
+      # Everything else (fastapi, uvicorn, litellm, yfinance, langgraph) may propose minor/patch bumps, but not majors.
       - dependency-name: "*"
         update-types: ["version-update:semver-major"]
 

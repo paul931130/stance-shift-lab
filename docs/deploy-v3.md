@@ -24,7 +24,7 @@ research.example.com {
 
 ## 不使用 Docker
 
-安裝 Python 3.12 以上，建立獨立虛擬環境並安裝 `research_service/requirements.txt`。以 systemd、Windows 服務或平台工作程序啟動：
+安裝 Python 3.12 以上，建立獨立虛擬環境並在專案根目錄執行 `pip install .`（需要本機 FinBERT 時改用 `pip install ".[finbert]"`）。以 systemd、Windows 服務或平台工作程序啟動：
 
 ```text
 python -m uvicorn research_service.app:app --host 0.0.0.0 --port 8000 --workers 1 --no-proxy-headers

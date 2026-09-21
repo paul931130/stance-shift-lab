@@ -17,7 +17,7 @@
 git clone https://github.com/<你的帳號>/stance-shift-lab.git
 cd stance-shift-lab
 python -m venv .venv
-.venv\Scripts\pip install -r research_service/requirements.txt ruff
+.venv\Scripts\pip install -e ".[dev]"
 ```
 
 ## 送出修改前

@@ -32,7 +32,7 @@ if (-not (Test-Path -LiteralPath $python)) {
     if (-not $launcher) { throw '找不到 Python Launcher（py）。請先安裝 Python 3.12，再重跑 -Bootstrap。' }
     & $launcher.Source -3.12 -m venv $venv
     & $python -m pip install --upgrade pip
-    & $python -m pip install -r (Join-Path $root 'research_service\requirements.txt')
+    & $python -m pip install $root
 }
 
 if (Test-Path -LiteralPath $settings) {

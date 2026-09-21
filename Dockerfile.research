@@ -1,8 +1,10 @@
 FROM python:3.12-slim
 ENV PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1 RESEARCH_DATA_DIR=/data
 WORKDIR /app
-COPY research_service/requirements.txt /app/research_service/requirements.txt
-RUN pip install --no-cache-dir torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu && pip install --no-cache-dir -r research_service/requirements.txt && useradd --uid 10001 --create-home researcher && mkdir /data && chown researcher /data
+COPY pyproject.toml /app/pyproject.toml
+# pyproject.toml is the single dependency list. Install the CPU torch wheel first
+# (large, cached layer), then everything else it declares, including the finbert extra.
+RUN pip install --no-cache-dir torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu && python -c "import tomllib; p = tomllib.load(open('pyproject.toml', 'rb'))['project']; print('\n'.join(p['dependencies'] + p['optional-dependencies']['finbert']))" > /tmp/requirements.txt && pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt && useradd --uid 10001 --create-home researcher && mkdir /data && chown researcher /data
 COPY research_service /app/research_service
 COPY scripts/prepare_fnspid_news.py /app/scripts/prepare_fnspid_news.py
 USER researcher
