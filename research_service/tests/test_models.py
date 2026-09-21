@@ -154,6 +154,28 @@ class ModelReliabilityTests(unittest.TestCase):
         self.assertEqual(request.full_url, "https://gpu.example/ollama/api/chat")
         self.assertEqual(request.get_header("Authorization"), "Bearer gpu-model-key")
 
+    def test_timeout_and_context_are_explicitly_configurable(self):
+        seen = {}
+
+        def requester(req, timeout):
+            seen["timeout"] = timeout
+            seen["body"] = json.loads(req.data)
+            return Response(json.dumps({"message": {"content": json.dumps({
+                "action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
+                "rationale": "brief", "evidence_ids": ["e1"], "risks": []
+            })}, "model": "demo"}).encode())
+
+        protocol = StudyProtocol(model="ollama/demo", dataset_kind="synthetic", bootstrap_replicates=199)
+        with patch.dict("os.environ", {"RESEARCH_MODEL_TIMEOUT_SECONDS": "17",
+                                        "RESEARCH_MODEL_CONTEXT_LENGTH": "16384"}, clear=False), \
+             patch("research_service.models.urlopen", side_effect=requester):
+            _, audit = generate(protocol, [{"role": "system", "content": "decision"},
+                                           {"role": "user", "content": "{}"}])
+        self.assertEqual(seen["timeout"], 17)
+        self.assertEqual(seen["body"]["options"]["num_ctx"], 16384)
+        self.assertEqual(audit["model_timeout_seconds"], 17)
+        self.assertEqual(audit["model_context_length"], 16384)
+
 
 if __name__ == "__main__":
     unittest.main()

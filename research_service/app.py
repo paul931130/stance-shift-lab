@@ -25,8 +25,8 @@ from .data import (validate_dataset, download_prices, fetch_fundamental, fetch_s
 from .engine import Engine
 from .protocol import (DEFAULT_RESEARCH_MODEL, SMALL_MODEL_PATTERN, StudyProtocol, TICKERS,
                        QUARTER_DATES, validate_case)
-from .reporting import (study_report, export_job, csv_text, pilot_diagnostics,
-                        hold_band_sensitivity)
+from .reporting import (study_report, stability_report, export_job, csv_text,
+                        pilot_diagnostics, hold_band_sensitivity)
 from .storage import Store, now
 from .settings import Settings
 from .finbert import status as finbert_status, prepare_model
@@ -81,6 +81,16 @@ class BatchInput(BaseModel):
 def create_app(store=None, model_call=None, start_worker=True):
     store = store or Store(os.getenv("RESEARCH_DATA_DIR", "research-data"))
     settings = Settings(store.root)
+    demo_mode = os.getenv("RESEARCH_DEMO_MODE", "false").strip().lower() in ("1", "true", "yes", "on")
+    demo_dataset_id = None
+    demo_model_id = "ollama/demo-synthetic"
+    if demo_mode:
+        from .demo import DEMO_MODEL, demo_dataset, demo_model
+
+        demo_model_id = DEMO_MODEL
+        demo_dataset_id = store.add_dataset(demo_dataset())
+        if model_call is None:
+            model_call = demo_model
     finbert_tasks = {}
     finbert_task_lock = threading.RLock()
     av_archive_task = {"stage": "idle", "message": "尚未開始"}
@@ -135,7 +145,9 @@ def create_app(store=None, model_call=None, start_worker=True):
         if start_worker:
             await asyncio.to_thread(thread.join, 5)
 
-    app = FastAPI(title="Stance Shift Research v3", lifespan=lifespan, docs_url=None, redoc_url=None)
+    # Keep the generated API contract available for review and integration.
+    # The auth middleware below still protects it in remote mode.
+    app = FastAPI(title="Stance Shift Research v3", lifespan=lifespan)
     app.state.store = store
 
     @app.middleware("http")
@@ -186,7 +198,8 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @app.get("/health")
     def health():
-        return {"status": "ok", "version": StudyProtocol().version, "authentication_required": bool(access_key)}
+        return {"status": "ok", "version": StudyProtocol().version,
+                "authentication_required": bool(access_key), "demo_mode": demo_mode}
 
     @app.post("/api/login")
     async def login(request: Request):
@@ -213,7 +226,8 @@ def create_app(store=None, model_call=None, start_worker=True):
     @app.get("/api/config")
     def config():
         return {"tickers": TICKERS, "dates": QUARTER_DATES, "default_protocol": asdict(StudyProtocol()),
-            "model": os.getenv("RESEARCH_MODEL", DEFAULT_RESEARCH_MODEL), "remote": remote,
+            "model": demo_model_id if demo_mode else os.getenv("RESEARCH_MODEL", DEFAULT_RESEARCH_MODEL),
+            "remote": remote, "demo_mode": demo_mode, "demo_dataset_id": demo_dataset_id,
             "parallel_workers": engine.parallel_workers,
             "study_cases": len(TICKERS) * len(QUARTER_DATES),
             "sources": {"sec": bool(os.getenv("SEC_USER_AGENT")), "alfred": bool(os.getenv("FRED_API_KEY")),
@@ -227,7 +241,7 @@ def create_app(store=None, model_call=None, start_worker=True):
                 "ollama_configured": bool(gputw_ollama_base_url())},
             "capabilities": ["settings", "clone", "collect", "readiness", "temporal_splits", "import", "finbert", "run", "batch", "jobs",
                 "pause", "resume", "cancel", "export", "backup", "statistics",
-                "gputw_status", "gputw_resources", "gputw_active"]}
+                "gputw_status", "gputw_resources", "gputw_active", *( ["demo"] if demo_mode else [] )]}
 
     @app.get("/api/settings")
     def get_settings():
@@ -267,9 +281,18 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @app.get("/api/models")
     def models():
+        if demo_mode:
+            return {"ready": True, "models": [demo_model_id],
+                    "details": [{"id": demo_model_id, "name": "Deterministic demo provider",
+                                 "parameter_size": "synthetic", "context_length": 8192}],
+                    "configured_default": demo_model_id, "default_available": True,
+                    "formal_ready": False, "formal_models": [],
+                    "message": "目前使用內建合成 demo；不會呼叫外部模型或建立正式資料。"}
         try:
+            configured_remote_ollama = bool(gputw_ollama_base_url())
             ollama_url = (gputw_ollama_base_url()
                           or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
+            endpoint_label = "遠端 Ollama（GPUtw）" if configured_remote_ollama else "本機 Ollama"
             headers = {}
             if os.getenv("GPUTW_OLLAMA_API_KEY", "").strip():
                 headers["Authorization"] = f"Bearer {os.getenv('GPUTW_OLLAMA_API_KEY').strip()}"
@@ -288,9 +311,8 @@ def create_app(store=None, model_call=None, start_worker=True):
                     "formal_ready": bool(formal_models), "formal_models": formal_models}
         except HTTPError as error:
             if error.code in (401, 403):
-                message = (f"遠端 Ollama 拒絕連線（HTTP {error.code}）。"
-                           "請確認 GPUtw 的 11434 連接埠可從本機存取，"
-                           "或填入遠端 Ollama 存取 key；這不是 NoTrade。")
+                message = (f"{endpoint_label} 拒絕連線（HTTP {error.code}）。"
+                           f"請確認 {endpoint_label} 可從本機存取，或填入端點存取 key；這不是 NoTrade。")
             elif error.code == 429:
                 message = "遠端 Ollama 暫時限流（HTTP 429），請稍後重試；這不是 NoTrade。"
             else:
@@ -299,11 +321,11 @@ def create_app(store=None, model_call=None, start_worker=True):
                     "formal_ready": False, "default_available": False,
                     "error_code": "model_endpoint_http_error", "http_status": error.code,
                     "message": message}
-        except (URLError, TimeoutError, OSError) as error:
+        except (URLError, TimeoutError, OSError):
             return {"ready": False, "models": [], "details": [], "formal_models": [],
                     "formal_ready": False, "default_available": False,
                     "error_code": "model_endpoint_unreachable",
-                    "message": "模型服務目前無法連線；請確認 Ollama／GPUtw 執行個體仍在執行。這不是 NoTrade。"}
+                    "message": f"模型服務目前無法連線；請確認 {endpoint_label} 仍在執行。這不是 NoTrade。"}
         except Exception:
             return {"ready": False, "models": [], "details": [], "formal_models": [],
                     "formal_ready": False, "default_available": False,
@@ -508,7 +530,8 @@ def create_app(store=None, model_call=None, start_worker=True):
         if data.get("kind") == "historical" and requested_date != payload.analysis_date:
             shown = requested_date or "未記錄"
             raise ValueError(f"資料集研究日是 {shown}，不能用於 {payload.analysis_date}；請選擇日期完全相同的資料集")
-        protocol = StudyProtocol(model=payload.model, voting_samples=payload.voting_samples, study=payload.study,
+        effective_model = demo_model_id if demo_mode else payload.model
+        protocol = StudyProtocol(model=effective_model, voting_samples=payload.voting_samples, study=payload.study,
             anonymize_ticker=payload.anonymize_ticker, dataset_kind=data["kind"],
             missing_data_policy=payload.missing_data_policy,
             allow_point_fundamental=payload.allow_point_fundamental,
@@ -540,16 +563,17 @@ def create_app(store=None, model_call=None, start_worker=True):
         if fundamental_problem and not payload.allow_point_fundamental:
             raise ValueError("此歷史資料集只有不可比較的 SEC 點時欄位；請重新採集新版資料，"
                              "或明確使用點時基本面敏感性覆寫")
-        if payload.model.startswith("ollama/") and not injected_model_call:
+        if effective_model.startswith("ollama/") and not injected_model_call:
             installed = models()
-            if not installed.get("ready") or payload.model not in installed.get("models", []):
-                raise ValueError(f"Ollama 模型 {payload.model} 尚未安裝或目前無法連線")
-            model_identity = next(item for item in installed["details"] if item["id"] == payload.model)
+            if not installed.get("ready") or effective_model not in installed.get("models", []):
+                raise ValueError(f"Ollama 模型 {effective_model} 尚未安裝或目前無法連線")
+            model_identity = next(item for item in installed["details"] if item["id"] == effective_model)
             parameter_count = _parameter_billions(model_identity.get("parameter_size"))
             if parameter_count is not None and parameter_count < 14 and not payload.allow_small_model:
                 raise ValueError("研究用模型參數量過小；14B 以下模型無法穩定區分 A/B/C/D。請改用 14B 以上，或明確設定 allow_small_model=True 進行冒煙測試")
         else:
-            model_identity = {"id": payload.model, "provider": "test_override" if injected_model_call else "cloud_alias",
+            model_identity = {"id": effective_model,
+                              "provider": "built_in_demo" if demo_mode else ("test_override" if injected_model_call else "cloud_alias"),
                               "resolved_at": now()}
         return {"ticker": data["ticker"], "analysis_date": payload.analysis_date,
             "evaluation_split": classify_analysis_date(payload.analysis_date), "dataset_id": payload.dataset_id,
@@ -587,8 +611,20 @@ def create_app(store=None, model_call=None, start_worker=True):
         return {"jobs": job_summaries(), "selected": store.get(selected) if selected else None}
 
     @app.get("/api/jobs/{key}")
-    def job(key: str):
-        return store.get(key)
+    def job(key: str, detail: bool = False):
+        result = store.get(key)
+        if detail:
+            return result
+        state = result.pop("state")
+        result["state_summary"] = {
+            "finished": bool(state.get("finished")),
+            "records": len(state.get("records", [])),
+            "trace": len(state.get("trace", [])),
+            "attempts": len(state.get("attempts", [])),
+            "cases": len(state.get("cases", [])),
+            "has_report": bool(state.get("report")),
+        }
+        return result
 
     @app.post("/api/jobs/{key}/clone")
     def clone_job(key: str):
@@ -681,6 +717,10 @@ def create_app(store=None, model_call=None, start_worker=True):
     @app.get("/api/studies/{protocol_hash}/pilot")
     def pilot(protocol_hash: str):
         return pilot_diagnostics([j for j in store.jobs() if j["config"]["protocol_hash"] == protocol_hash])
+
+    @app.get("/api/studies/{protocol_hash}/stability")
+    def stability(protocol_hash: str):
+        return stability_report([j for j in store.jobs() if j["config"]["protocol_hash"] == protocol_hash])
 
     @app.get("/api/studies/{protocol_hash}/hold-band")
     def hold_band(protocol_hash: str):

@@ -11,6 +11,28 @@ from .data import digest
 from .protocol import visible_history
 
 
+DEFAULT_MODEL_TIMEOUT_SECONDS = 240
+DEFAULT_MODEL_CONTEXT_LENGTH = 8192
+
+
+def _bounded_integer(name, default, minimum, maximum):
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return max(minimum, min(maximum, value))
+
+
+def model_timeout_seconds():
+    """Return the provider timeout without allowing an unsafe/unbounded value."""
+    return _bounded_integer("RESEARCH_MODEL_TIMEOUT_SECONDS", DEFAULT_MODEL_TIMEOUT_SECONDS, 10, 3600)
+
+
+def model_context_length():
+    """Return the explicit Ollama context length used for every chat request."""
+    return _bounded_integer("RESEARCH_MODEL_CONTEXT_LENGTH", DEFAULT_MODEL_CONTEXT_LENGTH, 1024, 131072)
+
+
 # The supplied SEC facts are point-in-time XBRL fields.  In particular,
 # ``NetIncomeLoss`` is a taxonomy name and cannot be rewritten as a claim
 # that the company made a loss.  These phrases need comparison evidence that
@@ -291,6 +313,8 @@ def output_schema_for(messages):
 def generate(protocol, messages, seed=None, temperature=None):
     output_schema = output_schema_for(messages)
     effective_temperature = protocol.temperature if temperature is None else temperature
+    timeout_seconds = model_timeout_seconds()
+    context_length = model_context_length()
     failures, attempt_audits = [], []
     for attempt in range(1, protocol.provider_retry_attempts + 1):
         usage, content = {}, ""
@@ -298,7 +322,8 @@ def generate(protocol, messages, seed=None, temperature=None):
         try:
             if protocol.model.startswith("ollama/"):
                 model = protocol.model.removeprefix("ollama/")
-                options = {"temperature": effective_temperature, "num_predict": protocol.max_output_tokens}
+                options = {"temperature": effective_temperature, "num_predict": protocol.max_output_tokens,
+                           "num_ctx": context_length}
                 if seed is not None:
                     options["seed"] = int(seed)
                 # Keep the local model loaded for the duration of a queued
@@ -321,7 +346,8 @@ def generate(protocol, messages, seed=None, temperature=None):
                 remote_token = os.getenv("GPUTW_OLLAMA_API_KEY", "").strip()
                 if remote_token:
                     headers["Authorization"] = f"Bearer {remote_token}"
-                with urlopen(Request(base + "/api/chat", data=json.dumps(body).encode(), headers=headers), timeout=240) as response:
+                with urlopen(Request(base + "/api/chat", data=json.dumps(body).encode(), headers=headers),
+                             timeout=timeout_seconds) as response:
                     provider_result = json.load(response)
                 content = provider_result["message"]["content"]
                 usage = {"prompt_tokens": provider_result.get("prompt_eval_count"),
@@ -333,7 +359,7 @@ def generate(protocol, messages, seed=None, temperature=None):
                 kwargs = {"model": protocol.model, "messages": messages, "temperature": effective_temperature,
                     "max_tokens": protocol.max_output_tokens,
                     "response_format": {"type": "json_schema", "json_schema": {"name": "research_output", "strict": True, "schema": output_schema}},
-                    "timeout": 240, "num_retries": 0}
+                    "timeout": timeout_seconds, "num_retries": 0}
                 if seed is not None:
                     kwargs["seed"] = int(seed)
                 provider_result = litellm.completion(**kwargs)
@@ -353,7 +379,8 @@ def generate(protocol, messages, seed=None, temperature=None):
             usage["client_elapsed_seconds"] = round(time.monotonic() - attempt_started, 6)
             return parsed, {"usage": usage, "prompt_hash": digest(messages), "raw_response": content,
                 "seed": seed, "provider_attempts": attempt, "prior_failures": failures,
-                "temperature": effective_temperature,
+                "temperature": effective_temperature, "model_timeout_seconds": timeout_seconds,
+                "model_context_length": context_length,
                 "attempts": attempt_audits + [{"attempt": attempt, "status": "complete", "usage": usage}]}
         except Exception as error:
             usage.setdefault("client_elapsed_seconds", round(time.monotonic() - attempt_started, 6))

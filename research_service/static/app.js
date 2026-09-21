@@ -16,7 +16,7 @@ function friendlyJobError(error) {
   }
   return value;
 }
-let selectedJob = null, selectedProtocol = null, busy = false, datasetRows = [], parallelWorkers = 1, currentProtocolVersion = '', terminalEvents = [];
+let selectedJob = null, selectedProtocol = null, busy = false, datasetRows = [], parallelWorkers = 1, currentProtocolVersion = '', terminalEvents = [], demoMode = false;
 let currentTab = 'data', autoStatsJob = null;
 const TABS = ['data', 'experiment', 'runs', 'stats'];
 function tabTarget(tab) {
@@ -209,6 +209,7 @@ function syncExperimentGuard() {
     cloudModel: $('cloud-model').value, localModel,
     localAvailable: installedModels.has(localModel),
     localParameterSize: detail?.parameter_size,
+    demoMode,
   });
   const guard=$('experiment-guard'), button=$('run-button');
   button.disabled=!result.ready || submitting;
@@ -406,7 +407,7 @@ function estimateRemaining(s, total, jobStatus) {
 async function showJob(id, loadedJob=null) {
   selectedJob = id;
   syncUrl();
-  const job = loadedJob || await api(`/api/jobs/${id}`), s = job.state, total = 15 + job.config.protocol.voting_samples;
+  const job = loadedJob || await api(`/api/jobs/${id}?detail=true`), s = job.state, total = 15 + job.config.protocol.voting_samples;
   selectedProtocol = job.config.protocol_hash;
   const output = $('run-detail'); output.hidden = false;
   const isFinal = ['complete','cancelled'].includes(job.status);
@@ -479,19 +480,48 @@ function organizeWorkflowSections() {
 
 }
 function setupScrollNavigation() {
-  if (!('IntersectionObserver' in window)) return;
   const sections = TABS.map(tab => [tab, tabTarget(tab)]).filter(([,el]) => el);
-  const observer = new IntersectionObserver(entries => {
-    const visible = entries.filter(entry => entry.isIntersecting)
-      .sort((a,b) => b.intersectionRatio - a.intersectionRatio)[0];
-    if (!visible) return;
-    const match = sections.find(([,el]) => el === visible.target);
-    if (match && currentTab !== match[0]) setTab(match[0], {skipUrl:true, fromScroll:true});
-  }, {threshold:[0.15,0.4,0.7], rootMargin:'-72px 0px -45% 0px'});
+  // IntersectionObserver can miss a state transition when the user drags the
+  // scrollbar quickly or a panel reflows while data is loading.  Reconcile
+  // against the actual section position on scroll so the sticky step bar never
+  // remains on a stale step.
+  let frame = 0;
+  const syncFromScroll = () => {
+    frame = 0;
+    const tabsBottom = document.querySelector('.tabs')?.getBoundingClientRect().bottom || 64;
+    // Activate a section once its heading reaches the reading area.  The
+    // viewport buffer also lets the final (statistics) section become active
+    // when only its lower portion is visible at the end of the document.
+    const activationLine = tabsBottom + Math.min(window.innerHeight * 0.72, 420);
+    const positions = sections.map(([tab, el]) => ({tab, top: el.getBoundingClientRect().top, bottom: el.getBoundingClientRect().bottom}));
+    const reached = positions.filter(item => item.top <= activationLine);
+    const current = reached.length ? reached[reached.length - 1] : positions[0];
+    if (current.tab !== currentTab) setTab(current.tab, {skipUrl:true, fromScroll:true});
+  };
+  const onScroll = () => { if (!frame) frame = requestAnimationFrame(syncFromScroll); };
+  window.addEventListener('scroll', onScroll, {passive:true});
+  window.addEventListener('resize', onScroll, {passive:true});
+  if (!('IntersectionObserver' in window)) {
+    syncFromScroll();
+    return;
+  }
+  // Use the observer only as a low-cost reflow signal.  Its entry order can
+  // be stale after a fast drag, so the single position based reconciler above
+  // remains the source of truth for the active step.
+  const observer = new IntersectionObserver(() => syncFromScroll(), {
+    threshold:[0.15,0.4,0.7], rootMargin:'-72px 0px -45% 0px'
+  });
   sections.forEach(([,el]) => observer.observe(el));
+  syncFromScroll();
 }
 async function initialize() {
   const c = await api('/api/config');
+  demoMode = Boolean(c.demo_mode);
+  if (demoMode) {
+    const banner = $('demo-banner');
+    banner.hidden = false;
+    banner.textContent = '展示模式：使用內建合成資料與確定性回應，不需要 API key，不會呼叫外部模型，也不會產生正式研究結論。';
+  }
   placeStudyDesign();
   organizeWorkflowSections();
   document.body.classList.add('scroll-layout');
@@ -551,7 +581,8 @@ async function initialize() {
   modelDetails=new Map((m.details||[]).map(item=>[item.id,item]));
   installedModels=new Set(m.models||[]);
   const formal=(m.details||[]).filter(item=>Number.parseFloat(item.parameter_size)>=14);
-  $('model-state').textContent = m.ready ? (formal.length
+  $('model-state').textContent = demoMode ? 'DEMO · 內建合成 provider · 不代表正式模型資格'
+    : m.ready ? (formal.length
     ? `Ollama 已連線 · ${m.models.length} 個本機模型 · ${formal.length} 個符合 14B 研究門檻`
     : `Ollama 已連線 · ${m.models.length} 個模型 · 無 14B 研究模型`) : (m.http_status === 403
       ? 'MODEL 403 · GPUtw Ollama 權限被拒'

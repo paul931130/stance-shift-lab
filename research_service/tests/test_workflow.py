@@ -216,6 +216,19 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("historical_accuracy_below_0.50", result["gate"]["reasons"])
         self.assertEqual(result["gate"]["history_status"], "warning_only_recovery_enabled")
 
+    def test_historical_insufficient_base_rate_history_forces_no_trade(self):
+        candidate = {"action":"Buy", "expected_return_pct":5., "confidence":.8, "rationale":"test", "evidence_ids":["e1"],
+                     "invalid_evidence_ids":[], "risks":[]}
+        inputs = {"domains":{domain:[{"evidence_id":"e1"}] for domain in ("technical","fundamental","sentiment","macro")},
+                  "volatility":.2,
+                  "base_rates":{"basis":"insufficient_history", "calibration_ready":False,
+                                 "windows":4, "windows_required":8}}
+        result = gate(candidate, inputs, [], StudyProtocol(dataset_kind="historical", bootstrap_replicates=199))
+        self.assertEqual(result["action"], "NoTrade")
+        self.assertEqual(result["candidate_action"], "Buy")
+        self.assertIn("insufficient_base_rate_history", result["gate"]["reasons"])
+        self.assertTrue(result["gate"]["calibration_control"])
+
     def test_memory_respects_maturity_protocol_and_group(self):
         job = self.complete(self.create())
         config = dict(job["config"], analysis_date="2025-01-01")
@@ -266,6 +279,38 @@ class WorkflowTests(unittest.TestCase):
                 self.assertNotEqual(login.cookies.get('research_session'), "a"*32)
                 self.assertEqual(client.get('/api/jobs').status_code,200)
 
+    def test_api_docs_and_compact_job_detail_contract(self):
+        job = self.create()
+        with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            self.assertEqual(client.get('/docs').status_code, 200)
+            self.assertEqual(client.get('/redoc').status_code, 200)
+            self.assertEqual(client.get('/openapi.json').status_code, 200)
+            compact = client.get(f'/api/jobs/{job["id"]}')
+            detailed = client.get(f'/api/jobs/{job["id"]}?detail=true')
+        self.assertEqual(compact.status_code, 200)
+        self.assertIn("state_summary", compact.json())
+        self.assertNotIn("state", compact.json())
+        self.assertIn("state", detailed.json())
+
+    def test_resume_clears_stale_provider_error(self):
+        job = self.create()
+        state = {"records": [], "research": {}, "trace": [], "attempts": []}
+        self.store.save_step(job["id"], state, "provider failed")
+        self.assertEqual(self.store.get(job["id"])["status"], "paused")
+        self.store.control(job["id"], "resume")
+        resumed = self.store.get(job["id"])
+        self.assertEqual(resumed["error"], "")
+        self.assertEqual((resumed["status"], resumed["wants_run"]), ("queued", 1))
+
+    def test_local_model_error_message_does_not_claim_gpu_tw(self):
+        with patch.dict(os.environ, {"GPUTW_OLLAMA_BASE_URL": "",
+                                     "OLLAMA_BASE_URL": "http://127.0.0.1:11434"}, clear=False), \
+             patch("research_service.app.get_json", side_effect=OSError("offline")):
+            with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+                result = client.get('/api/models').json()
+        self.assertIn("本機 Ollama", result["message"])
+        self.assertNotIn("GPUtw 執行個體", result["message"])
+
     def test_legacy_clone_records_required_migration_overrides(self):
         old_protocol = asdict(self.protocol)
         old_protocol.update(version="v3-0908.2", model="ollama/gemma3:4b", allow_small_model=False)
@@ -277,7 +322,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         cloned = response.json()
         self.assertEqual(cloned["config"]["parent_job_id"], legacy["id"])
-        self.assertEqual(cloned["config"]["protocol"]["version"], "v3-0913.1")
+        self.assertEqual(cloned["config"]["protocol"]["version"], "v3-0913.2")
         self.assertTrue(cloned["config"]["protocol"]["allow_small_model"])
         self.assertEqual(cloned["config"]["migration"]["from_protocol_version"], "v3-0908.2")
 

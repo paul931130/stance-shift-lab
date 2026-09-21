@@ -14,6 +14,9 @@ FIELDS = {
     "GPUTW_INSTANCE_ID": "GPUtw 執行個體 ID",
     "GPUTW_OLLAMA_BASE_URL": "GPUtw 遠端 Ollama 位址（選填）",
     "GPUTW_OLLAMA_API_KEY": "遠端 Ollama 存取 key（若端點有保護）",
+    "RESEARCH_DEMO_MODE": "內建合成展示模式（true/false）",
+    "RESEARCH_MODEL_TIMEOUT_SECONDS": "模型請求逾時秒數（10–3600）",
+    "RESEARCH_MODEL_CONTEXT_LENGTH": "Ollama context 長度（1024–131072）",
     "FNSPID_NEWS_PATH": "伺服器內 FNSPID CSV 路徑",
     "ALPHA_VANTAGE_NEWS_PATH": "伺服器內 Alpha Vantage 新聞快取 CSV 路徑（免消耗 API 額度）",
 }

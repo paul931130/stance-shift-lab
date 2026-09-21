@@ -22,7 +22,7 @@ body.scroll-layout [data-flow-panel="data"],body.scroll-layout [data-flow-panel=
 .scroll-layout [data-flow-panel="data"],.scroll-layout [data-flow-panel="experiment"],.scroll-layout #statistics{scroll-margin-top:64px}
 .stats-substep{margin:18px 0 0;padding:14px 16px;border:1px solid var(--line);border-radius:var(--radius);background:color-mix(in srgb,var(--surface-alt) 28%,transparent)}
 .stats-substep .section-label{margin-bottom:5px}
-.workflow-substep{margin:30px 0 12px;padding:8px 12px;border:1px solid var(--line);border-left:4px solid var(--muted);border-radius:var(--radius);background:color-mix(in srgb,var(--surface-alt) 38%,transparent);color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.55px}
+.workflow-substep{margin:28px 0 12px;padding:7px 10px;border:0;border-left:3px solid var(--muted);border-bottom:1px solid var(--line);border-radius:0;background:transparent;color:var(--muted);font-size:12px;font-weight:800;letter-spacing:.55px}
 .workflow-substep:first-child{margin-top:0}
 .protocol{margin:0 0 14px!important;padding:14px 18px!important}
 .protocol h2{margin:0 0 10px;font-size:17px}
@@ -83,6 +83,7 @@ summary{cursor:pointer;font-weight:600}
 .trace small{font-size:12px;color:var(--muted)}
 pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:420px;overflow:auto;background:var(--surface-alt);border:1px solid var(--line);padding:12px;border-radius:var(--radius)}
 #notice{display:flex;flex-direction:column;gap:8px;margin-bottom:20px}
+.demo-banner{margin-bottom:20px;padding:14px 18px;border:1px solid var(--notice-border);background:var(--notice-bg);border-radius:var(--radius);color:var(--ink);font-size:13px}
 .notice-item{display:flex;align-items:flex-start;gap:12px;padding:14px 18px;border:1px solid var(--notice-border);background:var(--notice-bg);border-radius:var(--radius);white-space:pre-wrap;color:var(--ink)}
 .notice-item span{flex:1}
 .notice-item.error{background:var(--notice-error-bg);border-color:var(--notice-error-border);color:var(--notice-error-fg)}
@@ -123,7 +124,7 @@ footer{padding:26px 4vw;border-top:1px solid var(--line);font-size:12px;color:va
 .panel[data-flow-panel="data"] label{margin-bottom:10px}
 .panel[data-flow-panel="data"] .hint{line-height:1.45}
 .panel[data-flow-panel="data"]{border-top:5px solid var(--accent)}
-.panel[data-flow-panel="data"] #study-readiness{margin-top:0}
+.panel[data-flow-panel="data"] #study-readiness{margin:0 0 18px;padding:14px 16px;border-left:3px solid var(--accent);background:color-mix(in srgb,var(--surface-alt) 42%,transparent)}
 .panel[data-flow-panel="data"] #download-form{margin:18px 0;padding:16px;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
 .panel[data-flow-panel="data"] #download-form::before{content:"下載／驗證研究資料";display:block;margin:0 0 12px;padding-bottom:8px;border-bottom:1px solid var(--line);color:var(--ink);font-size:14px;font-weight:800}
 .panel[data-flow-panel="data"] .source-settings,.panel[data-flow-panel="data"] .secondary-data-tools{margin-top:18px}
