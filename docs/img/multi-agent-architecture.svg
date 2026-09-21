@@ -1,0 +1,78 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1190" width="1600" height="1190" role="img" aria-label="Stance Shift Lab 多代理架構圖">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="9" markerHeight="9" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#5B6673"/>
+    </marker>
+    <style>
+      text { font-family: "Noto Sans TC", "Microsoft JhengHei", "PingFang TC", Arial, sans-serif; fill: #1F2A37; }
+      .t { font-size: 27px; font-weight: 700; }
+      .s { font-size: 21px; fill: #5B6673; }
+      .w { fill: #FFFFFF; }
+      .h { font-size: 36px; font-weight: 700; }
+      .lbl { font-size: 20px; font-weight: 700; fill: #5B6673; letter-spacing: 1px; }
+      .box { fill: #FFFFFF; stroke: #C9C4B5; stroke-width: 2; }
+      .llm { fill: #FFFFFF; stroke: #0F766E; stroke-width: 3; }
+      .det { fill: #F1F5F9; stroke: #475569; stroke-width: 3; }
+      .swap { fill: #FFF7ED; stroke: #B45309; stroke-width: 3; }
+      .gate { fill: #14213D; stroke: #14213D; }
+      .line { stroke: #5B6673; stroke-width: 3; fill: none; marker-end: url(#arr); }
+    </style>
+  </defs>
+  <rect width="1600" height="1190" fill="#F7F5F0"/>
+  <text x="60" y="62" class="h">Stance Shift Lab：多代理決策架構</text>
+
+  <!-- L1 data -->
+  <text x="60" y="104" class="lbl">1 · 資料來源</text>
+  <g>
+    <rect class="box" x="60" y="116" width="280" height="80" rx="12"/><text x="200" y="150" class="t" text-anchor="middle">Yahoo 價格</text><text x="200" y="178" class="s" text-anchor="middle">技術面資料</text>
+    <rect class="box" x="360" y="116" width="280" height="80" rx="12"/><text x="500" y="150" class="t" text-anchor="middle">SEC XBRL</text><text x="500" y="178" class="s" text-anchor="middle">財報數字</text>
+    <rect class="box" x="660" y="116" width="280" height="80" rx="12"/><text x="800" y="150" class="t" text-anchor="middle">新聞</text><text x="800" y="178" class="s" text-anchor="middle">Alpha Vantage · FNSPID</text>
+    <rect class="box" x="960" y="116" width="280" height="80" rx="12"/><text x="1100" y="150" class="t" text-anchor="middle">FinBERT</text><text x="1100" y="178" class="s" text-anchor="middle">本機情緒分數</text>
+    <rect class="box" x="1260" y="116" width="280" height="80" rx="12"/><text x="1400" y="150" class="t" text-anchor="middle">FRED / ALFRED</text><text x="1400" y="178" class="s" text-anchor="middle">總體資料</text>
+  </g>
+  <path class="line" d="M800,200 L800,244"/>
+
+  <!-- L2 coordinator -->
+  <text x="60" y="238" class="lbl">2 · 協調者</text>
+  <rect class="det" x="250" y="250" width="1100" height="80" rx="12"/>
+  <text x="800" y="284" class="t" text-anchor="middle">Coordinator：建立證據快照</text>
+  <text x="800" y="312" class="s" text-anchor="middle">依分析日切出時間邊界內的證據，四個領域各自輸入（不使用未來資料）</text>
+  <path class="line" d="M800,334 L800,378"/>
+
+  <!-- L3 research agents -->
+  <text x="60" y="372" class="lbl">3 · 研究 Agent（各領域一個，只摘要證據、不給投資建議）</text>
+  <rect class="llm" x="60" y="384" width="355" height="112" rx="12"/><text x="237" y="422" class="t" text-anchor="middle">技術面 Agent</text><text x="237" y="452" class="s" text-anchor="middle">LLM 摘要價格證據</text><text x="237" y="478" class="s" text-anchor="middle">須引用證據編號</text>
+  <rect class="det" x="435" y="384" width="355" height="112" rx="12"/><text x="612" y="422" class="t" text-anchor="middle">基本面 Agent</text><text x="612" y="452" class="s" text-anchor="middle">確定性擷取（非 LLM）</text><text x="612" y="478" class="s" text-anchor="middle">SEC 數字逐字保留</text>
+  <rect class="llm" x="810" y="384" width="355" height="112" rx="12"/><text x="987" y="422" class="t" text-anchor="middle">情緒面 Agent</text><text x="987" y="452" class="s" text-anchor="middle">LLM 摘要新聞與</text><text x="987" y="478" class="s" text-anchor="middle">FinBERT 分數</text>
+  <rect class="llm" x="1185" y="384" width="355" height="112" rx="12"/><text x="1362" y="422" class="t" text-anchor="middle">總體 Agent</text><text x="1362" y="452" class="s" text-anchor="middle">LLM 摘要總體資料</text><text x="1362" y="478" class="s" text-anchor="middle">須引用證據編號</text>
+  <path class="line" d="M800,500 L800,544"/>
+
+  <!-- L4 report -->
+  <text x="60" y="538" class="lbl">4 · 共用證據</text>
+  <rect class="box" x="250" y="550" width="1100" height="80" rx="12"/>
+  <text x="800" y="584" class="t" text-anchor="middle">中性報告（Neutral Report）</text>
+  <text x="800" y="612" class="s" text-anchor="middle">鎖定並計算雜湊；A / B / C / D 四組看到同一份證據</text>
+  <path class="line" d="M800,634 L800,678"/>
+
+  <!-- L5 decision arms -->
+  <text x="60" y="672" class="lbl">5 · 決策組別（每案例共 22 次模型呼叫 = 1 + 7 + 7 + 7）</text>
+  <rect class="box" x="60" y="684" width="355" height="190" rx="12"/><text x="237" y="724" class="t" text-anchor="middle">A　單一決策</text><text x="237" y="758" class="s" text-anchor="middle">1 次呼叫</text><text x="237" y="786" class="s" text-anchor="middle">基準組：一次直接判斷</text>
+  <rect class="box" x="435" y="684" width="355" height="190" rx="12"/><text x="612" y="724" class="t" text-anchor="middle">B　自我一致性投票</text><text x="612" y="758" class="s" text-anchor="middle">7 次取樣（溫度 0.8）</text><text x="612" y="786" class="s" text-anchor="middle">與 C / D 算力相當的對照</text>
+  <rect class="box" x="810" y="684" width="355" height="190" rx="12"/><text x="987" y="724" class="t" text-anchor="middle">C　多空辯論</text><text x="987" y="758" class="s" text-anchor="middle">多頭 / 空頭 3 輪辯論</text><text x="987" y="786" class="s" text-anchor="middle">+ 裁決者，共 7 次呼叫</text>
+  <rect class="swap" x="1185" y="684" width="355" height="190" rx="12"/><text x="1362" y="724" class="t" text-anchor="middle">D　立場交換</text><text x="1362" y="758" class="s" text-anchor="middle">同 C，但第 2 輪互換立場</text><text x="1362" y="786" class="s" text-anchor="middle">互換輪不看對手歷史</text><text x="1362" y="814" class="s" text-anchor="middle">（本研究的處理組）</text>
+  <path class="line" d="M800,878 L800,922"/>
+
+  <!-- L6 gate -->
+  <text x="60" y="916" class="lbl">6 · 閘門與動作</text>
+  <rect class="gate" x="60" y="928" width="1480" height="124" rx="12"/>
+  <text x="800" y="968" class="t w" text-anchor="middle" style="fill:#FFFFFF">Gatekeeper：檢查領域覆蓋、引用通過率 ≥ 0.80、年化波動率 ≤ 0.80、歷史準確度</text>
+  <text x="800" y="1006" class="s w" text-anchor="middle" style="fill:#C9D3E0">預期報酬落在 ±0.5σ 中性帶 → Hold，否則 Buy / Sell；資料不足時依政策 NoTrade</text>
+  <text x="800" y="1036" class="s w" text-anchor="middle" style="fill:#C9D3E0">動作鎖定後才進入回測</text>
+  <path class="line" d="M800,1056 L800,1100"/>
+
+  <!-- L7 backtest -->
+  <text x="60" y="1094" class="lbl">7 · 回測與統計</text>
+  <rect class="box" x="60" y="1106" width="1480" height="52" rx="12"/>
+  <text x="800" y="1140" class="s" text-anchor="middle" style="fill:#1F2A37">持有期 30 / 60 / 90 天（主要終點 60 天）· 成本模型 zero 與 Corwin-Schultz · block bootstrap 比較四組</text>
+  <text x="1540" y="1182" class="s" text-anchor="end">僅供研究；不執行交易、不構成投資建議</text>
+</svg>

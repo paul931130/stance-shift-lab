@@ -2,6 +2,22 @@
 
 正式產品只有一條執行路徑：`research.ps1` → Docker Compose → `research_service` → `http://127.0.0.1:8000`。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## 2026-09-20 · pre-experiment preparation
+
+- Added a cost-basis-aligned Buy-and-Hold benchmark, descriptive full-run stability reporting, and a study stability API endpoint.
+- Added simulation-only McNemar power planning and a synthetic model qualification canary. Neither creates formal cases or calls a model during tests.
+- Made provider timeout and Ollama context length configurable and auditable; resume now clears stale provider errors.
+- Re-opened protected FastAPI docs, added compact default job responses with `?detail=true`, and corrected local-versus-GPUtw model endpoint messages.
+- Added `pyproject.toml`, a cross-platform `stance-shift` entry point, and pre-experiment readiness / API / presentation / Support ticket documentation.
+- Added a deterministic synthetic demo mode and a presentation-ready GUI preview; demo outputs are explicitly excluded from formal research claims.
+- Added a Windows CI test job and documented the remaining manual GitHub Support escalation for old repository blobs.
+
+## v3-0913.2（2026-09-20）— 資料校準不足時停止偽裝成 Hold
+
+- Formal readiness now requires at least eight non-overlapping 60-session pre-cutoff windows.
+- Historical cases with insufficient base-rate calibration are Gatekeeper-controlled `NoTrade`, with the reason and window counts persisted in the audit output.
+- Added readiness blockers and regression tests; prior v3-0913.1 jobs remain unchanged and are not merged with this protocol.
+
 ## v3-0913.1（後續，2026-09-16）— 修正非密碼設定欄位永遠顯示空白
 
 不改變決策提示或可引用證據，因此不升版。

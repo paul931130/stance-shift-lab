@@ -16,6 +16,11 @@
 
 開啟 <http://127.0.0.1:8000/>。也可直接雙擊 `start-research.cmd`。
 
+若只要展示介面與完整工作流、不使用 API key 或模型，可在 `.env.research` 暫時設定
+`RESEARCH_DEMO_MODE=true` 後啟動服務。展示模式會自動放入一筆固定的合成 NVDA
+資料集，所有回應都由內建確定性 provider 產生；它不會呼叫外部服務，也不算正式研究結果。
+展示完畢後改回 `false`，避免把合成案例誤當成正式資料。
+
 網頁負責互動式研究操作與結果檢視；終端負責安裝設定、啟停、檢查、日誌與批次工作：
 
 ```powershell
@@ -27,6 +32,10 @@
 ```
 
 研究執行預設使用 `ollama/qwen3:14b`。若只想用較小模型驗證流程，需明確加上 `-Model ollama/qwen3:8b -AllowSmallModel`；這類結果只算冒煙測試，不納入正式研究比較。
+
+若使用已安裝套件而不走 Docker，可執行 `python -m pip install -e .`，再使用
+`stance-shift doctor`、`stance-shift power-plan` 或 `stance-shift model-canary`。
+後兩者只做設計模擬或合成格式檢查，不會建立正式案例。
 
 執行 `.\research.ps1 help` 可查看完整命令。`start` 會先檢查 Docker Linux engine，未啟動時嘗試開啟 Docker Desktop 並給出可操作的錯誤訊息。`collect` 會重用同股票、同分析日且四域完整的既有快照；加上 `-Refresh` 才會重新呼叫資料來源。
 
