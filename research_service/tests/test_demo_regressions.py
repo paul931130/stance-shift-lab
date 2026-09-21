@@ -3,7 +3,6 @@ from datetime import date, timedelta
 from pathlib import Path
 import tempfile
 import unittest
-from unittest.mock import patch
 
 from research_service.data import _canonical_news_url, _deduplicate_news, score_sentiment_finbert
 from research_service.readiness import coverage, gap_inventory, study_readiness
@@ -12,9 +11,11 @@ from research_service.storage import Store
 
 
 def historical_fixture(kind="historical", evidence_date="2024-12-01"):
-    start = date(2023, 1, 1)
+    # Keep enough pre-cutoff history for the eight-window 60-session
+    # calibration requirement used by formal readiness.
+    start = date(2022, 1, 1)
     prices = []
-    for offset in range(100):
+    for offset in range(720):
         day = start + timedelta(days=offset)
         if day.weekday() < 5:
             prices.append({"date": day.isoformat(), "open": 1, "high": 2, "low": 1, "close": 1.5})
@@ -108,6 +109,7 @@ class DemoRegressionTests(unittest.TestCase):
                          sentiment_revision="revision")
         complete = coverage(data)
         self.assertTrue(complete["research_ready"])
+        self.assertTrue(complete["base_rate_history_ready"])
         self.assertTrue(complete["formal_experiment_ready"])
 
         unscored = deepcopy(data)
@@ -191,7 +193,7 @@ class DemoRegressionTests(unittest.TestCase):
             store = Store(Path(directory))
             config = {
                 "ticker": "NVDA", "analysis_date": "2024-12-31", "dataset_id": "fixture",
-                "protocol": {"version": "v3-0913.1"}, "protocol_hash": "fixture",
+                "protocol": {"version": "v3-0913.2"}, "protocol_hash": "fixture",
             }
             job = store.create(config)
             store.claim()  # transition queued -> running, as the worker does

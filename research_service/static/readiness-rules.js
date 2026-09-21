@@ -3,7 +3,7 @@
  * DOM. No document/window references belong in this file. */
 function computeExperimentReadiness(input) {
   const { dataset, analysisDate, allowLowQualitySentiment, allowPointFundamental,
-    allowSmallModel, cloudModel, localModel, localAvailable, localParameterSize } = input;
+    allowSmallModel, cloudModel, localModel, localAvailable, localParameterSize, demoMode } = input;
   if (!dataset) return { ready: false, reason: 'no_dataset' };
   const cut = dataset.requested_analysis_date || (dataset.used_analysis_dates || []).slice(-1)[0] || null;
   const dateReady = dataset.kind !== 'historical' || cut === analysisDate;
@@ -18,6 +18,7 @@ function computeExperimentReadiness(input) {
   const fundamentalAllowed = fundamentalReady || allowPointFundamental || dataset.kind !== 'historical';
   if (!fundamentalAllowed) return { ready: false, reason: 'fundamental_quality', fundamental };
   const trimmedCloud = (cloudModel || '').trim();
+  if (demoMode && !trimmedCloud) return { ready: true, reason: 'ready', demo: true };
   if (!trimmedCloud) {
     if (!localAvailable) return { ready: false, reason: 'model_not_installed', localModel };
     const size = Number.parseFloat(localParameterSize);

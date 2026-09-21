@@ -87,10 +87,18 @@ def gate(candidate, inputs, memory, protocol):
     if len(scored) >= 5 and accuracy < .5:
         reasons.append("historical_accuracy_below_0.50")
     action = candidate["action"]
+    base_rates = inputs.get("base_rates", {})
+    calibration_blocked = (protocol.dataset_kind == "historical" and
+                           (base_rates.get("calibration_ready") is False or
+                            base_rates.get("basis") == "insufficient_history"))
+    if calibration_blocked:
+        reasons.append("insufficient_base_rate_history")
     missing_reasons = {"missing_research_domains", "insufficient_valid_citations"}
     hard_risk_reasons = {reason for reason in reasons if reason.startswith("confidence_below_") or reason.startswith("annual_volatility_above_")}
     missing_data_control = protocol.missing_data_policy == "allow_decision" and any(reason in missing_reasons for reason in reasons)
-    if protocol.missing_data_policy == "force_no_trade" and any(reason in missing_reasons for reason in reasons):
+    if calibration_blocked:
+        action = "NoTrade"
+    elif protocol.missing_data_policy == "force_no_trade" and any(reason in missing_reasons for reason in reasons):
         action = "NoTrade"
     elif any(reason in hard_risk_reasons for reason in reasons) and action in ("Buy", "Sell"):
         action = "Hold"
@@ -99,6 +107,9 @@ def gate(candidate, inputs, memory, protocol):
             "annual_volatility": inputs["volatility"], "historical_n": len(scored), "historical_accuracy": accuracy,
             "history_status": "warning_only_recovery_enabled" if len(scored) >= 5 else "insufficient_history_not_used",
             "missing_data_policy": protocol.missing_data_policy, "missing_data_control": missing_data_control,
+            "calibration_control": calibration_blocked,
+            "base_rate_windows": base_rates.get("windows"),
+            "base_rate_windows_required": base_rates.get("windows_required"),
             "citation_pass_floor": protocol.citation_pass_floor, "confidence_floor": protocol.confidence_floor,
             "volatility_ceiling": protocol.volatility_ceiling}}
 

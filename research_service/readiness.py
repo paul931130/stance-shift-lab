@@ -3,7 +3,7 @@ import math
 import re
 from statistics import median
 
-from .protocol import COMPANY_NAMES, TICKERS, QUARTER_DATES
+from .protocol import BASE_RATE_MIN_WINDOWS, COMPANY_NAMES, TICKERS, QUARTER_DATES
 from .splits import split_for_date, temporal_split_summary
 
 
@@ -83,6 +83,9 @@ def coverage(data, analysis_date=None):
         return {"research_ready": False, "formal_experiment_ready": False,
                 "reason": "missing_analysis_date", "domains": {}, "backtest_ready": False,
                 "all_horizons_ready": False,
+                "base_rate_windows": 0, "base_rate_windows_required": BASE_RATE_MIN_WINDOWS,
+                "base_rate_history_ready": False,
+                "formal_blockers": ["missing_analysis_date"],
                 "fundamental_quality": {"items": 0, "comparative_items": 0,
                                         "passes_quality_gate": False},
                 "sentiment_quality": {"items": 0, "ticker_mentions": 0, "ticker_mention_rate": 0.,
@@ -97,6 +100,8 @@ def coverage(data, analysis_date=None):
               for domain in ("fundamental", "sentiment", "macro")}
     counts["technical"] = len(past)
     ready = len(past) >= 61 and all(counts[name] for name in ("fundamental", "sentiment", "macro"))
+    base_rate_windows = len(past) // 60
+    base_rate_history_ready = base_rate_windows >= BASE_RATE_MIN_WINDOWS
     sentiment_quality = _sentiment_quality(data, day)
     fundamental_quality = _fundamental_quality(data, day)
     historical = data["kind"] == "historical"
@@ -104,17 +109,39 @@ def coverage(data, analysis_date=None):
     backtest_ready = horizons["60"]
     all_horizons_ready = all(horizons.values())
     formal_ready = (historical and ready and backtest_ready
+                    and base_rate_history_ready
                     and fundamental_quality["passes_quality_gate"]
                     and sentiment_quality["passes_quality_gate"]
                     and sentiment_quality["finbert_complete"])
+    formal_blockers = []
+    if not historical:
+        formal_blockers.append("non_historical_dataset")
+    if not ready:
+        formal_blockers.append("insufficient_pre_cutoff_evidence")
+    if not backtest_ready:
+        formal_blockers.append("insufficient_future_outcomes")
+    if not base_rate_history_ready:
+        formal_blockers.append("insufficient_base_rate_history")
+    if not fundamental_quality["passes_quality_gate"]:
+        formal_blockers.append("fundamental_quality")
+    if not sentiment_quality["passes_quality_gate"]:
+        formal_blockers.append("sentiment_quality")
+    if not sentiment_quality["finbert_complete"]:
+        formal_blockers.append("sentiment_finbert_incomplete")
     return {"research_ready": bool(ready), "formal_experiment_ready": bool(formal_ready),
             "domains": counts, "analysis_date": day,
             "historical": historical, "future_sessions": len(future),
             "backtest_ready": backtest_ready, "all_horizons_ready": all_horizons_ready,
+            "base_rate_windows": base_rate_windows,
+            "base_rate_windows_required": BASE_RATE_MIN_WINDOWS,
+            "base_rate_history_ready": base_rate_history_ready,
             "horizons": horizons,
             "sentiment_quality": sentiment_quality, "fundamental_quality": fundamental_quality,
+            "formal_blockers": formal_blockers,
             "reason": ("formal_experiment_ready" if formal_ready else "evidence_ready"
-                       if ready else "insufficient_pre_cutoff_evidence")}
+                       if ready and base_rate_history_ready else
+                       "insufficient_base_rate_history" if ready else
+                       "insufficient_pre_cutoff_evidence")}
 
 
 def study_readiness(rows):

@@ -14,7 +14,7 @@ from pathlib import Path
 from urllib.parse import urlencode, urlsplit, urlunsplit, parse_qsl
 from urllib.request import Request, urlopen
 
-from .protocol import COMPANY_NAMES, DOMAIN_NAMES
+from .protocol import BASE_RATE_MIN_WINDOWS, COMPANY_NAMES, DOMAIN_NAMES
 
 
 MIN_NEWS_RELEVANCE = .35
@@ -750,11 +750,14 @@ def _base_rates(history, primary_horizon, volatility, hold_band_sigma):
         windows.append(chunk[-1]["close"] / chunk[0]["close"] - 1)
         end -= primary_horizon
     horizon_sigma_pct = volatility * math.sqrt(primary_horizon / 252) * 100
+    calibration_ready = len(windows) >= BASE_RATE_MIN_WINDOWS
     result = {"horizon_sessions": primary_horizon, "windows": len(windows),
+              "windows_required": BASE_RATE_MIN_WINDOWS,
+              "calibration_ready": calibration_ready,
               "horizon_sigma_pct": round(horizon_sigma_pct, 6),
               "hold_band_pct": round(hold_band_sigma * horizon_sigma_pct, 6),
               "basis": "non_overlapping_windows_strictly_before_analysis_date"}
-    if len(windows) < 8:
+    if not calibration_ready:
         return {**result, "positive_rate": None, "median_return_pct": None, "basis": "insufficient_history"}
     return {**result, "positive_rate": round(sum(value > 0 for value in windows) / len(windows), 6),
             "median_return_pct": round(sorted(windows)[len(windows) // 2] * 100, 6)}
