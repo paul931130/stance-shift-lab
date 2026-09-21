@@ -56,9 +56,17 @@ class Store:
         """Return a WAL-safe SQLite snapshot without stopping the research worker."""
         with TemporaryDirectory(prefix="stance-shift-backup-") as directory:
             target_path = Path(directory) / "research.sqlite3"
-            with sqlite3.connect(self.path, timeout=30) as source:
-                with sqlite3.connect(target_path) as target:
-                    source.backup(target)
+            # sqlite3.Connection is a transaction context manager, not a
+            # resource context manager: ``with connect(...)`` commits but does
+            # not close the handle.  Close both handles explicitly so Windows
+            # can remove the temporary WAL/snapshot files on context exit.
+            source = sqlite3.connect(self.path, timeout=30)
+            target = sqlite3.connect(target_path)
+            try:
+                source.backup(target)
+            finally:
+                target.close()
+                source.close()
             return target_path.read_bytes()
 
     def add_dataset(self, data):
@@ -158,7 +166,11 @@ class Store:
                 status = "paused"
             else:
                 status = "running" if job["status"] == "running" else "queued"
-            db.execute("UPDATE jobs SET wants_run=?,status=?,updated_at=? WHERE id=?", (wanted, status, now(), key))
+            # A previous provider failure should not remain attached to a
+            # deliberately resumed job; otherwise the UI shows a stale error
+            # while the worker is already progressing again.
+            db.execute("UPDATE jobs SET wants_run=?,status=?,error=?,updated_at=? WHERE id=?",
+                       (wanted, status, "" if command == "resume" else job.get("error", ""), now(), key))
 
     def claim(self):
         with self.connect() as db:

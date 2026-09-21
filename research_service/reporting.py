@@ -9,6 +9,7 @@ import json
 import math
 import platform
 import statistics
+import sys
 import zipfile
 
 import numpy as np
@@ -108,7 +109,14 @@ def _case_panel(jobs, horizon, cost_model, decision_layer):
                 if action in ("Buy", "Sell"):
                     active[day_index, stock_index, group_index] = True
                 if not benchmark_seen[day_index, stock_index]:
-                    base = row.get("benchmark_return")
+                    # Keep the benchmark on the same transaction-cost basis as
+                    # the strategy.  Older stored runs do not have the new
+                    # field, so retain a backwards-compatible gross fallback.
+                    base = (row.get("benchmark_net_return")
+                            if cost_model == "corwin_schultz"
+                            else row.get("benchmark_return"))
+                    if not isinstance(base, (int, float)) or not math.isfinite(float(base)):
+                        base = row.get("benchmark_return")
                     if isinstance(base, (int, float)) and math.isfinite(float(base)):
                         benchmark[day_index, stock_index] = float(base)
                     benchmark_seen[day_index, stock_index] = True
@@ -196,12 +204,94 @@ def _completeness(jobs):
                 "reason": "Novelty is a paired diagnostic; registered return tests do not test text-overlap outcomes."}}
 
 
+def _stability_value(job, group):
+    """Extract the primary decision values needed for a test-retest audit."""
+    decision = job.get("state", {}).get("decisions", {}).get(group, {})
+    row = _primary_candidate_row(job, group)
+    action = _decision_action(decision) or (row or {}).get("action")
+    evidence_ids = decision.get("evidence_ids", [])
+    if not isinstance(evidence_ids, list):
+        evidence_ids = []
+    return {"action": action, "expected_return_pct": decision.get("expected_return_pct"),
+            "confidence": decision.get("confidence"), "evidence_ids": evidence_ids}
+
+
+def _pairwise_agreement(values, key):
+    pairs = []
+    for left_index, left in enumerate(values):
+        for right in values[left_index + 1:]:
+            left_value, right_value = left.get(key), right.get(key)
+            if left_value is not None and right_value is not None:
+                pairs.append(left_value == right_value)
+    return {"agreement": sum(pairs) / len(pairs) if pairs else None, "pairs": len(pairs)}
+
+
+def _evidence_jaccard(left, right):
+    left_ids, right_ids = set(left.get("evidence_ids", [])), set(right.get("evidence_ids", []))
+    if not left_ids and not right_ids:
+        return 1.0
+    return len(left_ids & right_ids) / len(left_ids | right_ids)
+
+
+def stability_report(jobs):
+    """Describe full-run test-retest variation without adding formal inference.
+
+    Aggregate study statistics intentionally keep the first valid run for each
+    case.  This companion report keeps repeated runs visible so action changes
+    are not mistaken for a stance effect.  It is descriptive and never used to
+    promote a model or protocol to a formal result.
+    """
+    completed = [job for job in jobs if _is_complete(job)]
+    eligible = [job for job in completed
+                if not job.get("state", {}).get("report", {}).get("degraded_research_domains")]
+    hashes = sorted({job.get("config", {}).get("protocol_hash") for job in eligible})
+    if len(hashes) > 1:
+        return {"status": "mixed_protocols", "protocol_hashes": hashes,
+                "completed_runs": len(completed), "eligible_runs": len(eligible),
+                "repeated_cases": 0, "groups": {},
+                "note": "重複性只能在同一 protocol_hash、同一資料與完整研究執行間描述。"}
+    by_case = {}
+    for job in sorted(eligible, key=lambda item: item.get("created_at", "")):
+        config = job.get("config", {})
+        key = (config.get("ticker"), config.get("analysis_date"))
+        by_case.setdefault(key, []).append(job)
+    repeated = {key: runs for key, runs in by_case.items() if len(runs) >= 2}
+    groups = {}
+    for group in GROUPS:
+        actions, expected, confidence, evidence_overlap = [], [], [], []
+        case_count = 0
+        run_count = 0
+        for runs in repeated.values():
+            values = [_stability_value(job, group) for job in runs]
+            case_count += 1
+            run_count += len(values)
+            actions.extend(values)
+            expected.extend(value["expected_return_pct"] for value in values)
+            confidence.extend(value["confidence"] for value in values)
+            for left_index, left in enumerate(values):
+                evidence_overlap.extend(_evidence_jaccard(left, right)
+                                        for right in values[left_index + 1:])
+        groups[group] = {"cases": case_count, "runs": run_count,
+                         "action": _pairwise_agreement(actions, "action"),
+                         "expected_return_pct": _mean_sd(expected),
+                         "confidence": _mean_sd(confidence),
+                         "evidence_jaccard": _mean_sd(evidence_overlap)}
+    return {"status": "descriptive_ready" if repeated else "no_repeated_complete_cases",
+            "protocol_hash": hashes[0] if hashes else None,
+            "completed_runs": len(completed), "eligible_runs": len(eligible),
+            "repeated_cases": len(repeated),
+            "case_run_counts": {f"{key[0]}:{key[1]}": len(value) for key, value in repeated.items()},
+            "groups": groups,
+            "note": "重複性指標是 full-protocol test-retest 的描述統計；未做正式顯著性檢定，也不取代主分析。"}
+
+
 def study_report(jobs, *, include_inference=True):
     complete, excluded = _completed_unique(jobs)
+    stability = stability_report(jobs)
     if not complete:
         return {"status": "no_completed_cases", "summary": [], "comparisons": [], "completeness": _completeness([]),
                 "excluded_incomplete_runs": len(jobs) - excluded["completed"],
-                "excluded_degraded_research_runs": excluded["degraded"]}
+                "excluded_degraded_research_runs": excluded["degraded"], "stability": stability}
     protocol = complete[0]["config"].get("protocol", {})
     layers = sorted({_layer(row) for job in complete for row in job["state"].get("cases", [])}) or ["gated"]
     summary, comparisons = [], []
@@ -254,6 +344,7 @@ def study_report(jobs, *, include_inference=True):
             "excluded_incomplete_runs": len(jobs) - excluded["completed"],
             "excluded_degraded_research_runs": excluded["degraded"], "summary": summary,
             "comparisons": comparisons, "completeness": _completeness(complete),
+            "stability": stability,
             "conventions": [
                 "Primary analysis: decision_layer=candidate, horizon=60, cost_model=corwin_schultz, portfolio_basis=all",
                 "Candidate actions measure the decision mechanism; gated actions are a separate risk-control sensitivity layer",
@@ -266,6 +357,7 @@ def study_report(jobs, *, include_inference=True):
                 "McNemar uses mutually directional cases; Holm correction is applied within each horizon/cost/layer/basis/method family",
                 "Formal inference is withheld until at least 30 unique completed historical cases are available",
                 "Runs using deterministic research-source fallback are excluded from formal aggregate statistics",
+                "Repeated complete runs are summarized separately by stability_report; they are not collapsed into the primary case panel",
             ]}
 
 
@@ -518,7 +610,10 @@ def runtime_environment():
             versions[name] = metadata.version(name)
         except metadata.PackageNotFoundError:
             versions[name] = None
-    return {"python": platform.python_version(), "platform": platform.platform(), "packages": versions,
+    # ``platform.platform()`` performs a WMI query on Windows.  That query can
+    # fail or exhaust desktop resources during repeated exports, while the
+    # portable interpreter identifier is sufficient for the audit manifest.
+    return {"python": platform.python_version(), "platform": sys.platform, "packages": versions,
             "note": "Statistics and FinBERT scores depend on these versions; record them alongside any published figure."}
 
 

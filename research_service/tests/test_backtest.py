@@ -55,6 +55,25 @@ class BacktestTests(unittest.TestCase):
         self.assertFalse(hold["hold_was_justified"])
         self.assertGreater(hold["hold_opportunity_cost"], 0.0)
 
+    def test_buy_and_hold_benchmark_uses_the_same_cost_basis(self):
+        analysis_date = prices()[60]["date"]
+        decisions = {group: {"candidate_action": "Buy", "action": "Buy", "hold_band_pct": 1.0}
+                     for group in "ABCD"}
+        rows, daily = evaluate(prices(), analysis_date, decisions, protocol())
+        zero = next(row for row in rows if row["group"] == "A" and row["decision_layer"] == "candidate"
+                    and row["cost_model"] == "zero")
+        costs = next(row for row in rows if row["group"] == "A" and row["decision_layer"] == "candidate"
+                     and row["cost_model"] == "corwin_schultz")
+        zero_daily = [row for row in daily if row["group"] == "A" and row["decision_layer"] == "candidate"
+                      and row["cost_model"] == "zero"]
+        cost_daily = [row for row in daily if row["group"] == "A" and row["decision_layer"] == "candidate"
+                      and row["cost_model"] == "corwin_schultz"]
+        self.assertAlmostEqual(math.prod(1 + row["benchmark_return"] for row in zero_daily) - 1,
+                               zero["benchmark_return"], places=12)
+        self.assertAlmostEqual(math.prod(1 + row["benchmark_net_return"] for row in cost_daily) - 1,
+                               costs["benchmark_net_return"], places=12)
+        self.assertLess(costs["benchmark_net_return"], costs["benchmark_return"])
+
 
 if __name__ == "__main__":
     unittest.main()

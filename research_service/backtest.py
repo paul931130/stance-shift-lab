@@ -55,7 +55,11 @@ def evaluate(prices, analysis_date, decisions, protocol):
                     exit_cost = exit_spread / 2 if cost_model == "corwin_schultz" else 0.
                     gross = direction * (exit_price / entry - 1)
                     cost = entry_cost + exit_cost * exit_price / entry if direction else 0.
+                    benchmark_gross = exit_price / entry - 1
+                    benchmark_cost = entry_cost + exit_cost * exit_price / entry if cost_model == "corwin_schultz" else 0.
+                    benchmark_net = benchmark_gross - benchmark_cost
                     equity, previous_equity, previous_mark = 1., 1., entry
+                    benchmark_equity, previous_benchmark_equity = 1., 1.
                     insolvent, insolvent_date = False, None
                     for index in range(1, horizon + 1):
                         bar = selected[index]
@@ -67,10 +71,15 @@ def evaluate(prices, analysis_date, decisions, protocol):
                             equity = max(0., 1 + direction * (mark_price / entry - 1) - marked_cost)
                             if equity == 0.:
                                 insolvent, insolvent_date = True, bar["date"]
+                        benchmark_marked_cost = entry_cost + (exit_cost * mark_price / entry if index == horizon else 0.) if cost_model == "corwin_schultz" else 0.
+                        benchmark_equity = max(0., 1 + (mark_price / entry - 1) - benchmark_marked_cost)
                         daily.append({**base, "date": bar["date"],
                                       "return": equity / previous_equity - 1 if previous_equity > 0 else 0.,
-                                      "benchmark_return": mark_price / previous_mark - 1})
+                                      "benchmark_return": mark_price / previous_mark - 1,
+                                      "benchmark_net_return": (benchmark_equity / previous_benchmark_equity - 1
+                                                               if previous_benchmark_equity > 0 else 0.)})
                         previous_equity, previous_mark = equity, mark_price
+                        previous_benchmark_equity = benchmark_equity
                     realized_move_pct = (exit_price / entry - 1) * 100
                     hold_band_pct = float(decision.get("hold_band_pct", 0.))
                     is_hold = direction == 0
@@ -81,7 +90,9 @@ def evaluate(prices, analysis_date, decisions, protocol):
                                  "spread_basis": {"entry": _spread_basis(past, protocol.spread_window),
                                                    "exit": _spread_basis(selected[:horizon], protocol.spread_window)},
                                  "gross_return": gross, "cost": cost, "net_return": -1. if insolvent else gross - cost,
-                                 "benchmark_return": exit_price / entry - 1,
+                                 "benchmark_return": benchmark_gross,
+                                 "benchmark_cost": benchmark_cost,
+                                 "benchmark_net_return": benchmark_net,
                                  "correct": (direction * (exit_price - entry) > 0) if direction else None,
                                  "insolvent": insolvent, "insolvent_date": insolvent_date,
                                  "realized_move_pct": realized_move_pct,
