@@ -8,7 +8,7 @@ import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import visible_history
+from .protocol import SWITCH_ROUND, visible_history
 
 
 DEFAULT_MODEL_TIMEOUT_SECONDS = 240
@@ -279,9 +279,19 @@ def messages_for(call, report, records, memory, protocol):
             "Also state strongest_counterpoint: the single strongest evidence-supported argument against your assigned stance. "
             "Your expected_return_pct must have the sign of your assigned stance. Do not answer Hold or NoTrade. "
             f"This is round {call.round} of exactly 3.")
-        if protocol.switch_isolation and call.group == "D" and call.round == 2:
-            common += (" You have deliberately not been shown any prior debate turn for this round. "
-                       "Build your case for the assigned stance from the neutral report alone.")
+        if call.group == "D" and call.round == SWITCH_ROUND:
+            common += (
+                " This is the role-switch round: in round 1 you argued the opposite stance, and you must now "
+                "argue against yourself. Read your own round-1 turn below")
+            common += (" (shown alone, never your counterpart's, so you cannot copy their wording): name the "
+                       "specific claim you made in rebutted_claim, quote or closely paraphrase it, and explain in "
+                       "the rationale why it no longer holds under the newly assigned stance."
+                       if protocol.switch_isolation else
+                       " and your counterpart's: name the specific claim you made in rebutted_claim and explain in "
+                       "the rationale why it no longer holds under the newly assigned stance.")
+            common += (" State confidence_shift: your new confidence minus your round-1 confidence, signed toward "
+                       "the newly assigned stance, from -1 to 1. A value near 0 means the switch changed little; "
+                       "do not default to 0 without justifying it in the rationale.")
     elif call.kind == "adjudication":
         common += (" You are the neutral Adjudicator. Weigh the complete debate without favoring speaker order. "
             "Assigned Bull/Bear counts are not evidence. Compare their support and forecast magnitude against the direct evidence and calibration. Maturity memory is prior-experiment calibration, not current-case evidence; a tie is not abstention.")
@@ -307,6 +317,10 @@ def output_schema_for(messages):
         schema["properties"]["action"]["enum"] = ["Sell"]
         schema["properties"]["expected_return_pct"] = {"type": "number", "minimum": -60, "exclusiveMaximum": 0}
         schema["required"].append("strongest_counterpoint")
+    if "role-switch round" in system:
+        schema["properties"]["rebutted_claim"] = {"type": "string", "minLength": 1, "maxLength": 240}
+        schema["properties"]["confidence_shift"] = {"type": "number", "minimum": -1, "maximum": 1}
+        schema["required"] += ["rebutted_claim", "confidence_shift"]
     return schema
 
 
@@ -415,6 +429,12 @@ def validate_decision(result, evidence, call=None):
             raise ValueError("辯論代理人未提供 strongest_counterpoint")
         if (call.stance == "BULL" and expected_return <= 0) or (call.stance == "BEAR" and expected_return >= 0):
             raise ValueError("辯論 expected_return_pct 與指派立場不一致")
+        if call.group == "D" and call.round == SWITCH_ROUND:
+            if not isinstance(result.get("rebutted_claim"), str) or not result["rebutted_claim"].strip():
+                raise ValueError("角色交換輪未指出被推翻的原立場主張 (rebutted_claim)")
+            shift = result.get("confidence_shift")
+            if isinstance(shift, bool) or not isinstance(shift, (float, int)) or not -1 <= shift <= 1:
+                raise ValueError("角色交換輪 confidence_shift 須介於 -1 與 1")
     cited = set(result["evidence_ids"])
     if any(item.get("domain") == "fundamental" and item.get("evidence_id") in cited for item in evidence):
         validate_financial_numbers(result, evidence)

@@ -7,6 +7,7 @@ import os
 import re
 from typing import TypedDict
 
+from jsonschema import ValidationError as JsonSchemaValidationError
 from langgraph.graph import StateGraph, START, END
 
 from .backtest import evaluate
@@ -163,8 +164,12 @@ def completeness_diagnostic(records, protocol):
     def average(values):
         values = [value["novelty_rate"] for value in values if value["novelty_rate"] is not None]
         return sum(values) / len(values) if values else None
+    lookup = {record["key"]: record for record in records}
+    shifts = [lookup[key]["output"]["confidence_shift"] for key in ("d-r2-agent-a", "d-r2-agent-b")
+              if key in lookup and isinstance(lookup[key].get("output", {}).get("confidence_shift"), (int, float))]
     return {"basis": "D round-2 isolated turn vs the same stance's round-1 turn", "pairs": pairs,
             "mean_novelty_rate": average(pairs), "isolation_enabled": protocol.switch_isolation,
+            "confidence_shift": {"values": shifts, "mean": sum(shifts) / len(shifts) if shifts else None},
             "control": {"basis": "C round-2 same-stance turn vs round-1 turn", "pairs": control_pairs,
                         "mean_novelty_rate": average(control_pairs)}}
 
@@ -230,9 +235,11 @@ class Engine:
         validation_failures = []
         attempt_messages = messages
         # Source-locked SEC point facts remain part of the report/export but
-        # are intentionally not decision features.  Treating a single level
-        # as "strong" or "weak" is an unsupported financial inference.
-        decision_evidence = [item for item in evidence if item.get("domain") != "fundamental"]
+        # are intentionally not decision features. Comparable SEC metrics are
+        # included in the decision prompt, so the validator must accept those
+        # exact IDs while still rejecting unsupported point-only facts.
+        decision_evidence = [item for item in evidence
+                             if item.get("domain") != "fundamental" or item.get("comparative") is True]
         allowed_ids = [item["evidence_id"] for item in decision_evidence]
         for attempt in range(1, protocol.provider_retry_attempts + 1):
             retry_key = call.key if attempt == 1 else f"{call.key}:validation-retry-{attempt}"
@@ -243,7 +250,7 @@ class Engine:
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
-            except ValueError as error:
+            except (ValueError, JsonSchemaValidationError) as error:
                 failure = {"attempt": attempt, "error_type": type(error).__name__,
                            "message": str(error)[:200], "call_key": retry_key}
                 if audit:
@@ -273,7 +280,7 @@ class Engine:
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
-            except ValueError as error:
+            except (ValueError, JsonSchemaValidationError) as error:
                 failure = {"attempt": attempt, "error_type": type(error).__name__,
                            "message": str(error)[:200], "call_key": retry_key}
                 if audit:
@@ -391,6 +398,11 @@ class Engine:
                 for group in "ABCD":
                     if queues[group]:
                         calls.append(queues[group].pop(0))
+            # A local Ollama runner executes these requests serially anyway.
+            # Advance one decision at a time so the worker can checkpoint it
+            # before a later provider error or process interruption occurs.
+            if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
+                calls = calls[:1]
             snapshot = list(state["records"])
             prepared = {call.key: (call, messages_for(call, state["report"], snapshot, state["memory"][call.group], protocol)) for call in calls}
             completed, failures = {}, []

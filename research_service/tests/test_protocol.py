@@ -14,7 +14,7 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(protocol.compute_matched)
         self.assertEqual(protocol.fingerprint, StudyProtocol(**asdict(protocol)).fingerprint)
         self.assertNotEqual(protocol.fingerprint, replace(protocol, voting_samples=5).fingerprint)
-        self.assertEqual((protocol.version, protocol.missing_data_policy), ("v3-0913.2", "allow_decision"))
+        self.assertEqual((protocol.version, protocol.missing_data_policy), ("v3-0922.4", "allow_decision"))
         self.assertNotEqual(protocol.fingerprint, replace(protocol, missing_data_policy="force_no_trade").fingerprint)
         StudyProtocol(version="v3-0905.1", missing_data_policy="force_no_trade")
         with self.assertRaises(ValueError):
@@ -31,10 +31,19 @@ class ProtocolTests(unittest.TestCase):
         plan = decision_plan(StudyProtocol())
         records = [asdict(call) for call in plan]
         self.assertTrue(all(visible_history(call, records, StudyProtocol()) == [] for call in plan if call.group == "B"))
-        for round_number in (1, 2, 3):
+        for round_number in (1, 3):
             pair = [call for call in plan if call.group == "D" and call.round == round_number]
             self.assertEqual(visible_history(pair[0], records, StudyProtocol()), visible_history(pair[1], records, StudyProtocol()))
-            self.assertEqual(len(visible_history(pair[0], records, StudyProtocol())), 0 if round_number == 2 else 2 * (round_number - 1))
+            self.assertEqual(len(visible_history(pair[0], records, StudyProtocol())), 2 * (round_number - 1))
+        # Round 2 is the switch round: isolation means each side sees only its
+        # own round-1 turn, never its counterpart's, so the two views are now
+        # different single-record histories instead of an identical shared one.
+        switch_pair = [call for call in plan if call.group == "D" and call.round == 2]
+        a_history, b_history = (visible_history(call, records, StudyProtocol()) for call in switch_pair)
+        self.assertEqual((len(a_history), len(b_history)), (1, 1))
+        self.assertNotEqual(a_history, b_history)
+        self.assertEqual(a_history[0]["agent"], switch_pair[0].agent)
+        self.assertEqual(b_history[0]["agent"], switch_pair[1].agent)
 
     def test_switch_round_isolated_without_changing_control_or_adjudication(self):
         enabled, disabled = StudyProtocol(), StudyProtocol(switch_isolation=False)
@@ -46,7 +55,9 @@ class ProtocolTests(unittest.TestCase):
         adjudication = next(call for call in plan if call.key == "d-adjudication")
         self.assertTrue(is_switched(enabled, d2))
         self.assertFalse(is_switched(enabled, c2))
-        self.assertEqual(visible_history(d2, records, enabled), [])
+        isolated_history = visible_history(d2, records, enabled)
+        self.assertEqual(len(isolated_history), 1)
+        self.assertEqual(isolated_history[0]["key"], "d-r1-agent-a")
         self.assertEqual(len(visible_history(d2, records, disabled)), 2)
         self.assertEqual(len(visible_history(c2, records, enabled)), 2)
         self.assertEqual(len(visible_history(c2, records, disabled)), 2)
@@ -61,8 +72,9 @@ class ProtocolTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             StudyProtocol(max_rounds=2)
         self.assertFalse(StudyProtocol(voting_samples=5).compute_matched)
-        with self.assertRaisesRegex(ValueError, "參數量過小"):
+        with self.assertRaisesRegex(ValueError, "正式門檻"):
             StudyProtocol(model="ollama/gemma3:4b")
+        self.assertEqual(StudyProtocol(model="ollama/qwen3:8b").model, "ollama/qwen3:8b")
         self.assertEqual(StudyProtocol(model="ollama/gemma3:4b", allow_small_model=True).model,
                          "ollama/gemma3:4b")
 

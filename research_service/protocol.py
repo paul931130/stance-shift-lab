@@ -21,6 +21,9 @@ DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
 BASE_RATE_MIN_WINDOWS = 8
 DEFAULT_RESEARCH_MODEL = "ollama/qwen3:14b"
 SMALL_MODEL_PATTERN = re.compile(r"[:\-/](?:0\.\d+|[1-9]|1[0-3])b\b", re.IGNORECASE)
+# qwen3:8b has passed the project's structured-output and role-switch canary.
+# Keep every other sub-14B model behind the explicit smoke-test override.
+FORMAL_SMALL_MODEL_ALLOWLIST = frozenset({"ollama/qwen3:8b"})
 SWITCH_ROUND = 2
 
 # These names are used only to measure whether a news headline is about the
@@ -37,7 +40,7 @@ COMPANY_NAMES = {
 class StudyProtocol:
     # Display, extraction and validation rules change what enters a report.
     # Version them so a partially completed job cannot mix evidence rules.
-    version: str = "v3-0913.2"
+    version: str = "v3-0922.4"
     study: Literal["study1", "study2"] = "study1"
     model: str = DEFAULT_RESEARCH_MODEL
     allow_small_model: bool = False
@@ -70,7 +73,7 @@ class StudyProtocol:
     study_universe: tuple[str, ...] = STUDY_TICKERS
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2"):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4"):
             raise ValueError("Unsupported protocol version")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")
@@ -78,8 +81,10 @@ class StudyProtocol:
             raise ValueError("v3-0905.1 always used the force_no_trade policy")
         if self.study not in ("study1", "study2") or not self.model.strip():
             raise ValueError("A supported study and one shared model are required")
-        if SMALL_MODEL_PATTERN.search(self.model) and not self.allow_small_model:
-            raise ValueError("研究用模型參數量過小；4B 級模型無法區分 A/B/C/D。請改用 14B 以上，或明確設定 allow_small_model=True 進行冒煙測試")
+        if (SMALL_MODEL_PATTERN.search(self.model)
+                and self.model.strip().lower() not in FORMAL_SMALL_MODEL_ALLOWLIST
+                and not self.allow_small_model):
+            raise ValueError("研究用模型參數量未達正式門檻；目前只有通過 canary 的 qwen3:8b 例外放行，其他小模型請明確設定 allow_small_model=True 進行冒煙測試")
         if self.max_rounds != 3 or self.voting_samples not in (5, 7):
             raise ValueError("v3 fixes three rounds and supports voting n=5 or n=7")
         if self.primary_horizon != 60 or self.horizons != (30, 60, 90):
@@ -149,13 +154,20 @@ def temperature_for(protocol: StudyProtocol, call: DecisionCall) -> float:
 
 
 def visible_history(call: DecisionCall, records: list[dict], protocol: StudyProtocol) -> list[dict]:
-    """Never expose B samples, other groups, or a peer's current-round turn."""
-    if protocol.switch_isolation and is_switched(protocol, call):
-        # The switched turn must re-derive its case from the neutral report.
-        # Reading the prior opponent would measure paraphrase, not completeness.
-        return []
+    """Never expose B samples, other groups, or a peer's current-round turn.
+
+    The switched D round is special: with switch_isolation on, the agent sees
+    only ITS OWN prior turn, never its counterpart's. This is what "becoming
+    your own opponent" means here -- the agent must confront the position it
+    just argued, not paraphrase what the other side said (which would measure
+    copying, not genuine self-rebuttal).
+    """
     if call.group in ("A", "B"):
         return []
+    if protocol.switch_isolation and is_switched(protocol, call):
+        return [record for record in records if record["group"] == call.group
+                and record.get("kind") == "debate" and record.get("agent") == call.agent
+                and record["round"] < call.round]
     return [record for record in records if record["group"] == call.group
             and record.get("kind") == "debate"
             and (call.kind == "adjudication" or record["round"] < call.round)]

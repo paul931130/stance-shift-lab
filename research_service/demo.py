@@ -98,6 +98,9 @@ def demo_model(protocol, messages, seed=None, temperature=None):
                   "evidence_ids": evidence_ids, "risks": ["合成展示資料不具外部效度。"]}
         if "assigned debate stance" in system:
             result["strongest_counterpoint"] = "The opposing stance remains possible in this synthetic example."
+        if "role-switch round" in system:
+            result["rebutted_claim"] = "Synthetic round-1 claim, retained only for the demo walkthrough."
+            result["confidence_shift"] = 0.1 if action == "Buy" else -0.1
     audit = {"prompt_hash": digest(messages), "usage": {"prompt_tokens": 0,
              "completion_tokens": 0, "client_elapsed_seconds": 0.0},
              "raw_response": json.dumps(result, ensure_ascii=False), "provider_attempts": 1,

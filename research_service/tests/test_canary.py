@@ -6,11 +6,13 @@ from research_service.protocol import StudyProtocol
 
 def fake_provider(protocol, messages, seed=None):
     switched = "action MUST be Sell" in messages[0]["content"]
+    role_switch = "role-switch round" in messages[0]["content"]
     action = "Sell" if switched else "Buy"
     return ({"action": action, "expected_return_pct": -3.0 if switched else 3.0,
              "confidence": .8, "rationale": "Synthetic canary response",
              "evidence_ids": ["canary-technical"], "risks": [],
-             **({"strongest_counterpoint": "Synthetic counterpoint"} if switched else {})},
+             **({"strongest_counterpoint": "Synthetic counterpoint"} if switched else {}),
+             **({"rebutted_claim": "Synthetic round-1 claim", "confidence_shift": -0.2} if role_switch else {})},
             {"provider_attempts": 1})
 
 

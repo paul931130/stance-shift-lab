@@ -13,6 +13,7 @@ from unittest.mock import patch
 import zipfile
 
 from fastapi.testclient import TestClient
+from jsonschema import ValidationError as JsonSchemaValidationError
 
 from research_service.app import create_app
 from research_service.data import validate_dataset, research_inputs, digest, score_sentiment_finbert
@@ -51,6 +52,9 @@ def fake_model(protocol, messages):
                   "evidence_ids": [items[0]["evidence_id"]], "risks": ["test"]}
         if "assigned debate stance" in messages[0]["content"]:
             result["strongest_counterpoint"] = "Synthetic counterpoint supported by the shared evidence."
+        if "role-switch round" in messages[0]["content"]:
+            result["rebutted_claim"] = "Synthetic round-1 claim being abandoned in this fixture."
+            result["confidence_shift"] = -0.1 if action == "Sell" else 0.1
     return result, {"prompt_hash": digest(messages), "usage": {}, "raw_response": json.dumps(result)}
 
 
@@ -91,7 +95,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual({r["report_hash"] for r in state["records"]}, {state["report_hash"]})
         self.assertNotIn("decisions", state["report"])
         self.assertEqual([r["stance"] for r in state["records"] if r["group"] == "D" and r["round"]], ["BULL","BEAR","BEAR","BULL","BULL","BEAR"])
-        study = study_report([job])
+        study = study_report([job], formal_only=False)
         export = export_job(job, study)
         self.assertEqual(export_job(job, study), export)
         with zipfile.ZipFile(io.BytesIO(export)) as archive:
@@ -322,7 +326,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         cloned = response.json()
         self.assertEqual(cloned["config"]["parent_job_id"], legacy["id"])
-        self.assertEqual(cloned["config"]["protocol"]["version"], "v3-0913.2")
+        self.assertEqual(cloned["config"]["protocol"]["version"], "v3-0922.4")
         self.assertTrue(cloned["config"]["protocol"]["allow_small_model"])
         self.assertEqual(cloned["config"]["migration"]["from_protocol_version"], "v3-0908.2")
 
@@ -336,9 +340,30 @@ class WorkflowTests(unittest.TestCase):
                 permitted = client.post('/api/jobs', json={"dataset_id": self.dataset_id,
                     "analysis_date": "2024-12-31", "model": "ollama/gemma4:latest", "allow_small_model": True})
         self.assertEqual(rejected.status_code, 422)
-        self.assertIn("14B", rejected.json()["detail"])
+        self.assertIn("正式門檻", rejected.json()["detail"])
+        self.assertIn("qwen3:8b", rejected.json()["detail"])
         self.assertEqual(permitted.status_code, 200)
         self.assertEqual(permitted.json()["config"]["model_identity"]["parameter_size"], "8.0B")
+
+    def test_qwen3_8b_is_the_only_formal_small_model_exception(self):
+        tags = {"models": [
+            {"name": "qwen3:8b", "digest": "qwen8b-digest", "size": 1,
+             "details": {"parameter_size": "8.2B", "context_length": 8192}},
+            {"name": "gemma3:4b", "digest": "gemma4b-digest", "size": 1,
+             "details": {"parameter_size": "4.3B", "context_length": 8192}},
+        ]}
+        with patch("research_service.app.get_json", return_value=tags):
+            with TestClient(create_app(self.store, start_worker=False)) as client:
+                model_listing = client.get('/api/models').json()
+                permitted = client.post('/api/jobs', json={"dataset_id": self.dataset_id,
+                    "analysis_date": "2024-12-31", "model": "ollama/qwen3:8b"})
+                rejected = client.post('/api/jobs', json={"dataset_id": self.dataset_id,
+                    "analysis_date": "2024-12-31", "model": "ollama/gemma3:4b"})
+        self.assertIn("ollama/qwen3:8b", model_listing["formal_models"])
+        self.assertNotIn("ollama/gemma3:4b", model_listing["formal_models"])
+        self.assertEqual(permitted.status_code, 200)
+        self.assertFalse(permitted.json()["config"]["protocol"]["allow_small_model"])
+        self.assertEqual(rejected.status_code, 422)
 
 
     def test_backup_endpoint_restores_a_consistent_database_without_settings(self):
@@ -510,6 +535,19 @@ class WorkflowTests(unittest.TestCase):
         engine.advance(self.store.get(job["id"]))
         self.assertEqual(maximum, 1)
 
+    def test_local_ollama_checkpoints_one_decision_per_step(self):
+        engine = Engine(self.store, fake_model, parallel_workers=4)
+        engine.uses_builtin_provider = True
+        job = self.create()
+        for _ in range(3):
+            job["state"] = engine.advance(job)
+        self.assertIn("report", job["state"])
+        self.assertEqual(job["state"]["records"], [])
+        job["state"] = engine.advance(job)
+        self.assertEqual(len(job["state"]["records"]), 1)
+        job["state"] = engine.advance(job)
+        self.assertEqual(len(job["state"]["records"]), 2)
+
     def test_parallel_agent_failure_uses_audited_source_extract(self):
         job = self.create()
         job["state"] = Engine(self.store, fake_model).advance(job)
@@ -582,19 +620,65 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(record["output"]["invalid_evidence_ids"], [])
         self.assertEqual(record["audit"]["validation_retries"][0]["error_type"], "ValueError")
 
+    def test_json_schema_validation_errors_are_retried(self):
+        engine = Engine(self.store, fake_model)
+        call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
+        messages = messages_for(call, {"evidence": []}, [], [], self.protocol)
+        valid = {"action": "Hold", "expected_return_pct": 0.0, "confidence": .5,
+                 "rationale": "Synthetic retry result", "evidence_ids": ["technical-1"], "risks": []}
+        seen = []
+
+        def patched(_protocol, _messages, _key, _temperature):
+            seen.append(_key)
+            if len(seen) == 1:
+                raise JsonSchemaValidationError("synthetic schema rejection")
+            return valid, {"prompt_hash": "synthetic", "usage": {}, "raw_response": json.dumps(valid)}
+
+        engine.call_model = patched
+        result, audit = engine.validated_decision(self.protocol, call, messages,
+                                                  [{"evidence_id": "technical-1", "domain": "technical", "claim": "x"}])
+        self.assertEqual(result["action"], "Hold")
+        self.assertEqual(seen, ["a-decision", "a-decision:validation-retry-2"])
+        self.assertEqual(audit["validation_retries"][0]["error_type"], "ValidationError")
+
+    def test_comparable_fundamental_citation_is_valid_decision_evidence(self):
+        engine = Engine(self.store, fake_model)
+        call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
+        messages = messages_for(call, {"evidence": []}, [], [], self.protocol)
+        evidence = [
+            {"evidence_id": "sec-point", "domain": "fundamental", "claim": "Assets=10 USD"},
+            {"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True,
+             "claim": "Revenue: current=12 USD; prior=10 USD; year_over_year_change_pct=20"},
+            {"evidence_id": "technical-1", "domain": "technical", "claim": "return20=0.01"},
+        ]
+        result = {"action": "Buy", "expected_return_pct": 2.0, "confidence": .6,
+                  "rationale": "The supplied comparison supports the forecast.",
+                  "evidence_ids": ["sec-yoy"], "risks": []}
+        engine.call_model = lambda *_args, **_kwargs: (
+            result, {"prompt_hash": "synthetic", "usage": {}, "raw_response": json.dumps(result)})
+        validated, _ = engine.validated_decision(self.protocol, call, messages, evidence)
+        self.assertEqual(validated["invalid_evidence_ids"], [])
+
     def test_degraded_research_runs_are_excluded_from_study_statistics(self):
         job = self.complete(self.create())
         job["state"]["report"]["degraded_research_domains"] = ["sentiment"]
         report = study_report([job])
-        self.assertEqual(report["status"], "no_completed_cases")
+        self.assertEqual(report["status"], "no_formal_cases")
         self.assertEqual(report["excluded_degraded_research_runs"], 1)
 
-    def test_same_round_visibility(self):
-        job=self.complete(self.create())
-        calls=[c for c in decision_plan(self.protocol) if c.group=='D' and c.round==2]
-        a=messages_for(calls[0],job['state']['report'],job['state']['records'],[],self.protocol)
-        b=messages_for(calls[1],job['state']['report'],job['state']['records'],[],self.protocol)
-        self.assertEqual(json.loads(a[1]['content'])['history'],json.loads(b[1]['content'])['history'])
+    def test_switch_round_visibility_is_agent_isolated(self):
+        # Round 2 is the role-switch round: each side sees only its OWN
+        # round-1 turn, never its counterpart's, so the two histories now
+        # differ instead of matching (unlike rounds 1 and 3).
+        job = self.complete(self.create())
+        calls = [c for c in decision_plan(self.protocol) if c.group == 'D' and c.round == 2]
+        a = messages_for(calls[0], job['state']['report'], job['state']['records'], [], self.protocol)
+        b = messages_for(calls[1], job['state']['report'], job['state']['records'], [], self.protocol)
+        a_history, b_history = json.loads(a[1]['content'])['history'], json.loads(b[1]['content'])['history']
+        self.assertEqual((len(a_history), len(b_history)), (1, 1))
+        self.assertNotEqual(a_history, b_history)
+        self.assertEqual(a_history[0]['key'], f"d-r1-{calls[0].agent}")
+        self.assertEqual(b_history[0]['key'], f"d-r1-{calls[1].agent}")
 
     def test_decision_policy_distinguishes_hold_no_trade_and_enforces_debate_stance(self):
         plan = decision_plan(self.protocol)
@@ -661,6 +745,7 @@ class WorkflowTests(unittest.TestCase):
                 "dataset_id": other_dataset_id, "protocol": asdict(self.protocol), "protocol_hash": protocol_hash}))
             report = client.get(f'/api/studies/{protocol_hash}').json()
             self.assertEqual(report["preregistration"]["post_freeze_dataset_ids"], [other_dataset_id])
+            self.assertEqual(report["excluded_nonformal_reasons"], {"non_historical_dataset": 2})
 
     def test_freeze_rejects_changing_the_dataset_set_after_the_fact(self):
         job = self.complete(self.create("2024-12-31"))

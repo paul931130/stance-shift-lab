@@ -2,6 +2,31 @@
 
 正式產品只有一條執行路徑：`research.ps1` → Docker Compose → `research_service` → `http://127.0.0.1:8000`。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## v3-0922.1（2026-09-22）— 正式實驗結果隔離與 60-session 校準修正
+
+- Corrected non-overlapping 60-session base-rate windows to use 61 price observations per return window; exactly 480 prices no longer incorrectly qualify as eight complete windows.
+- Formal aggregate reports now fail closed for synthetic data, missing formal-readiness provenance, quality overrides, demo/test providers, degraded research, and mixed resolved model identities.
+- Stability reports require the same dataset ID and resolved model identity before treating runs as test–retest repeats.
+- `NoTrade` no longer inherits Hold justification or opportunity-cost fields in backtest exports.
+- Added regression coverage for all four boundaries. Existing `v3-0913.2` jobs remain immutable and cannot resume under this protocol.
+
+## v3-0922.2（2026-09-22）— qwen3:8b 正式模型例外
+
+- Opened a narrowly scoped formal-model exception for the canary-qualified `ollama/qwen3:8b`; other sub-14B models remain smoke-test-only.
+- Updated backend/UI readiness gates and regression coverage; existing 14B protocol jobs remain isolated.
+
+## v3-0922.4（2026-09-22）— 角色交換輪改為自我對抗，而非重寫立場
+
+- 修正前，D 組第 2 輪（角色交換）在 `switch_isolation=True` 時完全看不到任何歷史，只是拿同一份中性報告換個立場標籤重寫一次；實際跑過的案例顯示，模型在交換後產出的論述與未交換的 C 組幾乎逐字相同，只是結論方向不同，等於角色交換機制從未被真正觸發。
+- 現在交換輪只看得到「自己」第 1 輪的發言（仍看不到對手的），必須在新增的 `rebutted_claim` 欄位指出自己原本主張的哪個論點，並在 `confidence_shift`（-1 到 1）回報立場交換前後的信心變化；兩個欄位皆為必填並納入驗證。
+- `completeness_diagnostic` 新增 `confidence_shift` 統計，供之後比較 D 組交換輪的信心變化幅度。
+- 協議版本升級：`v3-0913.2`／`v3-0922.1`–`v3-0922.3` 的既有工作維持不可續跑、不併入統計。
+
+## v3-0922.3（2026-09-22）— 可比較基本面引用驗證修正
+
+- Aligned decision citation validation with the evidence actually supplied to the model: comparable SEC metrics are valid decision evidence, while point-in-time fundamental facts remain excluded.
+- Added a regression test for comparative fundamental citations and isolated prior partial `v3-0922.2` jobs from the corrected protocol.
+
 ## 2026-09-20 · pre-experiment preparation
 
 - Added a cost-basis-aligned Buy-and-Hold benchmark, descriptive full-run stability reporting, and a study stability API endpoint.

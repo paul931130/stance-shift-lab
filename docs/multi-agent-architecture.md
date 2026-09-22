@@ -1,6 +1,6 @@
 # 多代理架構說明
 
-本文件依 `research_service/protocol.py` 與 `research_service/engine.py` 整理（協議版本 v3-0913.1）。圖檔：[multi-agent-architecture.svg](img/multi-agent-architecture.svg)。
+本文件依 `research_service/protocol.py` 與 `research_service/engine.py` 整理（協議版本 v3-0922.4）。圖檔：[multi-agent-architecture.svg](img/multi-agent-architecture.svg)（圖中對交換輪歷史的描述為早期版本，尚待更新）。
 
 ![多代理決策架構](img/multi-agent-architecture.svg)
 
@@ -21,9 +21,9 @@
 | A | 單一決策，作為基準 | 1 |
 | B | 自我一致性投票，溫度 0.8，取 7 次樣本；與 C/D 算力相當 | 7 |
 | C | 多頭 / 空頭各發言，共 3 輪，再由裁決者裁決 | 3×2 + 1 = 7 |
-| D | 同 C，但**第 2 輪兩位辯論者互換立場**；互換輪不看對手歷史（`switch_isolation`） | 7 |
+| D | 同 C，但**第 2 輪兩位辯論者互換立場，且必須反駁自己第 1 輪的主張** | 7 |
 
-   B 的取樣、其他組的對話歷史彼此隔離（`visible_history`）。
+   B 的取樣、其他組的對話歷史彼此隔離（`visible_history`）。D 組交換輪（`switch_isolation=True`，預設開啟）只看得到**自己**第 1 輪的發言、看不到對手的，逼模型直接對抗自己剛才的論點，而不是照抄對手的說法；輸出須包含 `rebutted_claim`（指出被推翻的原主張）與 `confidence_shift`（交換前後的信心變化，-1 到 1）。
 
 5. **Gatekeeper**（`engine.gate`）：檢查領域覆蓋、引用通過率（下限 0.80）、年化波動率（上限 0.80）、歷史準確度；預期報酬落在 ±0.5σ 中性帶則為 Hold，否則 Buy 或 Sell（`derive_action`）。資料不足時依 `missing_data_policy` 處理。動作鎖定後才進入回測。
 6. **回測與統計**：持有期 30 / 60 / 90 天，主要終點 60 天；成本模型 zero 與 Corwin-Schultz；block bootstrap 比較各組。
