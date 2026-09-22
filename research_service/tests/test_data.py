@@ -7,7 +7,7 @@ from unittest.mock import patch
 from urllib.parse import parse_qs, urlparse
 
 from research_service.data import (_alpha_vantage_cached_news, _alpha_vantage_news, _chart_rows,
-                                   _deduplicate_news, _fnspid_news, check_sentiment_sources,
+                                   _base_rates, _deduplicate_news, _fnspid_news, check_sentiment_sources,
                                    download_prices, fetch_fundamental, fetch_sentiment)
 from scripts.prepare_fnspid_news import filter_fnspid
 
@@ -28,6 +28,19 @@ def chart_payload(count=70):
             "adjclose": [{"adjclose": [value / 2 for value in closes]}],
         },
     }], "error": None}}
+
+
+class BaseRateWindowTests(unittest.TestCase):
+    def test_sixty_session_windows_use_sixty_return_intervals(self):
+        history = [{"close": 100.0 + index} for index in range(480)]
+        result = _base_rates(history, 60, .2, .5)
+        self.assertEqual(result["windows"], 7)
+        self.assertFalse(result["calibration_ready"])
+
+        history.append({"close": 580.0})
+        result = _base_rates(history, 60, .2, .5)
+        self.assertEqual(result["windows"], 8)
+        self.assertTrue(result["calibration_ready"])
 
 
 class EmptyFrame:

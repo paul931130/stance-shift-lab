@@ -100,7 +100,9 @@ def coverage(data, analysis_date=None):
               for domain in ("fundamental", "sentiment", "macro")}
     counts["technical"] = len(past)
     ready = len(past) >= 61 and all(counts[name] for name in ("fundamental", "sentiment", "macro"))
-    base_rate_windows = len(past) // 60
+    # N price observations contain N-1 session returns.  Each calibration
+    # window consumes 60 returns; adjacent windows may share an endpoint.
+    base_rate_windows = max(0, (len(past) - 1) // 60)
     base_rate_history_ready = base_rate_windows >= BASE_RATE_MIN_WINDOWS
     sentiment_quality = _sentiment_quality(data, day)
     fundamental_quality = _fundamental_quality(data, day)

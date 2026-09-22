@@ -31,7 +31,7 @@
 .\research.ps1 logs
 ```
 
-研究執行預設使用 `ollama/qwen3:14b`。若只想用較小模型驗證流程，需明確加上 `-Model ollama/qwen3:8b -AllowSmallModel`；這類結果只算冒煙測試，不納入正式研究比較。
+研究執行預設使用 `ollama/qwen3:14b`。通過本專案 canary 的 `ollama/qwen3:8b` 可作為正式模型例外；其他較小模型仍需明確加上 `-AllowSmallModel`，且只算冒煙測試。
 
 若使用已安裝套件而不走 Docker，可執行 `python -m pip install -e .`，再使用
 `stance-shift doctor`、`stance-shift power-plan` 或 `stance-shift model-canary`。

@@ -23,7 +23,8 @@ from .data import (validate_dataset, download_prices, fetch_fundamental, fetch_s
                    fetch_macro, research_inputs, get_json, score_sentiment_finbert,
                    check_sentiment_sources)
 from .engine import Engine
-from .protocol import (DEFAULT_RESEARCH_MODEL, SMALL_MODEL_PATTERN, StudyProtocol, TICKERS,
+from .protocol import (DEFAULT_RESEARCH_MODEL, FORMAL_SMALL_MODEL_ALLOWLIST,
+                       SMALL_MODEL_PATTERN, StudyProtocol, TICKERS,
                        QUARTER_DATES, validate_case)
 from .reporting import (study_report, stability_report, export_job, csv_text,
                         pilot_diagnostics, hold_band_sensitivity)
@@ -303,7 +304,8 @@ def create_app(store=None, model_call=None, start_worker=True):
                 "context_length": (m.get("details") or {}).get("context_length")} for m in result.get("models", [])]
             model_ids = [item["id"] for item in details]
             formal_models = [item["id"] for item in details
-                             if (_parameter_billions(item.get("parameter_size")) or 0) >= 14]
+                             if ((_parameter_billions(item.get("parameter_size")) or 0) >= 14
+                                 or item["id"].strip().lower() in FORMAL_SMALL_MODEL_ALLOWLIST)]
             configured_default = os.getenv("RESEARCH_MODEL", DEFAULT_RESEARCH_MODEL)
             return {"ready": True, "models": model_ids, "details": details,
                     "configured_default": configured_default,
@@ -569,8 +571,10 @@ def create_app(store=None, model_call=None, start_worker=True):
                 raise ValueError(f"Ollama 模型 {effective_model} 尚未安裝或目前無法連線")
             model_identity = next(item for item in installed["details"] if item["id"] == effective_model)
             parameter_count = _parameter_billions(model_identity.get("parameter_size"))
-            if parameter_count is not None and parameter_count < 14 and not payload.allow_small_model:
-                raise ValueError("研究用模型參數量過小；14B 以下模型無法穩定區分 A/B/C/D。請改用 14B 以上，或明確設定 allow_small_model=True 進行冒煙測試")
+            if (parameter_count is not None and parameter_count < 14
+                    and effective_model.strip().lower() not in FORMAL_SMALL_MODEL_ALLOWLIST
+                    and not payload.allow_small_model):
+                raise ValueError("研究用模型參數量未達正式門檻；目前只有通過 canary 的 qwen3:8b 例外放行，其他小模型請明確設定 allow_small_model=True 進行冒煙測試")
         else:
             model_identity = {"id": effective_model,
                               "provider": "built_in_demo" if demo_mode else ("test_override" if injected_model_call else "cloud_alias"),
@@ -578,6 +582,12 @@ def create_app(store=None, model_call=None, start_worker=True):
         return {"ticker": data["ticker"], "analysis_date": payload.analysis_date,
             "evaluation_split": classify_analysis_date(payload.analysis_date), "dataset_id": payload.dataset_id,
             "dataset_hash": payload.dataset_id, "protocol": asdict(protocol), "protocol_hash": protocol.fingerprint,
+            "formal_readiness": {
+                "eligible": bool(coverage_result.get("formal_experiment_ready")),
+                "blockers": list(coverage_result.get("formal_blockers", [])),
+                "base_rate_windows": coverage_result.get("base_rate_windows"),
+                "base_rate_windows_required": coverage_result.get("base_rate_windows_required"),
+            },
             "model_identity": model_identity,
             "quality_overrides": {
                 **({"allow_low_quality_sentiment": True, "sentiment_quality": quality}
@@ -638,7 +648,11 @@ def create_app(store=None, model_call=None, start_worker=True):
         # legacy run under the new protocol.  Preserve any legacy model/data
         # exception as auditable overrides rather than failing silently before
         # the replacement job can be inspected or exported.
-        allow_small = bool(p.get("allow_small_model", False)) or (legacy and bool(SMALL_MODEL_PATTERN.search(model)))
+        allow_small = (
+            bool(p.get("allow_small_model", False))
+            or (legacy and bool(SMALL_MODEL_PATTERN.search(model))
+                and model.strip().lower() not in FORMAL_SMALL_MODEL_ALLOWLIST)
+        )
         old_quality_problem = (old_quality.get("items", 0) > 0
                                and (not old_quality.get("passes_quality_gate")
                                     or not old_quality.get("finbert_complete")))
@@ -670,8 +684,13 @@ def create_app(store=None, model_call=None, start_worker=True):
     @app.get("/api/jobs/{key}/export")
     def export(key: str):
         job = store.get(key)
-        same_protocol = [item for item in store.jobs() if item["config"]["protocol_hash"] == job["config"]["protocol_hash"]]
-        return Response(export_job(job, study_report(same_protocol)), media_type="application/zip", headers={"Content-Disposition": f'attachment; filename="research-{key}.zip"'})
+        protocol_hash = job["config"]["protocol_hash"]
+        same_protocol = [item for item in store.jobs() if item["config"]["protocol_hash"] == protocol_hash]
+        preregistration = store.preregistration(protocol_hash)
+        eligible_dataset_ids = preregistration["dataset_ids"] if preregistration else None
+        return Response(export_job(job, study_report(same_protocol, eligible_dataset_ids=eligible_dataset_ids)),
+                        media_type="application/zip",
+                        headers={"Content-Disposition": f'attachment; filename="research-{key}.zip"'})
 
     @app.get("/api/backup")
     def backup():
@@ -695,8 +714,9 @@ def create_app(store=None, model_call=None, start_worker=True):
     @app.get("/api/studies/{protocol_hash}")
     def report(protocol_hash: str):
         jobs = [j for j in store.jobs() if j["config"]["protocol_hash"] == protocol_hash]
-        result = study_report(jobs)
         preregistration = store.preregistration(protocol_hash)
+        eligible_dataset_ids = preregistration["dataset_ids"] if preregistration else None
+        result = study_report(jobs, eligible_dataset_ids=eligible_dataset_ids)
         if preregistration:
             frozen = set(preregistration["dataset_ids"])
             post_freeze = sorted({j["config"]["dataset_id"] for j in jobs

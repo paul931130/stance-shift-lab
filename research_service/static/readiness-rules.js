@@ -22,7 +22,8 @@ function computeExperimentReadiness(input) {
   if (!trimmedCloud) {
     if (!localAvailable) return { ready: false, reason: 'model_not_installed', localModel };
     const size = Number.parseFloat(localParameterSize);
-    if (!(size >= 14) && !allowSmallModel) {
+    const formalSmallModel = (localModel || '').trim().toLowerCase() === 'ollama/qwen3:8b';
+    if (!(size >= 14) && !formalSmallModel && !allowSmallModel) {
       return { ready: false, reason: 'model_too_small', localModel, localParameterSize };
     }
   }

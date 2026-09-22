@@ -8,6 +8,8 @@
 python scripts\run_model_canary.py --model ollama/qwen3:14b
 ```
 
+通過 canary 的 `ollama/qwen3:8b` 也可用同一指令驗證；它是唯一不需 `allow_small_model` 覆寫即可進正式協議的 14B 以下模型。
+
 canary 只建立 in-memory synthetic report，檢查：
 
 - JSON schema、`action`、`confidence`、`expected_return_pct`
@@ -25,4 +27,3 @@ canary 只建立 in-memory synthetic report，檢查：
 - `RESEARCH_MODEL_CONTEXT_LENGTH`：1024–131072，預設 8192；Ollama request 明確寫入 `options.num_ctx`。
 
 每次 audit 會記錄實際 timeout 與 context，方便區分「模型不合格」和「執行環境太小」。
-

@@ -744,10 +744,12 @@ def _technical_calibration(return20, mean20, mean60, volatility):
 def _base_rates(history, primary_horizon, volatility, hold_band_sigma):
     """Calculate a pre-cutoff, non-overlapping horizon prior without leakage."""
     windows = []
-    end = len(history)
+    # A 60-session return needs 61 price observations.  Adjacent windows may
+    # share their boundary price, but their return intervals never overlap.
+    end = len(history) - 1
     while end >= primary_horizon:
-        chunk = history[end - primary_horizon:end]
-        windows.append(chunk[-1]["close"] / chunk[0]["close"] - 1)
+        start = end - primary_horizon
+        windows.append(history[end]["close"] / history[start]["close"] - 1)
         end -= primary_horizon
     horizon_sigma_pct = volatility * math.sqrt(primary_horizon / 252) * 100
     calibration_ready = len(windows) >= BASE_RATE_MIN_WINDOWS

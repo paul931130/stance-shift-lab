@@ -24,7 +24,7 @@ Repo 只包含原始碼、腳本與文件；不含 API key、SQLite 資料、原
 
 3. 若要使用 FNSPID 新聞資料，將已授權的篩選檔放到 `research-inputs\Stock_news.csv`。沒有此檔仍可只用 Alpha Vantage；系統會明確顯示缺少哪個來源。
 4. 開啟 <http://127.0.0.1:8000/>，確認健康版本是目前的協議版本。
-5. 正式 pilot 需先安裝 14B 以上模型，例如：
+5. 正式 pilot 建議先安裝 14B 以上模型，例如 `qwen3:14b`；若使用通過本專案 canary 的 `qwen3:8b`，它是唯一可直接進正式研究的小模型例外：
 
 ```powershell
 ollama pull qwen3:14b
@@ -71,7 +71,7 @@ node --test research_service\tests_js\*.test.js
 正式研究的下一步依序是：
 
 1. 建立 9 檔 × 20 季，共 180 個正式就緒資料集。
-2. 用 14B 以上模型先跑 3 檔 × 4 季 pilot，檢查 Hold 率、D 對 A 分歧率、B 投票一致度和帶外方向準確率。
+2. 用 14B 以上模型（或 canary 通過的 `qwen3:8b` 例外）先跑 3 檔 × 4 季 pilot，檢查 Hold 率、D 對 A 分歧率、B 投票一致度和帶外方向準確率。
 3. 通過停止規則後凍結 preregistration、study manifest、dataset ID、protocol hash、模型 digest 與原始碼 commit。
 4. 再執行正式批次；不得把舊協議、小模型、資料品質覆寫或 degraded 摘要併入主分析。
 

@@ -76,12 +76,19 @@ test('an uninstalled local model blocks the run', () => {
   assert.equal(result.reason, 'model_not_installed');
 });
 
-test('a sub-14B local model blocks unless the smoke-test box is checked', () => {
-  const blocked = computeExperimentReadiness({ ...baseInput, localParameterSize: '8B' });
+test('an unlisted sub-14B local model blocks unless the smoke-test box is checked', () => {
+  const blocked = computeExperimentReadiness({ ...baseInput, localModel: 'ollama/gemma3:4b', localParameterSize: '4.3B' });
   assert.equal(blocked.ready, false);
   assert.equal(blocked.reason, 'model_too_small');
-  const overridden = computeExperimentReadiness({ ...baseInput, localParameterSize: '8B', allowSmallModel: true });
+  const overridden = computeExperimentReadiness({ ...baseInput, localModel: 'ollama/gemma3:4b', localParameterSize: '4.3B', allowSmallModel: true });
   assert.equal(overridden.ready, true);
+});
+
+test('qwen3:8b is the formal small-model exception', () => {
+  const result = computeExperimentReadiness({ ...baseInput,
+    localModel: 'ollama/qwen3:8b', localParameterSize: '8.2B' });
+  assert.equal(result.ready, true);
+  assert.equal(result.reason, 'ready');
 });
 
 test('a cloud model bypasses local install and size checks entirely', () => {

@@ -82,7 +82,7 @@ def evaluate(prices, analysis_date, decisions, protocol):
                         previous_benchmark_equity = benchmark_equity
                     realized_move_pct = (exit_price / entry - 1) * 100
                     hold_band_pct = float(decision.get("hold_band_pct", 0.))
-                    is_hold = direction == 0
+                    is_hold = action == "Hold"
                     rows.append({**base, "status": "complete", "entry_date": selected[0]["date"],
                                  "maturity_date": selected[horizon]["date"], "entry_price": entry, "exit_price": exit_price,
                                  "entry_spread": entry_spread, "exit_spread": exit_spread,
@@ -98,7 +98,8 @@ def evaluate(prices, analysis_date, decisions, protocol):
                                  "realized_move_pct": realized_move_pct,
                                  "hold_band_pct": hold_band_pct,
                                  "hold_was_justified": abs(realized_move_pct) <= hold_band_pct if is_hold else None,
-                                 "hold_opportunity_cost": max(0., abs(realized_move_pct) - hold_band_pct) if is_hold else 0.})
+                                 "hold_opportunity_cost": (max(0., abs(realized_move_pct) - hold_band_pct)
+                                                           if is_hold else None)})
     return rows, daily
 
 

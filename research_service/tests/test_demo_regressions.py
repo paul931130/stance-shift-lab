@@ -5,6 +5,7 @@ import tempfile
 import unittest
 
 from research_service.data import _canonical_news_url, _deduplicate_news, score_sentiment_finbert
+from research_service.protocol import StudyProtocol
 from research_service.readiness import coverage, gap_inventory, study_readiness
 from research_service.splits import classify_analysis_date, split_for_date, temporal_split_summary
 from research_service.storage import Store
@@ -193,7 +194,7 @@ class DemoRegressionTests(unittest.TestCase):
             store = Store(Path(directory))
             config = {
                 "ticker": "NVDA", "analysis_date": "2024-12-31", "dataset_id": "fixture",
-                "protocol": {"version": "v3-0913.2"}, "protocol_hash": "fixture",
+                "protocol": {"version": StudyProtocol().version}, "protocol_hash": "fixture",
             }
             job = store.create(config)
             store.claim()  # transition queued -> running, as the worker does

@@ -28,22 +28,68 @@ def _is_complete(job):
     return job.get("status") == "complete" and bool(job.get("state", {}).get("finished"))
 
 
-def _completed_unique(jobs):
+def _formal_exclusion_reason(job, eligible_dataset_ids):
+    """Fail closed unless a completed job carries formal-study provenance."""
+    config = job.get("config", {})
+    protocol = config.get("protocol", {})
+    report = job.get("state", {}).get("report", {})
+    readiness = config.get("formal_readiness")
+    if protocol.get("dataset_kind") != "historical" or report.get("dataset_kind") != "historical":
+        return "non_historical_dataset"
+    if not isinstance(readiness, dict) or readiness.get("eligible") is not True:
+        return "formal_readiness_not_proven"
+    if config.get("quality_overrides"):
+        return "quality_override"
+    if protocol.get("allow_small_model"):
+        return "small_model_override"
+    identity = config.get("model_identity", {})
+    if identity.get("provider") in ("built_in_demo", "test_override"):
+        return "non_formal_model_provider"
+    if str(identity.get("id", "")).startswith("ollama/") and not identity.get("digest"):
+        return "model_identity_unresolved"
+    if eligible_dataset_ids is None:
+        return "study_not_preregistered"
+    if config.get("dataset_id") not in eligible_dataset_ids:
+        return "not_preregistered_dataset"
+    return None
+
+
+def _completed_unique(jobs, *, formal_only=False, eligible_dataset_ids=None):
     """Return first valid result per case without mutating rerun audit records."""
     completed = [job for job in jobs if _is_complete(job)]
     degraded = [job for job in completed
                 if job.get("state", {}).get("report", {}).get("degraded_research_domains")]
-    usable = [job for job in completed if job not in degraded]
+    nonformal = [(job, _formal_exclusion_reason(job, eligible_dataset_ids) if formal_only else None)
+                 for job in completed if job not in degraded]
+    excluded_nonformal = [(job, reason) for job, reason in nonformal if reason]
+    usable = [job for job, reason in nonformal if not reason]
+    reasons = {}
+    for _, reason in excluded_nonformal:
+        reasons[reason] = reasons.get(reason, 0) + 1
     if not usable:
-        return [], {"completed": len(completed), "degraded": len(degraded), "duplicates": 0}
+        return [], {"completed": len(completed), "degraded": len(degraded), "nonformal": len(excluded_nonformal),
+                    "nonformal_reasons": reasons, "duplicates": 0}
     hashes = {job["config"].get("protocol_hash") for job in usable}
     if len(hashes) != 1:
         raise ValueError("不同協議、模型或資料類型不可合併統計")
+    if formal_only:
+        identities = {json.dumps(job["config"].get("model_identity", {}), sort_keys=True,
+                                 separators=(",", ":")) for job in usable}
+        if len(identities) != 1:
+            raise ValueError("不同解析模型版本不可合併正式統計")
+        case_datasets = {}
+        for job in usable:
+            config = job["config"]
+            key = (config.get("ticker"), config.get("analysis_date"))
+            case_datasets.setdefault(key, set()).add(config.get("dataset_id"))
+        if any(len(dataset_ids) != 1 for dataset_ids in case_datasets.values()):
+            raise ValueError("同一正式案例不可混用不同資料集版本")
     unique = {}
     for job in sorted(usable, key=lambda item: item.get("created_at", "")):
         config = job["config"]
         unique.setdefault((config.get("ticker"), config.get("analysis_date")), job)
     return list(unique.values()), {"completed": len(completed), "degraded": len(degraded),
+                                    "nonformal": len(excluded_nonformal), "nonformal_reasons": reasons,
                                     "duplicates": len(usable) - len(unique)}
 
 
@@ -253,7 +299,8 @@ def stability_report(jobs):
     by_case = {}
     for job in sorted(eligible, key=lambda item: item.get("created_at", "")):
         config = job.get("config", {})
-        key = (config.get("ticker"), config.get("analysis_date"))
+        identity = json.dumps(config.get("model_identity", {}), sort_keys=True, separators=(",", ":"))
+        key = (config.get("ticker"), config.get("analysis_date"), config.get("dataset_id"), identity)
         by_case.setdefault(key, []).append(job)
     repeated = {key: runs for key, runs in by_case.items() if len(runs) >= 2}
     groups = {}
@@ -280,18 +327,23 @@ def stability_report(jobs):
             "protocol_hash": hashes[0] if hashes else None,
             "completed_runs": len(completed), "eligible_runs": len(eligible),
             "repeated_cases": len(repeated),
-            "case_run_counts": {f"{key[0]}:{key[1]}": len(value) for key, value in repeated.items()},
+            "case_run_counts": {f"{key[0]}:{key[1]}:{key[2]}": len(value) for key, value in repeated.items()},
             "groups": groups,
             "note": "重複性指標是 full-protocol test-retest 的描述統計；未做正式顯著性檢定，也不取代主分析。"}
 
 
-def study_report(jobs, *, include_inference=True):
-    complete, excluded = _completed_unique(jobs)
+def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dataset_ids=None):
+    complete, excluded = _completed_unique(
+        jobs, formal_only=formal_only,
+        eligible_dataset_ids=None if eligible_dataset_ids is None else set(eligible_dataset_ids))
     stability = stability_report(jobs)
     if not complete:
-        return {"status": "no_completed_cases", "summary": [], "comparisons": [], "completeness": _completeness([]),
+        return {"status": "no_formal_cases" if formal_only and excluded["completed"] else "no_completed_cases",
+                "summary": [], "comparisons": [], "completeness": _completeness([]),
                 "excluded_incomplete_runs": len(jobs) - excluded["completed"],
-                "excluded_degraded_research_runs": excluded["degraded"], "stability": stability}
+                "excluded_degraded_research_runs": excluded["degraded"],
+                "excluded_nonformal_runs": excluded["nonformal"],
+                "excluded_nonformal_reasons": excluded["nonformal_reasons"], "stability": stability}
     protocol = complete[0]["config"].get("protocol", {})
     layers = sorted({_layer(row) for job in complete for row in job["state"].get("cases", [])}) or ["gated"]
     summary, comparisons = [], []
@@ -342,7 +394,9 @@ def study_report(jobs, *, include_inference=True):
             "protocol_hash": complete[0]["config"].get("protocol_hash"), "unique_cases": len(complete),
             "required_cases": MIN_CASES_FOR_INFERENCE, "excluded_duplicate_runs": excluded["duplicates"],
             "excluded_incomplete_runs": len(jobs) - excluded["completed"],
-            "excluded_degraded_research_runs": excluded["degraded"], "summary": summary,
+            "excluded_degraded_research_runs": excluded["degraded"],
+            "excluded_nonformal_runs": excluded["nonformal"],
+            "excluded_nonformal_reasons": excluded["nonformal_reasons"], "summary": summary,
             "comparisons": comparisons, "completeness": _completeness(complete),
             "stability": stability,
             "conventions": [

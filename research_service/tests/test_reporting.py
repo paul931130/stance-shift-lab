@@ -1,6 +1,6 @@
 import unittest
 
-from research_service.reporting import stability_report
+from research_service.reporting import _completed_unique, stability_report, study_report
 
 
 def completed_run(run_id, actions, expected):
@@ -14,8 +14,9 @@ def completed_run(run_id, actions, expected):
              for group, action in actions.items()]
     return {"id": run_id, "status": "complete", "created_at": run_id,
             "config": {"ticker": "NVDA", "analysis_date": "2024-12-31",
-                       "protocol_hash": "protocol-a"},
-            "state": {"finished": True, "report": {}, "decisions": decisions,
+                       "dataset_id": "dataset-a", "protocol_hash": "protocol-a",
+                       "model_identity": {"id": "ollama/qwen3:14b", "digest": "model-a"}},
+            "state": {"finished": True, "report": {"dataset_kind": "synthetic"}, "decisions": decisions,
                       "cases": cases}}
 
 
@@ -42,6 +43,68 @@ class StabilityReportTests(unittest.TestCase):
         result = stability_report([first, second])
         self.assertEqual(result["status"], "mixed_protocols")
         self.assertEqual(result["repeated_cases"], 0)
+
+    def test_stability_requires_the_same_dataset_and_resolved_model(self):
+        first = completed_run("2024-01-01T00:00:00+00:00",
+                              {group: "Buy" for group in "ABCD"}, {})
+        second = completed_run("2024-01-02T00:00:00+00:00",
+                               {group: "Sell" for group in "ABCD"}, {})
+        second["config"]["dataset_id"] = "dataset-b"
+        second["config"]["model_identity"] = {"id": "ollama/qwen3:14b", "digest": "model-b"}
+        result = stability_report([first, second])
+        self.assertEqual(result["status"], "no_repeated_complete_cases")
+        self.assertEqual(result["repeated_cases"], 0)
+
+    def test_synthetic_completed_runs_never_become_formal_inference(self):
+        jobs = []
+        for index in range(30):
+            job = completed_run(f"2024-01-{index + 1:02d}T00:00:00+00:00",
+                                {group: "Buy" for group in "ABCD"}, {})
+            job["config"]["ticker"] = f"T{index}"
+            job["config"]["analysis_date"] = f"D{index}"
+            job["config"]["protocol"] = {"dataset_kind": "synthetic"}
+            jobs.append(job)
+        result = study_report(jobs)
+        self.assertEqual(result["status"], "no_formal_cases")
+        self.assertEqual(result["excluded_nonformal_runs"], 30)
+        self.assertEqual(result["excluded_nonformal_reasons"], {"non_historical_dataset": 30})
+        self.assertEqual(result["comparisons"], [])
+
+    def test_formal_report_requires_preregistration_and_resolved_model(self):
+        job = completed_run("2024-01-01T00:00:00+00:00",
+                            {group: "Buy" for group in "ABCD"}, {})
+        job["config"]["protocol"] = {"dataset_kind": "historical", "allow_small_model": False}
+        job["config"]["formal_readiness"] = {"eligible": True}
+        job["state"]["report"]["dataset_kind"] = "historical"
+        not_frozen = study_report([job])
+        self.assertEqual(not_frozen["excluded_nonformal_reasons"], {"study_not_preregistered": 1})
+        job["config"]["model_identity"].pop("digest")
+        unresolved = study_report([job], eligible_dataset_ids={"dataset-a"})
+        self.assertEqual(unresolved["excluded_nonformal_reasons"], {"model_identity_unresolved": 1})
+
+    def test_formal_report_excludes_post_freeze_dataset(self):
+        job = completed_run("2024-01-01T00:00:00+00:00",
+                            {group: "Buy" for group in "ABCD"}, {})
+        job["config"]["protocol"] = {"dataset_kind": "historical", "allow_small_model": False}
+        job["config"]["formal_readiness"] = {"eligible": True}
+        job["state"]["report"]["dataset_kind"] = "historical"
+        result = study_report([job], eligible_dataset_ids={"dataset-b"})
+        self.assertEqual(result["excluded_nonformal_reasons"], {"not_preregistered_dataset": 1})
+
+    def test_formal_report_keeps_exclusion_reasons_when_other_cases_are_usable(self):
+        included = completed_run("2024-01-01T00:00:00+00:00",
+                                 {group: "Buy" for group in "ABCD"}, {})
+        excluded = completed_run("2024-01-02T00:00:00+00:00",
+                                 {group: "Sell" for group in "ABCD"}, {})
+        for job in (included, excluded):
+            job["config"]["protocol"] = {"dataset_kind": "historical", "allow_small_model": False}
+            job["config"]["formal_readiness"] = {"eligible": True}
+            job["state"]["report"]["dataset_kind"] = "historical"
+        excluded["config"].update(ticker="AAPL", analysis_date="2025-03-31", dataset_id="dataset-b")
+        usable, audit = _completed_unique(
+            [included, excluded], formal_only=True, eligible_dataset_ids={"dataset-a"})
+        self.assertEqual(len(usable), 1)
+        self.assertEqual(audit["nonformal_reasons"], {"not_preregistered_dataset": 1})
 
 
 if __name__ == "__main__":

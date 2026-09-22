@@ -137,7 +137,8 @@ function options(items) { return items.map(v => `<option value="${escape(v)}">${
 function modelOptions(items, details) {
   const byId=new Map((details||[]).map(item=>[item.id,item]));
   return items.map(value=>{const detail=byId.get(value), size=detail?.parameter_size, count=Number.parseFloat(size);
-    const suffix=size?` · ${size}${Number.isFinite(count)&&count<14?' · 僅冒煙':''}`:'';
+    const formalSmall=value.trim().toLowerCase()==='ollama/qwen3:8b';
+    const suffix=size?` · ${size}${Number.isFinite(count)&&count<14&&!formalSmall?' · 僅冒煙':''}`:'';
     return `<option value="${escape(value)}">${escape(value+suffix)}</option>`;}).join('');
 }
 function formatStamp(value) { try { return new Intl.DateTimeFormat('zh-TW',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(value)); } catch { return value || '—'; } }
@@ -220,7 +221,7 @@ function syncExperimentGuard() {
     sentiment_quality:`新聞品質尚未通過：目標相關率 ${percentage(result.quality?.target_relevance_rate??result.quality?.ticker_mention_rate)}、FinBERT ${result.quality?.finbert_scored||0}/${result.quality?.items||0}；請建立新版或明確勾選資料品質敏感性覆寫。`,
     fundamental_quality:'此資料集只有不可比較的 SEC 點時欄位；請重新採集新版資料，或明確勾選點時基本面敏感性覆寫。',
     model_not_installed:`本機尚未安裝 ${result.localModel}；請改選已安裝模型或先安裝正式模型。`,
-    model_too_small:`${result.localModel} 為 ${result.localParameterSize||'14B 以下'}；若只驗證流程，請勾選小模型冒煙測試。`,
+    model_too_small:`${result.localModel} 為 ${result.localParameterSize||'正式門檻以下'}；目前只有通過 canary 的 qwen3:8b 例外放行，其他小模型請勾選冒煙測試。`,
     ready:'資料集、研究分析日、模型與新聞品質均已驗證；設定會一起鎖定於新實驗。',
   };
   guard.textContent=messages[result.reason];
@@ -580,11 +581,13 @@ async function initialize() {
     : {ready:false, models:[], details:[], message:'Ollama 暫時無法連線；可稍後重試或改用雲端模型。'};
   modelDetails=new Map((m.details||[]).map(item=>[item.id,item]));
   installedModels=new Set(m.models||[]);
-  const formal=(m.details||[]).filter(item=>Number.parseFloat(item.parameter_size)>=14);
+  const formalIds=new Set(m.formal_models||[]);
+  const formal=(m.details||[]).filter(item=>formalIds.has(item.id)
+    || (!formalIds.size&&Number.parseFloat(item.parameter_size)>=14));
   $('model-state').textContent = demoMode ? 'DEMO · 內建合成 provider · 不代表正式模型資格'
     : m.ready ? (formal.length
-    ? `Ollama 已連線 · ${m.models.length} 個本機模型 · ${formal.length} 個符合 14B 研究門檻`
-    : `Ollama 已連線 · ${m.models.length} 個模型 · 無 14B 研究模型`) : (m.http_status === 403
+    ? `Ollama 已連線 · ${m.models.length} 個本機模型 · ${formal.length} 個符合研究模型門檻`
+    : `Ollama 已連線 · ${m.models.length} 個模型 · 無符合研究模型門檻的模型`) : (m.http_status === 403
       ? 'MODEL 403 · GPUtw Ollama 權限被拒'
       : (m.http_status ? `MODEL HTTP ${m.http_status} · 無法連線` : 'MODEL OFFLINE · 尚未連線'));
   const models=[...new Set([c.model,...m.models])]; $('model').innerHTML=modelOptions(models,m.details);

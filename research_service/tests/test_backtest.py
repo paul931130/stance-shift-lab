@@ -74,6 +74,18 @@ class BacktestTests(unittest.TestCase):
                                costs["benchmark_net_return"], places=12)
         self.assertLess(costs["benchmark_net_return"], costs["benchmark_return"])
 
+    def test_no_trade_does_not_inherit_hold_diagnostics(self):
+        analysis_date = prices()[60]["date"]
+        decisions = {group: {"candidate_action": "Buy", "action": "NoTrade", "hold_band_pct": 1.0}
+                     for group in "ABCD"}
+        rows, _ = evaluate(prices(), analysis_date, decisions, protocol())
+        no_trade = next(row for row in rows if row["group"] == "A" and row["decision_layer"] == "gated"
+                        and row["cost_model"] == "zero")
+        self.assertEqual(no_trade["action"], "NoTrade")
+        self.assertIsNone(no_trade["correct"])
+        self.assertIsNone(no_trade["hold_was_justified"])
+        self.assertIsNone(no_trade["hold_opportunity_cost"])
+
 
 if __name__ == "__main__":
     unittest.main()

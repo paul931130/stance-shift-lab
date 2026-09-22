@@ -246,7 +246,7 @@ function Show-Help {
     Write-Host '.\research.ps1 gputw-active               列出目前 active GPUtw 執行個體'
     Write-Host '.\research.ps1 sources NVDA 2024-12-31    實機檢查資料來源'
     Write-Host '.\research.ps1 run NVDA 2024-12-31         使用最新相符資料集與 14B 以上模型啟動實驗'
-    Write-Host '.\research.ps1 run NVDA 2024-12-31 -Model ollama/qwen3:8b -AllowSmallModel  僅供冒煙測試'
+    Write-Host '.\research.ps1 run NVDA 2024-12-31 -Model ollama/qwen3:8b       canary 通過後可作正式模型'
     Write-Host '.\research.ps1 run NVDA 2024-12-31 -AllowPointFundamental  明確覆寫舊版點時基本面品質門檻'
     Write-Host '.\research.ps1 job -JobId ID               檢視單一實驗'
     Write-Host '.\research.ps1 pause|resume|cancel -JobId ID  控制實驗'
