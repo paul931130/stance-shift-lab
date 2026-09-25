@@ -9,5 +9,5 @@
 ## 檢查清單
 - [ ] `ruff check research_service scripts` 通過
 - [ ] `python -m unittest discover -s research_service/tests -p "test_*.py"` 通過
-- [ ] `node --check research_service/static/app.js` 通過
+- [ ] `research_service/static/js/*.js` 每個模組 `node --check` 通過
 - [ ] 沒有提交 API 金鑰、`.env.research`、SQLite 資料庫或未授權的第三方資料

@@ -25,7 +25,7 @@ python -m venv .venv
 ```powershell
 ruff check research_service scripts
 python -m unittest discover -s research_service/tests -p "test_*.py"
-node --check research_service\static\app.js
+Get-ChildItem research_service\static\js\*.js | ForEach-Object { node --check $_.FullName }
 node --check research_service\static\readiness-rules.js
 node --test research_service\tests_js\*.test.js
 docker build -f Dockerfile.research -t stance-shift-lab-research .

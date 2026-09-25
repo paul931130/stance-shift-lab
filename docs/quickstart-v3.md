@@ -96,7 +96,7 @@ Compose 將資料庫保存在 Docker 具名資料卷 `research-data`。請用 `.
 
 ```powershell
 .venv\Scripts\python.exe -m unittest discover -s research_service/tests -v
-node --check research_service/static/app.js
+Get-ChildItem research_servicestaticjs*.js | ForEach-Object { node --check $_.FullName }
 ```
 
 測試向量刻意使用 synthetic 標記，與實際行情案例分開。完整實跑紀錄與限制見後續驗收文件。

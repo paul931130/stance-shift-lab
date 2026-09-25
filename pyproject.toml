@@ -37,5 +37,5 @@ stance-shift = "research_service.cli:main"
 include = ["research_service*"]
 
 [tool.setuptools.package-data]
-research_service = ["static/*"]
+research_service = ["static/*", "static/js/*"]
 

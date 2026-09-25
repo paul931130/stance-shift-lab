@@ -32,9 +32,12 @@
 .flow-svg { display: block; width: 100%; min-width: 900px; height: auto; font-family: var(--mono); }
 
 .flow-band rect { fill: transparent; stroke: transparent; transition: fill .25s, stroke .25s; cursor: pointer; }
-.flow-band:hover rect, .flow-band:focus-visible rect { fill: color-mix(in srgb, var(--accent) 5%, transparent); stroke: color-mix(in srgb, var(--accent) 30%, transparent); stroke-dasharray: 4 5; }
+.flow-band:hover rect, .flow-band:focus-visible rect { fill: color-mix(in srgb, var(--accent) 4%, transparent); stroke: color-mix(in srgb, var(--accent) 28%, transparent); stroke-dasharray: 4 5; }
+/* The band for the step open in the inspector stays highlighted. */
+.flow-band.is-focus rect { fill: color-mix(in srgb, var(--accent) 7%, transparent); stroke: color-mix(in srgb, var(--accent) 55%, transparent); stroke-dasharray: 6 6; animation: band-march 1.4s linear infinite; }
 .flow-band:focus { outline: none; }
-.flow-band-label { fill: var(--faint); font-size: 11px; font-weight: 700; letter-spacing: .5px; pointer-events: none; }
+.flow-band-label { fill: var(--faint); font-size: 11px; font-weight: 700; letter-spacing: .5px; pointer-events: none; transition: fill .25s; }
+.flow-band.is-focus .flow-band-label { fill: var(--accent); }
 .flow-stages text { fill: var(--muted); font-size: 11px; font-weight: 700; letter-spacing: .6px; }
 
 /* Edges: a base wire plus a dashed overlay that marches when data moves. */
@@ -73,6 +76,7 @@
 .flow-node-track { fill: var(--surface-sunk); }
 .flow-node-bar { fill: var(--t); transition: width .6s ease; }
 .flow-node:hover .flow-node-box, .flow-node:focus-visible .flow-node-box { stroke: var(--t); stroke-width: 1.8; }
+.flow-node.in-focus .flow-node-label { fill: var(--ink); }
 
 .flow-node.is-idle .flow-node-label { fill: var(--muted); }
 .flow-node.is-idle .flow-node-box { fill: color-mix(in srgb, var(--surface) 70%, transparent); stroke-dasharray: 3 3; }
@@ -90,7 +94,10 @@
 .flow-node.is-error .flow-node-box { fill: var(--error-soft); stroke: var(--error); }
 .flow-node.is-error .flow-node-dot { fill: var(--error); }
 
-.flow-legend { position: relative; display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 6px 0 0; padding: 0; list-style: none; color: var(--muted); font: 11px var(--mono); }
+.flow-foot { position: relative; display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 6px 16px; margin-top: 6px; }
+.flow-tip { color: var(--faint); font: 11px var(--mono); }
+.flow-tip::before { content: "↖ "; color: var(--accent); }
+.flow-legend { position: relative; display: flex; flex-wrap: wrap; gap: 6px 16px; margin: 0; padding: 0; list-style: none; color: var(--muted); font: 11px var(--mono); }
 .flow-legend li { display: inline-flex; align-items: center; gap: 6px; }
 .flow-legend li::before { content: ""; width: 14px; height: 8px; border-radius: 3px; border: 1.5px solid var(--line-strong); }
 .flow-legend .lg-active::before { background: color-mix(in srgb, var(--accent) 25%, transparent); border-color: var(--accent); animation: blink-dot 1s ease-in-out infinite; }
@@ -99,6 +106,7 @@
 .flow-legend .lg-warn::before { background: var(--warn-soft); border-color: var(--warn); }
 .flow-legend .lg-idle::before { border-style: dashed; }
 
+@keyframes band-march { to { stroke-dashoffset: -24; } }
 @keyframes edge-march { to { stroke-dashoffset: -24; } }
 @keyframes node-ring { 0% { opacity: .7; transform: scale(1); } 100% { opacity: 0; transform: scale(1.18, 1.35); } }
 @keyframes metric-bump { 30% { color: var(--accent); transform: translateY(-2px); } }

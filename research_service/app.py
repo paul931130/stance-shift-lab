@@ -79,6 +79,10 @@ class BatchInput(BaseModel):
     cases: list[JobInput] = Field(min_length=1, max_length=200)
 
 
+STATIC_ASSETS = ("readiness-rules.js", "app.css", "dataset.css", "flow.css")
+JS_MODULE_NAME = re.compile(r"[a-z][a-z0-9-]*\.js")
+
+
 def create_app(store=None, model_call=None, start_worker=True):
     store = store or Store(os.getenv("RESEARCH_DATA_DIR", "research-data"))
     settings = Settings(store.root)
@@ -164,9 +168,10 @@ def create_app(store=None, model_call=None, start_worker=True):
                 return JSONResponse({"detail": "Cross-origin mutation blocked"}, status_code=403)
             if request.headers.get("content-length", "").isdigit() and int(request.headers["content-length"]) > 6_000_000:
                 return JSONResponse({"detail": "Upload exceeds 6 MB"}, status_code=413)
-        public_paths = {"/", "/health", "/assets/app.js", "/assets/readiness-rules.js", "/assets/flow.js",
-                        "/assets/app.css", "/assets/dataset.css", "/assets/flow.css", "/api/login"}
-        if access_key and request.url.path not in public_paths:
+        # Static assets are public so the login screen can render; they hold no research data.
+        public_paths = {"/", "/health", "/api/login", *(f"/assets/{name}" for name in STATIC_ASSETS)}
+        is_public = request.url.path in public_paths or request.url.path.startswith("/assets/js/")
+        if access_key and not is_public:
             bearer = request.headers.get("authorization", "").removeprefix("Bearer ")
             cookie = request.cookies.get("research_session", "")
             if not auth.bearer_ok(bearer) and not auth.valid_session(cookie):
@@ -193,9 +198,17 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @app.get("/assets/{name}")
     def asset(name: str):
-        if name not in ("app.js", "readiness-rules.js", "flow.js", "app.css", "dataset.css", "flow.css"):
+        if name not in STATIC_ASSETS:
             raise HTTPException(404)
         return FileResponse(ROOT / "static" / name)
+
+    @app.get("/assets/js/{name}")
+    def js_module(name: str):
+        # Frontend ES modules; the strict name pattern rules out path traversal.
+        path = ROOT / "static" / "js" / name
+        if not JS_MODULE_NAME.fullmatch(name) or not path.is_file():
+            raise HTTPException(404)
+        return FileResponse(path, media_type="text/javascript")
 
     @app.get("/health")
     def health():
