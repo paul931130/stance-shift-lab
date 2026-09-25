@@ -2,6 +2,15 @@
 
 正式產品只有一條執行路徑：`research.ps1` → Docker Compose → `research_service` → `http://127.0.0.1:8000`。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## v3-0923.1（2026-09-23）— 研究標的以 INTC 取代 LLY
+
+- FNSPID 對 LLY 的新聞覆蓋在 2020-07 到 2023-11 之間完全空白（17 個月），而 Alpha Vantage 封存從 2023-12-17 才開始，兩者中間接不上，造成 7 個 LLY 案例（2022-03 至 2023-09）永遠缺情緒資料。直接掃描原始 FNSPID 檔案（23 GB，未篩選版）確認：FNSPID 本身只收錄到 2023-12，沒有任何標的涵蓋 2024–2025；現有 9 檔標的的完整覆蓋，皆是「FNSPID 到 2023-12 + Alpha Vantage 接手 2023-12-17 之後」兩段拼接而成。
+- 改選 `INTC`：FNSPID 對 INTC 的覆蓋是 2021-01 至 2023-12 連續 36 個月，與其餘 8 檔的覆蓋模式一致，可用同樣的 Alpha Vantage 接力方式補齊。
+- `STUDY_TICKERS`、`COMPANY_NAMES`、SEC CIK 對照表（`0000050863`）、Alpha Vantage 回補標的清單同步更新；`LLY` 的 `COMPANY_NAMES` 項目保留供稽核舊資料集與工作使用。
+- INTC 資料補齊過程（皆可由腳本重現）：`scripts/append_fnspid_ticker.py` 從原始 FNSPID（zip 內串流）只追加 INTC 的 11,157 筆到 `Stock_news.csv`，其餘標的的既有位元組不變；`scripts/alphavantage_news_fetch.py` 回補 INTC 2023-12 至 2025-12 共 25 個月；`scripts/collect_ticker_quarters.py` 逐季呼叫既有下載 API（新聞僅讀本機 FNSPID 與 Alpha Vantage 快取），再套用 FinBERT。
+- 驗證：INTC 20/20 季通過正式就緒檢查（每季 10 個基準率視窗、50 筆以上新聞）；與 2026-09-21 的正式資料快照合併後，`scripts/combined_readiness.py` 顯示 **180/180** 案例正式就緒（訓練 108／驗證 36／測試 36），無任何阻擋項目。
+- 注意：INTC 的資料集目前在原生資料庫（`research-data-native`），與 Docker 資料卷分開，正式跑批前需合併到同一個資料庫。Alpha Vantage 單月回傳上限 1000 筆，INTC 部分月份達到上限。
+
 ## v3-0922.1（2026-09-22）— 正式實驗結果隔離與 60-session 校準修正
 
 - Corrected non-overlapping 60-session base-rate windows to use 61 price observations per return window; exactly 480 prices no longer incorrectly qualify as eight complete windows.

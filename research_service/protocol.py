@@ -13,8 +13,11 @@ import re
 from typing import Literal
 
 # The current backtest deliberately excludes ASTS because the frozen FNSPID
-# input does not cover it.
-STUDY_TICKERS = ("AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "LLY", "GE")
+# input does not cover it. LLY was replaced by INTC in v3-0923.1: FNSPID has
+# no LLY coverage between 2020-07 and 2023-11 (a 17-month gap Alpha Vantage's
+# 2023-12-17 archive start cannot bridge), while INTC has the same continuous
+# 2021-01..2023-12 FNSPID coverage as the other eight tickers.
+STUDY_TICKERS = ("AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "INTC", "GE")
 TICKERS = STUDY_TICKERS  # Backwards-compatible name used by the API and tests.
 QUARTER_DATES = tuple(f"{year}-{suffix}" for year in range(2021, 2026) for suffix in ("03-31", "06-30", "09-30", "12-31"))
 DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
@@ -31,8 +34,9 @@ SWITCH_ROUND = 2
 COMPANY_NAMES = {
     "AAPL": ("Apple",), "NVDA": ("Nvidia", "NVIDIA"), "GOOGL": ("Alphabet", "Google"),
     "MSFT": ("Microsoft",), "AMZN": ("Amazon",), "JPM": ("JPMorgan", "JP Morgan"),
-    "MCD": ("McDonald",), "LLY": ("Eli Lilly", "Lilly"),
+    "MCD": ("McDonald",), "INTC": ("Intel",),
     "GE": ("General Electric", "GE Aerospace"), "ASTS": ("AST SpaceMobile",),
+    "LLY": ("Eli Lilly", "Lilly"),  # retained for auditing datasets/jobs recorded before v3-0923.1.
 }
 
 
@@ -40,7 +44,7 @@ COMPANY_NAMES = {
 class StudyProtocol:
     # Display, extraction and validation rules change what enters a report.
     # Version them so a partially completed job cannot mix evidence rules.
-    version: str = "v3-0922.4"
+    version: str = "v3-0923.1"
     study: Literal["study1", "study2"] = "study1"
     model: str = DEFAULT_RESEARCH_MODEL
     allow_small_model: bool = False
@@ -73,7 +77,7 @@ class StudyProtocol:
     study_universe: tuple[str, ...] = STUDY_TICKERS
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4"):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1"):
             raise ValueError("Unsupported protocol version")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")

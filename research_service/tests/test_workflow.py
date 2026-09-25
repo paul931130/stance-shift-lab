@@ -331,7 +331,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         cloned = response.json()
         self.assertEqual(cloned["config"]["parent_job_id"], legacy["id"])
-        self.assertEqual(cloned["config"]["protocol"]["version"], "v3-0922.4")
+        self.assertEqual(cloned["config"]["protocol"]["version"], "v3-0923.1")
         self.assertTrue(cloned["config"]["protocol"]["allow_small_model"])
         self.assertEqual(cloned["config"]["migration"]["from_protocol_version"], "v3-0908.2")
 

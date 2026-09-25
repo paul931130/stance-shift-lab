@@ -71,7 +71,7 @@ API_KEYS = [
     or env_file_value("ALPHA_VANTAGE_API_KEY")
     or "YOUR_API_KEY_HERE",
 ]
-TICKERS = ["AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "LLY", "GE"]
+TICKERS = ["AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "INTC", "GE"]
 START_DATE = datetime(2023, 12, 17)  # 接續 FNSPID 最後一筆之後
 END_DATE = datetime.now()
 
