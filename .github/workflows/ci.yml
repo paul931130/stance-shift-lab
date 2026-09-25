@@ -73,6 +73,7 @@ jobs:
         run: |
           node --check research_service/static/app.js
           node --check research_service/static/readiness-rules.js
+          node --check research_service/static/flow.js
 
       - name: Run frontend unit tests
         run: node --test research_service/tests_js/*.test.js

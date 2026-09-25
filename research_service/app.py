@@ -164,8 +164,8 @@ def create_app(store=None, model_call=None, start_worker=True):
                 return JSONResponse({"detail": "Cross-origin mutation blocked"}, status_code=403)
             if request.headers.get("content-length", "").isdigit() and int(request.headers["content-length"]) > 6_000_000:
                 return JSONResponse({"detail": "Upload exceeds 6 MB"}, status_code=413)
-        public_paths = {"/", "/health", "/assets/app.js", "/assets/readiness-rules.js",
-                        "/assets/app.css", "/assets/dataset.css", "/api/login"}
+        public_paths = {"/", "/health", "/assets/app.js", "/assets/readiness-rules.js", "/assets/flow.js",
+                        "/assets/app.css", "/assets/dataset.css", "/assets/flow.css", "/api/login"}
         if access_key and request.url.path not in public_paths:
             bearer = request.headers.get("authorization", "").removeprefix("Bearer ")
             cookie = request.cookies.get("research_session", "")
@@ -193,7 +193,7 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @app.get("/assets/{name}")
     def asset(name: str):
-        if name not in ("app.js", "readiness-rules.js", "app.css", "dataset.css"):
+        if name not in ("app.js", "readiness-rules.js", "flow.js", "app.css", "dataset.css", "flow.css"):
             raise HTTPException(404)
         return FileResponse(ROOT / "static" / name)
 
