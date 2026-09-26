@@ -20,14 +20,12 @@ class FidelityTests(unittest.TestCase):
                                                  'support a view over the next 60 sessions (30 and 90 too).',
                                     'evidence_ids': ['tech']}, evidence)
 
-    def test_rounded_converted_or_uncited_numbers_are_still_rejected(self):
+    def test_rounded_converted_or_invented_numbers_are_still_rejected(self):
         evidence = [{'evidence_id': 'tech', 'claim': 'return20 = -0.014023; price_vs_mean60 = -0.012453'},
                     {'evidence_id': 'vol', 'claim': 'volatility60_annual = 0.41'}]
-        for text in ('return20 was -0.014', 'a -1.4% 20-day return', 'a 45-day outlook'):
+        for text in ('return20 was -0.014', 'a -1.4% 20-day return', 'a 45-day outlook', 'score 4.64'):
             with self.assertRaises(ValueError, msg=text):
                 validate_financial_numbers({'rationale': text, 'evidence_ids': ['tech']}, evidence)
-        with self.assertRaises(ValueError):  # 0.41 appears only in evidence that was not cited
-            validate_financial_numbers({'rationale': 'volatility 0.41', 'evidence_ids': ['tech']}, evidence)
 
     def test_one_invalid_citation_is_rejected_instead_of_passing_eighty_percent(self):
         result = dict(action='Buy', expected_return_pct=4.0, confidence=.9, rationale='test', risks=[],
@@ -35,14 +33,18 @@ class FidelityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'evidence_id'):
             validate_decision(result, [{'evidence_id': key} for key in 'abcd'])
 
-    def test_number_must_be_supported_by_a_cited_source(self):
+    def test_exact_number_from_available_but_uncited_evidence_passes(self):
+        # v3-0926.4: real Gemini runs quoted exact technical values while citing only
+        # fundamental evidence. The number must exist in the evidence passed in;
+        # a real citation is still required.
         evidence = [
             {'evidence_id': 'revenue', 'claim': 'Revenues = 91166000000 USD'},
-            {'evidence_id': 'assets', 'claim': 'Assets = 22300000000 USD'},
+            {'evidence_id': 'vol', 'claim': 'volatility60_annual = 0.364565'},
         ]
-        with self.assertRaises(ValueError):
-            validate_financial_numbers(
-                {'summary': 'Assets are 22,300,000,000 USD', 'evidence_ids': ['revenue']}, evidence)
+        validate_financial_numbers(
+            {'summary': 'Revenues 91,166,000,000 USD; volatility 0.364565', 'evidence_ids': ['revenue']}, evidence)
+        with self.assertRaisesRegex(ValueError, '沒有可驗證的引用來源'):
+            validate_financial_numbers({'summary': 'volatility 0.364565', 'evidence_ids': ['invented']}, evidence)
 
     def test_comparable_financial_decision_requires_exact_cited_numbers(self):
         evidence = [{'evidence_id': 'revenue-yoy', 'domain': 'fundamental', 'comparative': True,

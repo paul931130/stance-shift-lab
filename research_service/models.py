@@ -108,7 +108,7 @@ def _compact_history(records):
 
 
 def validate_financial_numbers(result, evidence):
-    """Reject financial prose that introduces a number absent from its citations."""
+    """Reject financial prose that introduces a number absent from the evidence it may use."""
     def numbers(text):
         if not isinstance(text, str):
             return set()
@@ -122,11 +122,15 @@ def validate_financial_numbers(result, evidence):
     text = " ".join([str(result.get("summary", "")), str(result.get("rationale", "")),
                      str(result.get("strongest_counterpoint", "")),
                      *(str(value) for value in result.get("risks", []))])
-    # v3-0926.3: a window length inside a cited indicator name (return20 ->
-    # "20-day") and the protocol's own backtest horizons are not invented
-    # numbers. Rounded or converted values are still rejected.
-    supported = numbers(source)
-    supported |= {Decimal(value) for value in re.findall(r'(?<=[A-Za-z_])\d+(?![\d.])', source)}
+    # v3-0926.4: a number may come from any evidence the caller passed in
+    # (the decision's allowed list), not only the cited items; at least one
+    # real citation is still required above. v3-0926.3: a window length
+    # inside an indicator name (return20 -> "20-day") and the protocol's own
+    # backtest horizons are not invented numbers. Rounded or converted values
+    # are still rejected.
+    available = ' '.join(e['claim'] for e in evidence if isinstance(e.get('claim'), str))
+    supported = numbers(available)
+    supported |= {Decimal(value) for value in re.findall(r'(?<=[A-Za-z_])\d+(?![\d.])', available)}
     supported |= {Decimal(value) for value in BACKTEST_HORIZONS}
     unsupported = numbers(text) - supported
     if unsupported:
