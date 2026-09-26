@@ -53,4 +53,4 @@ Set-Location -LiteralPath $root
 Write-Host "[INFO] Native recovery service: http://127.0.0.1:$Port/"
 Write-Host '[INFO] Uses research-data-native; Docker database is unchanged.'
 if (-not $NoBrowser) { Start-Process "http://127.0.0.1:$Port/" }
-& $python -m uvicorn research_service.app:app --host 127.0.0.1 --port $Port
+& $python -m uvicorn research_service.app:create_app --factory --host 127.0.0.1 --port $Port

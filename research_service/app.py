@@ -1,6 +1,6 @@
 """Single-owner production research service with persistent resumable jobs."""
 from contextlib import asynccontextmanager
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import asdict
 from datetime import date, timedelta
 import asyncio
@@ -13,6 +13,7 @@ from pathlib import Path
 import re
 import threading
 import zipfile
+from uuid import uuid4
 from urllib.error import HTTPError, URLError
 
 from fastapi import FastAPI, Request, HTTPException
@@ -23,6 +24,7 @@ from .data import (validate_dataset, download_prices, fetch_fundamental, fetch_s
                    fetch_macro, research_inputs, get_json, score_sentiment_finbert,
                    check_sentiment_sources)
 from .engine import Engine
+from .errors import NotFoundError
 from .protocol import (DEFAULT_RESEARCH_MODEL, FORMAL_SMALL_MODEL_ALLOWLIST,
                        SMALL_MODEL_PATTERN, StudyProtocol, TICKERS,
                        QUARTER_DATES, validate_case)
@@ -81,6 +83,7 @@ class BatchInput(BaseModel):
 
 STATIC_ASSETS = ("readiness-rules.js", "app.css", "dataset.css", "flow.css")
 JS_MODULE_NAME = re.compile(r"[a-z][a-z0-9-]*\.js")
+COLLECTION_TASK_HISTORY = 50
 
 
 def create_app(store=None, model_call=None, start_worker=True):
@@ -100,6 +103,8 @@ def create_app(store=None, model_call=None, start_worker=True):
     finbert_task_lock = threading.RLock()
     av_archive_task = {"stage": "idle", "message": "尚未開始"}
     av_archive_lock = threading.RLock()
+    collection_tasks = {}
+    collection_lock = threading.RLock()
     injected_model_call = model_call is not None
     engine = Engine(store, model_call) if model_call else Engine(store)
     stop = threading.Event()
@@ -184,13 +189,22 @@ def create_app(store=None, model_call=None, start_worker=True):
         response.headers["Content-Security-Policy"] = "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'"
         return response
 
+    # ValueError is the codebase-wide convention for rejected research input.
     @app.exception_handler(ValueError)
     async def invalid(request, exc):
         return JSONResponse({"detail": str(exc)}, status_code=422)
 
-    @app.exception_handler(KeyError)
+    @app.exception_handler(NotFoundError)
     async def missing(request, exc):
         return JSONResponse({"detail": str(exc)}, status_code=404)
+
+    # Anything else is a bug: log the traceback, but never echo internals
+    # (paths, provider URLs, partial keys) back to the browser.
+    @app.exception_handler(Exception)
+    async def unexpected(request, exc):
+        logger.error("unhandled %s on %s %s", type(exc).__name__, request.method, request.url.path, exc_info=exc)
+        return JSONResponse({"detail": f"伺服器內部錯誤（{type(exc).__name__}）；詳細原因已記錄在服務日誌"},
+                            status_code=500)
 
     @app.get("/")
     def home():
@@ -441,8 +455,9 @@ def create_app(store=None, model_call=None, start_worker=True):
         threading.Thread(target=run, daemon=True, name="finbert-task").start()
         return {"dataset_id": key, "stage": "queued"}
 
-    @app.post("/api/datasets/download")
-    def download(payload: DownloadInput):
+    def collect_dataset(payload, progress=None):
+        """Build (or reuse) one dataset snapshot; shared by the sync API and background tasks."""
+        report = progress or (lambda **_: None)
         validate_case(payload.ticker, payload.analysis_date)
         if not payload.refresh:
             for existing in store.datasets():
@@ -457,41 +472,52 @@ def create_app(store=None, model_call=None, start_worker=True):
                         "limitations": existing.get("limitations", []), "agents": agents,
                         "version": existing.get("version"), "reused": True}
         cutoff = (date.fromisoformat(payload.analysis_date) - timedelta(days=1)).isoformat()
+        report(stage="collecting", agents={})
+        agents, collected = {}, {}
         with ThreadPoolExecutor(max_workers=4, thread_name_prefix="collection-agent") as pool:
             futures = {
-                "technical": pool.submit(download_prices, payload.ticker, payload.analysis_date),
-                "fundamental": pool.submit(fetch_fundamental, payload.ticker, payload.analysis_date),
-                "sentiment": pool.submit(fetch_sentiment, payload.ticker, payload.analysis_date,
-                                         allow_live=not payload.offline_news_only),
-                "macro": pool.submit(fetch_macro, cutoff),
+                pool.submit(download_prices, payload.ticker, payload.analysis_date): "technical",
+                pool.submit(fetch_fundamental, payload.ticker, payload.analysis_date): "fundamental",
+                pool.submit(fetch_sentiment, payload.ticker, payload.analysis_date,
+                            allow_live=not payload.offline_news_only): "sentiment",
+                pool.submit(fetch_macro, cutoff): "macro",
             }
-            data = futures["technical"].result()
-        agents = {
-            "technical": {"status": "complete", "records": len(data["prices"]),
-                "message": f"已取得一致還原 OHLC；{data['source']}"},
-        }
-        for domain, name in (("fundamental", "SEC"), ("sentiment", "新聞"), ("macro", "ALFRED")):
-            try:
-                evidence, note = futures[domain].result()
-                data["evidence"].extend(evidence)
-                empty_status = "needs_input" if domain == "sentiment" else "needs_configuration"
-                message = f"已取得 {len(evidence)} 筆證據"
-                if note:
-                    message += f"；附帶來源提醒：{note}"
-                agents[domain] = {"status": "complete" if evidence else empty_status,
-                    "records": len(evidence), "message": message if evidence else note}
-                if note:
-                    data["limitations"].append(note)
-            except Exception as error:
-                logger.warning("dataset collection failed ticker=%s domain=%s: %s: %s",
-                               payload.ticker, domain, type(error).__name__, error)
-                agents[domain] = {"status": "error", "records": 0,
-                    "message": f"{name} 下載失敗：{type(error).__name__}"}
-                data["limitations"].append(f"{name} 下載失敗；可重新下載或匯入可驗證的摘要")
+            # Report each domain as soon as its agent finishes so the UI can
+            # show progress; the snapshot is still assembled in a fixed
+            # domain order below, keeping the content-addressed ID stable.
+            for future in as_completed(futures):
+                domain = futures[future]
+                name = {"technical": "行情", "fundamental": "SEC", "sentiment": "新聞", "macro": "ALFRED"}[domain]
+                if domain == "technical":
+                    data = future.result()  # Prices are mandatory; failure aborts the snapshot.
+                    agents[domain] = {"status": "complete", "records": len(data["prices"]),
+                        "message": f"已取得一致還原 OHLC；{data['source']}"}
+                else:
+                    try:
+                        evidence, note = future.result()
+                        collected[domain] = (evidence, [note] if note else [])
+                        empty_status = "needs_input" if domain == "sentiment" else "needs_configuration"
+                        message = f"已取得 {len(evidence)} 筆證據"
+                        if note:
+                            message += f"；附帶來源提醒：{note}"
+                        agents[domain] = {"status": "complete" if evidence else empty_status,
+                            "records": len(evidence), "message": message if evidence else note}
+                    except Exception as error:
+                        logger.warning("dataset collection failed ticker=%s domain=%s: %s: %s",
+                                       payload.ticker, domain, type(error).__name__, error)
+                        collected[domain] = ([], [f"{name} 下載失敗；可重新下載或匯入可驗證的摘要"])
+                        agents[domain] = {"status": "error", "records": 0,
+                            "message": f"{name} 下載失敗：{type(error).__name__}"}
+                report(agents={key: dict(value) for key, value in agents.items()})
+        for domain in ("fundamental", "sentiment", "macro"):
+            evidence, notes = collected[domain]
+            data["evidence"].extend(evidence)
+            data["limitations"].extend(notes)
         if not any(item["domain"] == "sentiment" for item in data["evidence"]):
             data["limitations"].append("自動新聞來源無可用摘要；情緒域保留缺資料標記，也可匯入具公開時間的新聞摘要")
         sentiment_items = [item for item in data["evidence"] if item["domain"] == "sentiment"]
         if payload.use_finbert and sentiment_items:
+            report(stage="finbert")
             data = score_sentiment_finbert(data)
             count = data["processing"]["sentiment"]["items"]
             agents["sentiment"]["finbert"] = {"status": "complete", "items": count, "model": "ProsusAI/finbert", "input": "headline"}
@@ -499,9 +525,56 @@ def create_app(store=None, model_call=None, start_worker=True):
         elif payload.use_finbert:
             agents["sentiment"]["finbert"] = {"status": "skipped", "items": 0,
                 "model": "ProsusAI/finbert", "input": "headline", "reason": "no_headlines"}
+        agents = {domain: agents[domain] for domain in ("technical", "fundamental", "sentiment", "macro")}
         data["_collection"] = agents
         return {"id": store.add_dataset(validate_dataset(data)), "analysis_date": payload.analysis_date,
             "limitations": data["limitations"], "agents": agents, "reused": False}
+
+    # Terminal scripts keep the synchronous call; the web UI uses the
+    # background task below so a slow source never trips the browser timeout.
+    @app.post("/api/datasets/download")
+    def download(payload: DownloadInput):
+        return collect_dataset(payload)
+
+    @app.post("/api/collections", status_code=202)
+    def start_collection(payload: DownloadInput):
+        validate_case(payload.ticker, payload.analysis_date)
+        case = f"{payload.ticker}:{payload.analysis_date}"
+        with collection_lock:
+            for task in collection_tasks.values():
+                if task["case"] == case and task["stage"] in ("queued", "collecting", "finbert"):
+                    return dict(task)  # A double click joins the running collection.
+            finished = [key for key, task in collection_tasks.items() if task["stage"] in ("complete", "failed")]
+            for key in finished[:max(0, len(collection_tasks) - COLLECTION_TASK_HISTORY + 1)]:
+                del collection_tasks[key]
+            task_id = uuid4().hex
+            collection_tasks[task_id] = {"id": task_id, "case": case, "stage": "queued", "agents": {},
+                                         "created_at": now(), "updated_at": now()}
+
+        def progress(**values):
+            with collection_lock:
+                collection_tasks[task_id].update(values, updated_at=now())
+
+        def run():
+            try:
+                progress(stage="complete", result=collect_dataset(payload, progress))
+            except Exception as error:
+                logger.warning("collection task failed case=%s: %s: %s", case, type(error).__name__, error)
+                # Validation messages are written for researchers; anything else
+                # may embed provider URLs, so expose only the exception type.
+                detail = str(error) if isinstance(error, ValueError) else f"{type(error).__name__}：資料蒐集未完成，可重試"
+                progress(stage="failed", message=detail)
+        threading.Thread(target=run, daemon=True, name="collection-task").start()
+        with collection_lock:
+            return dict(collection_tasks[task_id])
+
+    @app.get("/api/collections/{task_id}")
+    def collection_status(task_id: str):
+        with collection_lock:
+            task = collection_tasks.get(task_id)
+            if not task:
+                raise NotFoundError("找不到資料蒐集任務；若服務曾重啟，請重新啟動資料 Agent")
+            return dict(task)
 
     @app.post("/api/sources/check")
     def source_check(payload: DownloadInput):
@@ -765,5 +838,3 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     return app
 
-
-app = create_app()

@@ -405,6 +405,59 @@ class WorkflowTests(unittest.TestCase):
         self.assertFalse(refreshed.json()["reused"])
         self.assertEqual(prices.call_count, 2)
 
+    def _wait_for_collection(self, client, task):
+        deadline = time.monotonic() + 10
+        while task["stage"] not in ("complete", "failed"):
+            self.assertLess(time.monotonic(), deadline, "collection task did not finish")
+            time.sleep(.05)
+            task = client.get(f'/api/collections/{task["id"]}').json()
+        return task
+
+    def test_collection_task_matches_sync_download_and_hides_internal_errors(self):
+        technical = json.loads(json.dumps(self.data))
+        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        by_domain = {domain: [next(item for item in self.data["evidence"] if item["domain"] == domain)]
+                     for domain in ("fundamental", "sentiment", "macro")}
+        case = {"ticker": "NVDA", "analysis_date": "2024-12-31", "refresh": True}
+        with patch("research_service.app.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))),              patch("research_service.app.fetch_fundamental", return_value=(by_domain["fundamental"], "")),              patch("research_service.app.fetch_sentiment", return_value=(by_domain["sentiment"], "")),              patch("research_service.app.fetch_macro", return_value=(by_domain["macro"], "")):
+            with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+                sync = client.post('/api/datasets/download', json=case).json()
+                started = client.post('/api/collections', json=case)
+                self.assertEqual(started.status_code, 202)
+                task = self._wait_for_collection(client, started.json())
+        self.assertEqual(task["stage"], "complete")
+        # Same inputs must assemble the same content-addressed snapshot even
+        # though the background path records agents as they finish.
+        self.assertEqual(task["result"]["id"], sync["id"])
+        self.assertEqual(list(task["result"]["agents"]), ["technical", "fundamental", "sentiment", "macro"])
+        self.assertEqual(set(task["agents"]), {"technical", "fundamental", "sentiment", "macro"})
+
+        with patch("research_service.app.download_prices", side_effect=RuntimeError("https://provider/?apikey=SECRET")),              patch("research_service.app.fetch_fundamental", return_value=([], "")),              patch("research_service.app.fetch_sentiment", return_value=([], "")),              patch("research_service.app.fetch_macro", return_value=([], "")):
+            with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+                failed = self._wait_for_collection(client, client.post('/api/collections', json=case).json())
+                missing = client.get('/api/collections/does-not-exist')
+                invalid = client.post('/api/collections', json={"ticker": "NVDA", "analysis_date": "2024-12-30"})
+        self.assertEqual(failed["stage"], "failed")
+        self.assertNotIn("SECRET", failed["message"])
+        self.assertIn("RuntimeError", failed["message"])
+        self.assertEqual(missing.status_code, 404)
+        self.assertEqual(invalid.status_code, 422)
+
+    def test_error_mapping_distinguishes_not_found_from_bugs(self):
+        with TestClient(create_app(self.store, fake_model, start_worker=False), raise_server_exceptions=False) as client:
+            missing = client.get('/api/jobs/does-not-exist')
+            self.assertEqual(missing.status_code, 404)
+            self.assertEqual(missing.json()["detail"], "找不到實驗")
+            # A stray KeyError is a bug, not a missing record: 500 without internals.
+            with patch.object(self.store, "jobs", side_effect=KeyError("internal_field")):
+                broken = client.get('/api/jobs')
+        self.assertEqual(broken.status_code, 500)
+        self.assertNotIn("internal_field", broken.json()["detail"])
+
+    def test_importing_app_module_has_no_side_effects(self):
+        import research_service.app as module
+        self.assertFalse(hasattr(module, "app"))
+
     def test_readiness_date_guard_and_finbert_version_endpoint(self):
         historical = json.loads(json.dumps(self.data))
         historical.update(kind="historical", requested_analysis_date="2024-12-31")

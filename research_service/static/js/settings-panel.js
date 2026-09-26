@@ -4,7 +4,7 @@ import { api, task } from './api.js';
 
 const GROUPS = [
   {title: '回測資料來源', names: ['SEC_USER_AGENT', 'FRED_API_KEY', 'ALPHA_VANTAGE_API_KEY']},
-  {title: '回測模型', names: ['DEFAULT_MODEL']},
+  {title: '回測模型', names: ['RESEARCH_MODEL', 'RESEARCH_MODEL_TIMEOUT_SECONDS', 'RESEARCH_MODEL_CONTEXT_LENGTH']},
   {title: 'GPUtw／遠端 Ollama', names: ['GPUTW_API_URL', 'GPUTW_API_KEY', 'GPUTW_INSTANCE_ID', 'GPUTW_OLLAMA_BASE_URL', 'GPUTW_OLLAMA_API_KEY']},
   {title: '本機研究資料路徑', names: ['FNSPID_NEWS_PATH', 'ALPHA_VANTAGE_NEWS_PATH']},
   {title: '雲端模型金鑰（進階）', names: ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY'], collapsed: true},

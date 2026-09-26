@@ -27,7 +27,7 @@ research.example.com {
 安裝 Python 3.12 以上，建立獨立虛擬環境並在專案根目錄執行 `pip install .`（需要本機 FinBERT 時改用 `pip install ".[finbert]"`）。以 systemd、Windows 服務或平台工作程序啟動：
 
 ```text
-python -m uvicorn research_service.app:app --host 0.0.0.0 --port 8000 --workers 1 --no-proxy-headers
+python -m uvicorn research_service.app:create_app --factory --host 0.0.0.0 --port 8000 --workers 1 --no-proxy-headers
 ```
 
 由服務管理器注入 `.env.research` 的設定，另設 `RESEARCH_REMOTE=true`、`RESEARCH_DATA_DIR` 為持久化目錄。Uvicorn 不會自行讀取 `.env.research`；Windows 啟動腳本才有讀取功能。務必配置 HTTPS、私有後端連線與來源白名單。

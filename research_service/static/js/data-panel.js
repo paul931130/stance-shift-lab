@@ -82,6 +82,45 @@ function renderDatasetPreviewList() {
     : `<p class="hint">沒有符合條件的資料集（共 ${rows.length} 筆）。</p>`;
 }
 
+const AGENT_CODES = {technical: 'TECH', fundamental: 'FUND', sentiment: 'SENT', macro: 'MACRO'};
+const agentLine = (domain, item) => terminalLine(AGENT_CODES[domain], `${item.status.toUpperCase()} · ${item.records} records · ${item.message}`, item.status === 'complete' ? 'ok' : 'warn');
+
+// Light up each data agent on the map the moment the server reports it.
+function showAgentProgress(agents) {
+  const update = {};
+  for (const [domain, item] of Object.entries(agents)) {
+    const ok = item.status === 'complete';
+    update[`da-${domain}`] = {status: ok ? 'done' : 'warn', sub: ok ? `${item.records} 筆` : '資料缺口'};
+    update[`src-${domain}`] = ok ? 'ready' : 'warn';
+  }
+  flow.setMany(update);
+}
+
+// Collection can take minutes (SEC, news, FinBERT), so it runs as a server
+// task and the page polls it rather than holding one long request open.
+async function runCollectionTask(payload) {
+  let task = await api('/api/collections', payload);
+  const reported = new Set();
+  let finbertAnnounced = false;
+  while (true) {
+    for (const [domain, item] of Object.entries(task.agents || {})) {
+      if (reported.has(domain)) continue;
+      reported.add(domain);
+      agentLine(domain, item);
+    }
+    showAgentProgress(task.agents || {});
+    if (task.stage === 'finbert' && !finbertAnnounced) {
+      finbertAnnounced = true;
+      terminalLine('SENT', '本機 FinBERT 正在評分新聞標題…', 'active');
+      flow.set('da-sentiment', {status: 'active', sub: 'FinBERT 評分中…'});
+    }
+    if (task.stage === 'complete') return {result: task.result, reported};
+    if (task.stage === 'failed') throw new Error(task.message || '資料蒐集未完成，可重試');
+    await sleep(1000);
+    task = await api(`/api/collections/${encodeURIComponent(task.id)}`);
+  }
+}
+
 async function collect() {
   const ticker = $('ticker').value, analysisDate = $('download-date').value;
   const refresh = $('refresh-data').checked, useFinbert = $('download-finbert').checked;
@@ -90,13 +129,13 @@ async function collect() {
   terminalLine('COORD', refresh ? `強制建立 ${analysisDate} 新快照，派發 4 個資料 Agent` : `先搜尋 ${ticker}／${analysisDate} 可重用的四域完整快照`);
   notify('資料 Agent 正在檢查快照與來源…');
   renderCollectionAgents(null, 'running');
-  let r;
-  try { r = await api('/api/datasets/download', {ticker, analysis_date: analysisDate, refresh, use_finbert: useFinbert}); }
+  let r, reported;
+  try { ({result: r, reported} = await runCollectionTask({ticker, analysis_date: analysisDate, refresh, use_finbert: useFinbert})); }
   catch (error) { terminalLine('ERROR', error.message, 'error'); renderCollectionAgents(selectedDataset()); throw error; }
   if (r.reused) terminalLine('CACHE', `HIT dataset v${r.version} · ${r.id.slice(0, 12)}… · 未呼叫外部 API`, 'ok');
   else terminalLine('COORD', '已完成四域來源派工：Yahoo／SEC／Alpha+FNSPID／ALFRED');
-  const codes = {technical: 'TECH', fundamental: 'FUND', sentiment: 'SENT', macro: 'MACRO'};
-  for (const [domain, item] of Object.entries(r.agents)) terminalLine(codes[domain], `${item.status.toUpperCase()} · ${item.records} records · ${item.message}`, item.status === 'complete' ? 'ok' : 'warn');
+  // A reused snapshot reports no live progress; list its recorded agents once.
+  for (const [domain, item] of Object.entries(r.agents)) if (!reported.has(domain)) agentLine(domain, item);
   for (const limitation of r.limitations) terminalLine('AUDIT', limitation, 'warn');
   if (!r.reused) terminalLine('STORE', `SAVED dataset ${r.id.slice(0, 12)}… · immutable snapshot`, 'ok');
   await refreshDatasets();

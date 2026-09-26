@@ -6,6 +6,8 @@ from datetime import datetime, timezone
 from tempfile import TemporaryDirectory
 from uuid import uuid4
 
+from .errors import NotFoundError
+
 
 def now():
     return datetime.now(timezone.utc).isoformat()
@@ -80,7 +82,7 @@ class Store:
         with self.connect() as db:
             row = db.execute("SELECT content FROM datasets WHERE id=?", (key,)).fetchone()
         if not row:
-            raise KeyError("找不到資料集")
+            raise NotFoundError("找不到資料集")
         return json.loads(row[0])
 
     def datasets(self):
@@ -133,7 +135,7 @@ class Store:
     @staticmethod
     def unpack(row):
         if not row:
-            raise KeyError("找不到實驗")
+            raise NotFoundError("找不到實驗")
         result = dict(row)
         result["config"] = json.loads(result["config"])
         result["state"] = json.loads(result["state"])

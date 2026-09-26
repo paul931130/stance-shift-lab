@@ -63,7 +63,7 @@ def main(argv=None):
         return 0 if result["status"] == "pass" else 1
     if args.command == "serve":
         import uvicorn
-        uvicorn.run("research_service.app:app", host=args.host, port=args.port, reload=args.reload)
+        uvicorn.run("research_service.app:create_app", factory=True, host=args.host, port=args.port, reload=args.reload)
         return 0
     parser.print_help()
     return 0
