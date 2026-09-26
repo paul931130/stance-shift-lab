@@ -76,7 +76,7 @@ Get-ChildItem research_service\static\js\*.js | ForEach-Object { node --check $_
 
 ## 維運與故障處理
 
-- 升級前執行 `.\research.ps1 backup`；不要執行 `docker compose down -v`。
+- 升級前執行 `.\research.ps1 backup`（備份存到 `backups\`）；不要執行 `docker compose down -v`。
 - Docker Desktop 若出現 `sailor-ingest.sock.stale`，先由 Docker Desktop 的 Troubleshoot 重啟，仍失敗再重新開機。Factory reset 會清除本機容器與資料卷，不應作為第一步。
 - 模型或資料 API 失敗會讓工作停在可重試狀態；確認來源後執行 `resume`，不要把錯誤當成 NoTrade。
 - 對外部署（讓其他人透過網域存取，而非只在自己電腦跑）前依 [GitHub 發布檢查表](github-release-checklist.md) 建立乾淨 Git 歷史、選定 LICENSE、加 CI，再配置 HTTPS、強存取金鑰與持久化備份。

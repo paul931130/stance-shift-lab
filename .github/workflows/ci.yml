@@ -1,8 +1,10 @@
 name: CI
 
 on:
+  # Every branch is checked on push, so work can be verified before a PR exists.
+  # Dependabot branches are covered by their own pull requests.
   push:
-    branches: [main]
+    branches-ignore: ["dependabot/**"]
   pull_request:
     branches: [main]
 

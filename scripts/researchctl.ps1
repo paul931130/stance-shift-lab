@@ -252,7 +252,7 @@ function Show-Help {
     Write-Host '.\research.ps1 pause|resume|cancel -JobId ID  控制實驗'
     Write-Host '.\research.ps1 export -JobId ID            下載研究 ZIP'
     Write-Host '.\research.ps1 verify-export -File ZIP     驗證研究產物或資料備份 ZIP 雜湊'
-    Write-Host '.\research.ps1 backup -File ZIP            建立一致性的本機研究資料備份'
+    Write-Host '.\research.ps1 backup [-File ZIP]         建立一致性的本機研究資料備份（預設存到 backups\）'
     Write-Host '.\research.ps1 statistics -ProtocolHash HASH  查看同協議統計'
     Write-Host '.\research.ps1 jobs                        查看實驗佇列'
     Write-Host '.\research.ps1 logs                        持續查看服務日誌'
@@ -503,7 +503,12 @@ switch ($Command) {
         $settings = Read-Settings; $headers = @{}
         if ($settings['RESEARCH_ACCESS_KEY']) { $headers.Authorization = "Bearer $($settings['RESEARCH_ACCESS_KEY'])" }
         $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
-        $destination = if ($File) { $File } else { Join-Path $projectRoot "stance-shift-backup-$stamp.zip" }
+        $destination = if ($File) { $File } else {
+            # Keep backups out of the project root; backups/ is git-ignored.
+            $backupDir = Join-Path $projectRoot 'backups'
+            New-Item -ItemType Directory -Force -Path $backupDir | Out-Null
+            Join-Path $backupDir "stance-shift-backup-$stamp.zip"
+        }
         Invoke-WebRequest -Uri 'http://127.0.0.1:8000/api/backup' -Headers $headers -OutFile $destination -UseBasicParsing
         Write-Host "已建立研究資料備份：$destination"
         Write-Host '備份不包含 .env.research、API key、本機模型或原始 CSV。'
