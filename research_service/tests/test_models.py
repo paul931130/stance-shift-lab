@@ -163,15 +163,24 @@ class ModelReliabilityTests(unittest.TestCase):
         def completion(**kwargs):
             seen[kwargs["model"]] = kwargs
             return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
-                                   usage={"prompt_tokens": 1}, model=kwargs["model"])
+                                   usage={"prompt_tokens": 1,
+                                          "completion_tokens_details": SimpleNamespace(reasoning_tokens=5)},
+                                   model=kwargs["model"])
 
         messages = [{"role": "system", "content": "decision"}, {"role": "user", "content": "{}"}]
         audits = {}
         with patch("litellm.completion", side_effect=completion):
             for model in ("gemini/gemini-2.5-flash", "openai/gpt-4.1-mini"):
                 protocol = StudyProtocol(model=model, dataset_kind="synthetic", bootstrap_replicates=199)
-                audits[model] = generate(protocol, messages, seed=7)[1]["usage"]["seed_applied"]
+                audit = generate(protocol, messages, seed=7)[1]
+                # Provider objects nested in usage must not break job persistence.
+                json.dumps(audit, allow_nan=False)
+                self.assertEqual(audit["usage"]["completion_tokens_details"], {"reasoning_tokens": 5})
+                audits[model] = audit["usage"]["seed_applied"]
         self.assertNotIn("seed", seen["gemini/gemini-2.5-flash"])
+        # Thinking tokens would eat max_tokens; the Ollama path also sends think=False.
+        self.assertEqual(seen["gemini/gemini-2.5-flash"]["reasoning_effort"], "disable")
+        self.assertNotIn("reasoning_effort", seen["openai/gpt-4.1-mini"])
         self.assertEqual(seen["openai/gpt-4.1-mini"]["seed"], 7)
         self.assertEqual(audits, {"gemini/gemini-2.5-flash": False, "openai/gpt-4.1-mini": True})
 
