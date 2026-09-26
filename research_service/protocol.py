@@ -90,7 +90,7 @@ class StudyProtocol:
         if (SMALL_MODEL_PATTERN.search(self.model)
                 and self.model.strip().lower() not in FORMAL_SMALL_MODEL_ALLOWLIST
                 and not self.allow_small_model):
-            raise PreflightError("model_too_small", "研究用模型參數量未達正式門檻；目前只有通過 canary 的 qwen3:8b 例外放行，其他小模型請明確設定 allow_small_model=True 進行冒煙測試")
+            raise PreflightError("model_too_small", "模型參數量未達正式門檻（14B；qwen3:8b 除外）；若只是測試，請勾選「允許 14B 以下的模型」（allow_small_model=True）")
         if self.max_rounds != 3 or self.voting_samples not in (5, 7):
             raise ValueError("v3 fixes three rounds and supports voting n=5 or n=7")
         if self.primary_horizon != 60 or self.horizons != (30, 60, 90):

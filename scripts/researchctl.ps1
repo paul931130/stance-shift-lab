@@ -226,34 +226,34 @@ function Wait-ResearchHealth([int]$TimeoutSec = 90) {
 function Show-Help {
     Write-Host 'Stance Shift Research · Agent CLI'
     Write-Host ''
-    Write-Host '.\research.ps1 setup                       第一次設定來源與模型'
+    Write-Host '.\research.ps1 setup                       第一次設定：資料來源金鑰與模型來源（本機／GPUtw／雲端 API）'
     Write-Host '.\research.ps1 start                       建置並啟動網站'
     Write-Host '.\research.ps1 status                      查看服務狀態'
-    Write-Host '.\research.ps1 doctor                      檢查 Docker、Ollama、來源設定與資料檔'
-    Write-Host '.\research.ps1 repair-docker               保留資料並修復 Docker Desktop stale socket'
-    Write-Host '.\research.ps1 collect NVDA 2024-12-31     取得或重用四域資料快照'
-    Write-Host '.\research.ps1 collect NVDA 2024-12-31 -UseFinbert  對新聞標題套用 FinBERT'
-    Write-Host '.\research.ps1 collect NVDA 2024-12-31 -Refresh  強制建立新版快照'
-    Write-Host '.\research.ps1 readiness                  查看 180 個回測案例的資料完整度'
-    Write-Host '.\research.ps1 splits                     查看 Training／Validation／Test 時間切分'
+    Write-Host '.\research.ps1 doctor                      檢查 Docker、模型來源、資料來源設定與資料檔'
+    Write-Host '.\research.ps1 repair-docker               Docker Desktop 卡住時修復連線（資料保留）'
+    Write-Host '.\research.ps1 collect NVDA 2024-12-31     建立資料集（已有齊全的會直接重用）'
+    Write-Host '.\research.ps1 collect NVDA 2024-12-31 -UseFinbert  建立資料集並用 FinBERT 評分新聞標題'
+    Write-Host '.\research.ps1 collect NVDA 2024-12-31 -Refresh  強制重新下載，建立新版資料集'
+    Write-Host '.\research.ps1 readiness                  查看 180 個研究案例（9 檔 × 20 季）的資料完整度'
+    Write-Host '.\research.ps1 splits                     查看訓練／驗證／測試期的時間切分'
     Write-Host '.\scripts\create-temporal-split-plan.ps1  建立可審查的時間切分批次計畫'
-    Write-Host '.\research.ps1 gaps                       列出每個未達正式門檻案例與補資料指令'
+    Write-Host '.\research.ps1 gaps                       列出尚未達正式門檻的案例與補資料指令'
     Write-Host '.\research.ps1 datasets                   列出資料集版本與完整 ID'
-    Write-Host '.\research.ps1 finbert -DatasetId ID      使用本機 FinBERT 建立新聞已評分的新版本'
+    Write-Host '.\research.ps1 finbert -DatasetId ID      用本機 FinBERT 評分新聞，建立新版資料集'
     Write-Host '.\research.ps1 models                     列出可用模型'
-    Write-Host '.\research.ps1 gputw-status               唯讀檢查 GPUtw 執行個體或 active 清單'
-    Write-Host '.\research.ps1 gputw-resources            唯讀檢查指定 GPUtw 執行個體 GPU/CPU 用量'
-    Write-Host '.\research.ps1 gputw-active               列出目前 active GPUtw 執行個體'
-    Write-Host '.\research.ps1 sources NVDA 2024-12-31    實機檢查資料來源'
-    Write-Host '.\research.ps1 run NVDA 2024-12-31         使用最新相符資料集與 14B 以上模型啟動實驗'
-    Write-Host '.\research.ps1 run NVDA 2024-12-31 -Model ollama/qwen3:8b       canary 通過後可作正式模型'
-    Write-Host '.\research.ps1 run NVDA 2024-12-31 -AllowPointFundamental  明確覆寫舊版點時基本面品質門檻'
+    Write-Host '.\research.ps1 gputw-status               查詢 GPUtw 執行個體狀態（不會變更任何東西）'
+    Write-Host '.\research.ps1 gputw-resources            查詢指定 GPUtw 執行個體的 GPU／CPU 用量'
+    Write-Host '.\research.ps1 gputw-active               列出目前執行中的 GPUtw 執行個體'
+    Write-Host '.\research.ps1 sources NVDA 2024-12-31    測試各資料來源能否連線'
+    Write-Host '.\research.ps1 run NVDA 2024-12-31         用最新的相符資料集與設定的模型啟動實驗'
+    Write-Host '.\research.ps1 run NVDA 2024-12-31 -Model ollama/qwen3:8b       指定模型（qwen3:8b 可用於正式研究）'
+    Write-Host '.\research.ps1 run NVDA 2024-12-31 -AllowPointFundamental  允許舊版 SEC 基本面（只算敏感性測試）'
     Write-Host '.\research.ps1 job -JobId ID               檢視單一實驗'
     Write-Host '.\research.ps1 pause|resume|cancel -JobId ID  控制實驗'
-    Write-Host '.\research.ps1 export -JobId ID            下載研究 ZIP'
-    Write-Host '.\research.ps1 verify-export -File ZIP     驗證研究產物或資料備份 ZIP 雜湊'
-    Write-Host '.\research.ps1 backup [-File ZIP]         建立一致性的本機研究資料備份（預設存到 backups\）'
-    Write-Host '.\research.ps1 statistics -ProtocolHash HASH  查看同協議統計'
+    Write-Host '.\research.ps1 export -JobId ID            下載這筆實驗的完整結果 ZIP'
+    Write-Host '.\research.ps1 verify-export -File ZIP     檢查匯出或備份 ZIP 是否完整、未被改動'
+    Write-Host '.\research.ps1 backup [-File ZIP]         備份所有研究資料（預設存到 backups\）'
+    Write-Host '.\research.ps1 statistics -ProtocolHash HASH  查看同一協議版本的統計結果'
     Write-Host '.\research.ps1 jobs                        查看實驗佇列'
     Write-Host '.\research.ps1 logs                        持續查看服務日誌'
     Write-Host '.\research.ps1 stop                        停止服務但保留資料'
@@ -427,12 +427,12 @@ switch ($Command) {
     'logs' { Invoke-DockerCompose @('logs','-f','--tail','100','research') }
     'collect' {
         $result = Invoke-ResearchApi 'POST' '/api/datasets/download' @{ ticker=$Ticker; analysis_date=$AnalysisDate; refresh=[bool]$Refresh; use_finbert=[bool]$UseFinbert }
-        if ($result.reused) { Write-Host "[CACHE] 重用 dataset v$($result.version) · $($result.id)" } else { Write-Host "[STORE] 新資料快照 · $($result.id)" }
+        if ($result.reused) { Write-Host "[CACHE] 重用既有資料集 v$($result.version) · $($result.id)" } else { Write-Host "[STORE] 已建立新資料集 · $($result.id)" }
         $result.agents.PSObject.Properties | ForEach-Object { Write-Host "[$($_.Name.ToUpperInvariant())] $($_.Value.status) · $($_.Value.records) records · $($_.Value.message)" }
     }
     'readiness' {
         $result = Invoke-ResearchApi 'GET' '/api/readiness'
-        Write-Host "正式主實驗可跑 $($result.formal_experiment_ready_cases)/$($result.target_cases) · 四域完整 $($result.evidence_complete_cases) · 部分 $($result.partial_cases) · 尚缺 $($result.missing_cases)"
+        Write-Host "可跑正式實驗 $($result.formal_experiment_ready_cases)/$($result.target_cases) · 四個面向齊全 $($result.evidence_complete_cases) · 部分齊全 $($result.partial_cases) · 還沒有資料 $($result.missing_cases)"
         Write-Host "SEC 可比較 $($result.comparable_fundamental_cases) · FinBERT 完整 $($result.finbert_ready_cases) · 60 日行情 $($result.backtest_ready_cases) · 90 日行情 $($result.all_horizons_ready_cases)"
         $result.tickers | Format-Table ticker,formal_ready,complete,partial,missing -AutoSize
         Write-Host $result.note
@@ -441,9 +441,9 @@ switch ($Command) {
         $result = Invoke-ResearchApi 'GET' '/api/readiness/splits'
         foreach ($name in @('training','validation','test')) {
             $item = $result.splits.$name
-            Write-Host ("{0}: {1}/{2} 正式可用 · 四域 {3} · FinBERT {4} · 60 日行情 {5} · 缺少 {6}" -f $item.label,$item.formal_ready_cases,$item.target_cases,$item.evidence_complete_cases,$item.finbert_ready_cases,$item.backtest_ready_cases,$item.missing_cases)
+            Write-Host ("{0}: {1}/{2} 正式可用 · 四個面向齊全 {3} · FinBERT {4} · 60 日行情 {5} · 缺少 {6}" -f $item.label,$item.formal_ready_cases,$item.target_cases,$item.evidence_complete_cases,$item.finbert_ready_cases,$item.backtest_ready_cases,$item.missing_cases)
         }
-        Write-Host 'Test 已標記為凍結；執行 scripts\create-temporal-split-plan.ps1 建立批次清單。'
+        Write-Host '測試期（Test）要等模型與設定定案後才執行；用 scripts\create-temporal-split-plan.ps1 建立批次清單。'
     }
     'datasets' {
         $rows = Invoke-ResearchApi 'GET' '/api/datasets'

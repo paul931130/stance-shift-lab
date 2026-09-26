@@ -59,22 +59,22 @@ def prepare(ctx, payload, model_probe=None):
         if not quality.get("finbert_complete"):
             reasons.append(f"FinBERT 標題評分 {quality.get('finbert_scored', 0)}/{quality.get('items', 0)}")
         raise PreflightError("sentiment_quality", "此歷史資料集的新聞品質檢查未通過（" + "；".join(reasons)
-                             + "）；請建立完整 FinBERT 評分版本、重新採集，或明確使用資料品質敏感性覆寫")
+                             + "）；請建立完整 FinBERT 評分版本、重新蒐集資料，或在「資料品質例外」勾選新聞品質例外（只算敏感性測試）")
     fundamental_problem = (data.get("kind") == "historical" and fundamental_quality.get("items", 0) > 0
                            and not fundamental_quality.get("passes_quality_gate"))
     if fundamental_problem and not payload.allow_point_fundamental:
-        raise PreflightError("fundamental_quality", "此歷史資料集只有不可比較的 SEC 點時欄位；請重新採集新版資料，"
-                             "或明確使用點時基本面敏感性覆寫")
+        raise PreflightError("fundamental_quality", "此歷史資料集只有 SEC 點時欄位，沒有可比較的前期數字；請重新蒐集新版資料，"
+                             "或在「資料品質例外」勾選舊版 SEC 基本面例外（只算敏感性測試）")
     if effective_model.startswith("ollama/") and not ctx.injected_model_call:
         installed = (model_probe or (lambda: probe_models(ctx)))()
         if not installed.get("ready") or effective_model not in installed.get("models", []):
-            raise PreflightError("model_not_installed", f"Ollama 模型 {effective_model} 尚未安裝或目前無法連線")
+            raise PreflightError("model_not_installed", f"Ollama 模型 {effective_model} 尚未安裝，或 Ollama 目前連不上；請先執行 ollama pull，或改用其他模型來源")
         model_identity = next(item for item in installed["details"] if item["id"] == effective_model)
         parameter_count = parameter_billions(model_identity.get("parameter_size"))
         if (parameter_count is not None and parameter_count < 14
                 and effective_model.strip().lower() not in FORMAL_SMALL_MODEL_ALLOWLIST
                 and not payload.allow_small_model):
-            raise PreflightError("model_too_small", f"{effective_model} 參數量為 {model_identity.get('parameter_size') or '未知'}，未達正式門檻；目前只有通過 canary 的 qwen3:8b 例外放行，其他小模型請勾選冒煙測試（allow_small_model=True）")
+            raise PreflightError("model_too_small", f"{effective_model} 參數量為 {model_identity.get('parameter_size') or '未知'}，未達正式門檻（14B；qwen3:8b 除外）。若只是測試，請在「資料品質例外」勾選「允許 14B 以下的模型」")
     else:
         model_identity = {"id": effective_model,
                           "provider": "built_in_demo" if ctx.demo_mode else ("test_override" if ctx.injected_model_call else "cloud_alias"),

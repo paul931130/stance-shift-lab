@@ -60,7 +60,7 @@ def build_router(ctx):
             "requested_analysis_date": "2024-12-31", "price_basis": "adjusted_ohlc", "prices": [{"date": "2024-01-02", "open": 0, "high": 0, "low": 0, "close": 0}],
             "evidence": [{"evidence_id": "source-001", "domain": "sentiment", "claim": "填入可查證的新聞摘要",
                 "source": "https://來源網址", "available_at": "2024-12-30"}],
-            "instructions": "這是格式範本，不能直接執行；請填入至少 61 日正數 OHLC 與可驗證證據。四域名稱為 technical/fundamental/sentiment/macro；macro 必須另有 vintage_date。"}
+            "instructions": "這是格式範本，不能直接執行；請填入至少 61 日正數 OHLC 與可驗證證據。四個面向的名稱為 technical／fundamental／sentiment／macro；macro 證據必須另有 vintage_date。"}
 
     @router.post("/api/datasets/import")
     async def import_dataset(request: Request, use_finbert: bool = False):
@@ -188,7 +188,7 @@ def build_router(ctx):
             data["evidence"].extend(evidence)
             data["limitations"].extend(notes)
         if not any(item["domain"] == "sentiment" for item in data["evidence"]):
-            data["limitations"].append("自動新聞來源無可用摘要；情緒域保留缺資料標記，也可匯入具公開時間的新聞摘要")
+            data["limitations"].append("自動新聞來源沒有可用的新聞；情緒面會標記為資料缺口，也可以匯入附發布時間的新聞摘要")
         sentiment_items = [item for item in data["evidence"] if item["domain"] == "sentiment"]
         if payload.use_finbert and sentiment_items:
             report(stage="finbert")

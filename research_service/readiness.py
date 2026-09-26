@@ -242,5 +242,5 @@ def gap_inventory(rows):
         "formal_ready_cases": readiness["formal_experiment_ready_cases"],
         "gap_cases": gaps,
         "gap_count": len(gaps),
-        "note": "重新蒐集會建立不可變新版資料集；舊版本與既有實驗不會被改寫。",
+        "note": "重新蒐集會建立新版資料集；舊版本與已跑完的實驗不會被改動。",
     }
