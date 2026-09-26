@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 
-from .models import generate, messages_for, validate_decision
+from .models import decision_prompt_context, generate, messages_for, validate_decision
 from .protocol import StudyProtocol, decision_plan
 
 
@@ -48,7 +48,7 @@ def run_model_canary(protocol: StudyProtocol, provider=generate):
         try:
             result, audit = provider(protocol, messages_for(call, report, [], [], protocol),
                                      seed=protocol.inference_seed + index)
-            validate_decision(result, report["evidence"], call)
+            validate_decision(result, report["evidence"], call, decision_prompt_context(report))
             checks.append({"call": call.key, "group": call.group, "stance": call.stance,
                            "action": result["action"], "citation_count": len(result["evidence_ids"]),
                            "provider_attempts": audit.get("provider_attempts", 1), "status": "pass"})

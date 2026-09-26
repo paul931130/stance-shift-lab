@@ -53,7 +53,7 @@ macOS／Linux：
 .\research.ps1 logs
 ```
 
-研究執行預設使用 `ollama/qwen3:14b`。通過本專案 canary 的 `ollama/qwen3:8b` 可作為正式模型例外；其他較小模型仍需明確加上 `-AllowSmallModel`，且只算冒煙測試。
+研究預設使用 `ollama/qwen3:14b`；也可以改用 GPUtw 或雲端模型 API，見 [選擇模型來源](docs/model-sources.md)。`ollama/qwen3:8b` 已通過本專案的相容性測試（canary），可用於正式研究；其他 14B 以下的模型需加上 `-AllowSmallModel`，只算測試。
 
 `power-plan`、`model-canary` 等 CLI 工具同樣在容器內執行，例如
 `docker compose -f compose.research.yaml run --rm --no-deps research python -m research_service.cli model-canary`；
@@ -63,16 +63,16 @@ macOS／Linux：
 
 ## 回測資料
 
-| 研究域 | 正式來源 | 建立快照時的處理 |
+| 研究面向 | 正式來源 | 建立資料集時的處理 |
 | --- | --- | --- |
 | 技術面 | Yahoo Finance adjusted OHLC | 下載分析日前行情與 30/60/90 日回測需要的未來行情 |
 | 基本面 | SEC XBRL | 依 filing date 保存分析日前可得的財報證據 |
 | 情緒面 | Alpha Vantage、FNSPID、可選本機 FinBERT | 使用分析日前 90 天的標題／摘要；Alpha Vantage 以目標 ticker 相關性排序並過濾，FNSPID 本機檔只保存必要欄位；FinBERT 對標題離線評分 |
 | 總經面 | FRED/ALFRED | 依 vintage date 保存當時可取得的總經資料 |
 
-四域資料在「建立資料集」時取得並寫入持久化 SQLite；執行 A/B/C/D 模型實驗時只讀選定的 dataset ID，不會再次呼叫市場資料 API。重跑模型時應重用同一資料集，才能維持公平比較。`v3-0912.1` 另外分開顯示四域完整、可比較 SEC 基本面、FinBERT／新聞品質、60 日主要回測及 90 日次要回測。正式主實驗需使用可比較 SEC 指標、所有新聞標題完成固定版本 FinBERT，且目標公司提及率至少 50%；舊點時基本面或低品質新聞只能以明確覆寫執行敏感性測試。
+四個面向的資料在「建立資料集」時一次取得，存進 SQLite 資料庫；之後跑 A/B/C/D 實驗只讀取選定的資料集，不會再呼叫市場資料 API。重跑模型時請重用同一個資料集，比較才公平。資料就緒度分開顯示：四個面向齊全、SEC 基本面可比較、FinBERT／新聞品質、60 日主要回測與 90 日次要回測。正式實驗需要可比較的 SEC 指標、所有新聞標題都完成 FinBERT 評分，且新聞提及目標公司的比例至少 50%；舊版 SEC 基本面或品質不足的新聞，只能在勾選例外後作為敏感性測試。
 
-自動行情快照會下載分析日前 900 個日曆日，讓 60-session 非重疊基準能達到至少八窗。舊版 400 日快照仍可查看，但應重新採集後再用於目前版本的正式研究。版本差異與遷移方式見 [版本紀錄](CHANGELOG.md)。
+行情會下載分析日前 900 個日曆日，讓 60 個交易日、互不重疊的基準窗口至少有 8 個。舊版只下載 400 日的資料集仍可查看，但用於目前版本的正式研究前應重新蒐集。版本差異與遷移方式見 [版本紀錄](CHANGELOG.md)。
 
 ## 憑證與資料安全
 

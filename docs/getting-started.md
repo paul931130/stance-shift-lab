@@ -39,7 +39,7 @@ Linux 使用本機 Ollama 時，Ollama 預設只聽 `127.0.0.1`，容器連不�
 
 4. 若要使用 FNSPID 新聞資料，將已授權的篩選檔放到 `research-inputs\Stock_news.csv`。沒有此檔仍可只用 Alpha Vantage；系統會明確顯示缺少哪個來源。
 5. 開啟 <http://127.0.0.1:8000/>，確認健康版本是目前的協議版本。
-6. 正式 pilot 建議先安裝 14B 以上模型，例如 `qwen3:14b`；若使用通過本專案 canary 的 `qwen3:8b`，它是唯一可直接進正式研究的小模型例外：
+6. 正式研究建議使用 14B 以上的模型，例如 `qwen3:14b`；`qwen3:8b` 已通過本專案的相容性測試（canary），是唯一可用於正式研究的小模型。也可以改用 GPUtw 或雲端模型 API，見 [選擇模型來源](model-sources.md)：
 
 ```powershell
 ollama pull qwen3:14b
@@ -87,8 +87,8 @@ macOS／Linux 用 `./research.sh test` 在容器內執行同一套單元測試�
 正式研究的下一步依序是：
 
 1. 建立 9 檔 × 20 季，共 180 個正式就緒資料集。
-2. 用 14B 以上模型（或 canary 通過的 `qwen3:8b` 例外）先跑 3 檔 × 4 季 pilot，檢查 Hold 率、D 對 A 分歧率、B 投票一致度和帶外方向準確率。
-3. 通過停止規則後凍結 preregistration、study manifest、dataset ID、protocol hash、模型 digest 與原始碼 commit。
+2. 先用 3 檔 × 4 季做試跑（pilot），在統計頁的「試跑檢查」確認 Hold 比例、D 與 A 的決策差異、B 組投票一致度，以及明確看多／看空時的準確率都正常。
+3. 試跑通過後，在統計頁按「鎖定目前的研究樣本」（事前登記），並記下資料集清單、協議版本、模型版本與程式碼 commit，之後才開始看正式結果。
 4. 再執行正式批次；不得把舊協議、小模型、資料品質覆寫或 degraded 摘要併入主分析。
 
 ## 維運與故障處理

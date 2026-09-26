@@ -10,13 +10,13 @@ FIELDS = {
     "OPENROUTER_API_KEY": "OpenRouter API key", "OPENAI_API_KEY": "OpenAI API key",
     "GEMINI_API_KEY": "Gemini API key", "RESEARCH_MODEL": "預設模型",
     "GPUTW_API_URL": "GPUtw API 位址（預設 https://gputw.ai）",
-    "GPUTW_API_KEY": "GPUtw API key（只讀狀態用）",
+    "GPUTW_API_KEY": "GPUtw API key（只用來查詢執行個體狀態）",
     "GPUTW_INSTANCE_ID": "GPUtw 執行個體 ID",
     "GPUTW_OLLAMA_BASE_URL": "GPUtw 遠端 Ollama 位址（選填）",
     "GPUTW_OLLAMA_API_KEY": "遠端 Ollama 存取 key（若端點有保護）",
     "RESEARCH_DEMO_MODE": "內建合成展示模式（true/false）",
     "RESEARCH_MODEL_TIMEOUT_SECONDS": "模型請求逾時秒數（10–3600）",
-    "RESEARCH_MODEL_CONTEXT_LENGTH": "Ollama context 長度（1024–131072）",
+    "RESEARCH_MODEL_CONTEXT_LENGTH": "Ollama 上下文長度（token，1024–131072）",
     "FNSPID_NEWS_PATH": "伺服器內 FNSPID CSV 路徑",
     "ALPHA_VANTAGE_NEWS_PATH": "伺服器內 Alpha Vantage 新聞快取 CSV 路徑（免消耗 API 額度）",
 }
@@ -46,7 +46,7 @@ class Settings:
                 field["display_value"] = os.getenv(key, "")
             fields.append(field)
         return {"fields": fields, "storage": "server_private", "restart_required": False,
-                "note": "留白保留原值；勾選清除才刪除。FinBERT 在本機執行，不需要 HF_TOKEN。"}
+                "note": "欄位留白表示維持原值，勾選「清除」才會刪除。FinBERT 在本機執行，不需要 HF_TOKEN。"}
 
     def save(self, values, clear=None):
         clear = [] if clear is None else clear

@@ -11,9 +11,9 @@ export const DOMAIN_LABELS = {technical:'技術面',fundamental:'基本面',sent
 
 export function friendlyJobError(error) {
   const value = String(error || '');
-  if (/HTTP Error 403|HTTP 403|拒絕連線/.test(value)) return '模型服務拒絕連線（HTTP 403）。請檢查遠端 Ollama 連接埠或存取 key；這不是 NoTrade。';
-  if (/HTTP Error 429|HTTP 429|限流/.test(value)) return '模型服務暫時限流（HTTP 429），稍後按「繼續執行」重試；這不是 NoTrade。';
-  if (/evidence_id|研究代理人引用/.test(value)) return '模型輸出引用了不存在的證據，已標記為可重試錯誤；這不是 NoTrade。';
+  if (/HTTP Error 403|HTTP 403|拒絕連線/.test(value)) return '模型服務拒絕連線（HTTP 403）。請檢查遠端 Ollama 連接埠或存取 key；這是連線問題，不會被記成 NoTrade 決策。';
+  if (/HTTP Error 429|HTTP 429|限流/.test(value)) return '模型服務暫時限流（HTTP 429），稍後按「繼續執行」重試；這是連線問題，不會被記成 NoTrade 決策。';
+  if (/evidence_id|研究代理人引用/.test(value)) return '模型輸出引用了不存在的證據，已標記為可重試的錯誤；不會被記成 NoTrade 決策。';
   return value;
 }
 
@@ -49,12 +49,12 @@ export function protocolLabel(protocol = {}) {
   return `協議 ${version}${state.currentProtocolVersion && version !== state.currentProtocolVersion ? ' · 舊版結果' : ''}`;
 }
 export function traceMessage(node = '') {
-  if (node === 'coordinator') return 'Coordinator 鎖定資料快照、分析日與研究協議';
-  if (node.startsWith('parallel_research_agents')) return '派發 technical／fundamental／sentiment／macro 四域研究 Agent';
-  if (node === 'neutral_report_locked') return '四域摘要合併完成，中立研究報告已鎖定';
+  if (node === 'coordinator') return 'Coordinator 鎖定資料集、分析日與研究協議';
+  if (node.startsWith('parallel_research_agents')) return '派出技術、基本面、情緒、總經四個研究 Agent';
+  if (node === 'neutral_report_locked') return '四個面向的摘要已合併，中立研究報告已鎖定';
   if (node.startsWith('parallel_decision_wave')) return `決策波次：${node.slice(node.indexOf('[') + 1, -1)}`;
   if (node === 'gatekeeper_decisions_locked') return 'Gatekeeper 已核對引用、資料覆蓋與風險門檻';
-  if (node === 'backtest_and_memory_write') return '回測案例與成熟記憶已持久化';
+  if (node === 'backtest_and_memory_write') return '回測結果與供後續案例參考的記憶已儲存';
   return node.replaceAll('_', ' ');
 }
 

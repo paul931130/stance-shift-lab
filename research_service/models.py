@@ -107,7 +107,7 @@ def _compact_history(records):
     return compact
 
 
-def validate_financial_numbers(result, evidence):
+def validate_financial_numbers(result, evidence, context=None):
     """Reject financial prose that introduces a number absent from the evidence it may use."""
     def numbers(text):
         if not isinstance(text, str):
@@ -129,6 +129,10 @@ def validate_financial_numbers(result, evidence):
     # backtest horizons are not invented numbers. Rounded or converted values
     # are still rejected.
     available = ' '.join(e['claim'] for e in evidence if isinstance(e.get('claim'), str))
+    # v3-0926.5: the decision prompt also hands the model decision_calibration
+    # and base_rates (and tells it to read them); their numbers are not invented.
+    if context is not None:
+        available += ' ' + json.dumps(context, ensure_ascii=False)
     supported = numbers(available)
     supported |= {Decimal(value) for value in re.findall(r'(?<=[A-Za-z_])\d+(?![\d.])', available)}
     supported |= {Decimal(value) for value in BACKTEST_HORIZONS}
@@ -175,6 +179,12 @@ def _compact_base_rates(base_rates):
     return {key: base_rates.get(key) for key in
             ("horizon_sessions", "hold_band_pct", "horizon_sigma_pct", "basis", "positive_rate", "median_return_pct")
             if base_rates.get(key) is not None}
+
+
+def decision_prompt_context(report):
+    """The non-evidence numeric sections the decision prompt shows the model."""
+    return {"decision_calibration": _compact_calibration(report.get("decision_calibration", {})),
+            "base_rates": _compact_base_rates(report.get("base_rates", {}))}
 
 
 def _decision_evidence(report):
@@ -242,8 +252,7 @@ def _compact_report(report):
                       "evidence_ids": value.get("evidence_ids", [])[:2]})
             for domain, value in report.get("research", {}).items()
         },
-        "decision_calibration": _compact_calibration(report.get("decision_calibration", {})),
-        "base_rates": _compact_base_rates(report.get("base_rates", {})),
+        **decision_prompt_context(report),
         "degraded_research_domains": report.get("degraded_research_domains", []),
         "evidence": _decision_evidence(report),
     }
@@ -478,7 +487,7 @@ def generate(protocol, messages, seed=None, temperature=None):
             time.sleep(.5 * attempt)
 
 
-def validate_decision(result, evidence, call=None):
+def validate_decision(result, evidence, call=None, context=None):
     allowed_actions = ("Buy", "Hold", "Sell")
     if call is not None and call.kind == "debate":
         allowed_actions = ("Buy",) if call.stance == "BULL" else ("Sell",)
@@ -510,7 +519,7 @@ def validate_decision(result, evidence, call=None):
                 raise ValueError("角色交換輪 confidence_shift 須介於 -1 與 1")
     cited = set(result["evidence_ids"])
     if any(item.get("domain") == "fundamental" and item.get("evidence_id") in cited for item in evidence):
-        validate_financial_numbers(result, evidence)
+        validate_financial_numbers(result, evidence, context)
     validate_financial_interpretation(result, evidence)
     # Every citation must exist. Allowing one invented ID to pass an 80% ratio
     # made otherwise well-formed outputs impossible to audit reliably.
