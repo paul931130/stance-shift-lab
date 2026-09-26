@@ -374,13 +374,17 @@ def generate(protocol, messages, seed=None, temperature=None):
                     "max_tokens": protocol.max_output_tokens,
                     "response_format": {"type": "json_schema", "json_schema": {"name": "research_output", "strict": True, "schema": output_schema}},
                     "timeout": timeout_seconds, "num_retries": 0}
-                if seed is not None:
+                # Some providers (e.g. Gemini) reject `seed`; send it only where
+                # supported and record in the audit whether it was applied.
+                seed_supported = "seed" in (litellm.get_supported_openai_params(model=protocol.model) or [])
+                if seed is not None and seed_supported:
                     kwargs["seed"] = int(seed)
                 provider_result = litellm.completion(**kwargs)
                 content = provider_result.choices[0].message.content
                 usage = dict(provider_result.usage)
                 usage["provider_model"] = getattr(provider_result, "model", None)
                 usage["system_fingerprint"] = getattr(provider_result, "system_fingerprint", None)
+                usage["seed_applied"] = seed is not None and seed_supported
             content = content.strip()
             if content.startswith("```"):
                 content = content.split("\n", 1)[1].rsplit("```", 1)[0]
