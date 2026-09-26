@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 import asyncio
 import os
 import threading
+from urllib.parse import urlsplit
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -128,7 +129,14 @@ def create_app(store=None, model_call=None, start_worker=True):
         if request.method not in ("GET", "HEAD", "OPTIONS"):
             origin = request.headers.get("origin")
             expected_origin = public_origin or f"{request.url.scheme}://{request.url.netloc}"
-            if origin and origin.rstrip("/") != expected_origin:
+            # Local mode also accepts any origin on an allowed host: a forwarding
+            # proxy such as Codespaces may rewrite Host or Origin, so exact
+            # scheme://host:port equality is too strict there. Remote mode keeps
+            # the exact public-origin check.
+            local_origin_ok = not remote and urlsplit(origin or "").hostname in allowed_hosts
+            if origin and origin.rstrip("/") != expected_origin and not local_origin_ok:
+                logger.warning("blocked cross-origin %s from origin=%s host=%s", request.method, origin,
+                               request.url.netloc)
                 return JSONResponse({"detail": "Cross-origin mutation blocked"}, status_code=403)
             if request.headers.get("content-length", "").isdigit() and int(request.headers["content-length"]) > 6_000_000:
                 return JSONResponse({"detail": "Upload exceeds 6 MB"}, status_code=413)

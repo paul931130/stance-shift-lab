@@ -266,6 +266,8 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(client.get('/assets/dataset.css').status_code, 200)
             self.assertEqual(client.get('/',headers={"host":"evil.example"}).status_code,403)
             self.assertEqual(client.post('/api/jobs',headers={"origin":"https://evil.example"},json={}).status_code,403)
+            # A forwarding proxy may present an allowed host under another scheme/port.
+            self.assertNotEqual(client.post('/api/jobs',headers={"origin":"https://localhost:8000"},json={}).status_code,403)
             response=client.post('/api/jobs',json={"dataset_id":self.dataset_id,"analysis_date":"2024-12-31"})
             self.assertEqual(response.status_code,200)
             self.assertEqual(response.json()["config"]["protocol"]["missing_data_policy"], "allow_decision")
