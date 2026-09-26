@@ -93,11 +93,41 @@ jobs:
       - name: Run the demo experiment through the UI
         run: python -m unittest research_service.tests.test_e2e_demo -v
 
-  docker-build:
-    name: Docker image build
-    runs-on: ubuntu-latest
+  # Docker is the only supported way to run the service. This job follows the
+  # same steps a new user takes (fresh checkout, ./research.sh start) on both
+  # x86-64 and ARM64, the two architectures Docker Desktop runs on Windows,
+  # macOS (Intel and Apple Silicon) and Linux.
+  docker-run:
+    name: Docker start (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Build research image
-        run: docker build -f Dockerfile.research -t stance-shift-lab-research .
+      - name: Enable keyless demo mode
+        run: |
+          cp research.env.example .env.research
+          sed -i 's/^RESEARCH_DEMO_MODE=.*/RESEARCH_DEMO_MODE=true/' .env.research
+
+      - name: Start through the Mac/Linux launcher
+        run: ./research.sh start
+
+      - name: Service answers inside Docker
+        run: |
+          curl -fsS http://127.0.0.1:8000/health
+          curl -fsS http://127.0.0.1:8000/api/models | grep -q '"ready":true'
+          curl -fsS -o /dev/null http://127.0.0.1:8000/
+
+      - name: Unit tests inside the image
+        run: ./research.sh test
+
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose -f compose.research.yaml logs research

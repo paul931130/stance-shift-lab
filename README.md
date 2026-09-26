@@ -7,14 +7,23 @@
 
 ## 快速開始
 
-需求：Windows 10/11、Docker Desktop，以及 Ollama 或一組雲端模型金鑰。
+**唯一支援的執行方式是 Docker**，Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個映像。需求只有 Docker Desktop（Linux 可用 Docker Engine + Compose plugin），以及 Ollama、GPUtw 遠端 Ollama 或一組雲端模型金鑰；只想看介面可用下方展示模式，什麼都不用準備。電腦上不需要安裝 Python。
+
+Windows（PowerShell）：
 
 ```powershell
 .\research.ps1 setup
 .\research.ps1 start
 ```
 
-開啟 <http://127.0.0.1:8000/>。也可直接雙擊 `start-research.cmd`。
+macOS／Linux：
+
+```bash
+./research.sh setup
+./research.sh start
+```
+
+開啟 <http://127.0.0.1:8000/>。Windows 也可直接雙擊 `start-research.cmd`。CI 會在每次推送時於 x86-64 與 ARM64 兩種架構實際啟動這個 Docker 服務並驗證可用。
 
 若只要展示介面與完整工作流、不使用 API key 或模型，可在 `.env.research` 暫時設定
 `RESEARCH_DEMO_MODE=true` 後啟動服務。展示模式會自動放入一筆固定的合成 NVDA
@@ -33,9 +42,9 @@
 
 研究執行預設使用 `ollama/qwen3:14b`。通過本專案 canary 的 `ollama/qwen3:8b` 可作為正式模型例外；其他較小模型仍需明確加上 `-AllowSmallModel`，且只算冒煙測試。
 
-若使用已安裝套件而不走 Docker，可執行 `python -m pip install -e .`，再使用
-`stance-shift doctor`、`stance-shift power-plan` 或 `stance-shift model-canary`。
-後兩者只做設計模擬或合成格式檢查，不會建立正式案例。
+`power-plan`、`model-canary` 等 CLI 工具同樣在容器內執行，例如
+`docker compose -f compose.research.yaml run --rm --no-deps research python -m research_service.cli model-canary`；
+它們只做設計模擬或合成格式檢查，不會建立正式案例。不走 Docker 的本機 Python 安裝只供開發者使用，不在支援範圍。
 
 執行 `.\research.ps1 help` 可查看完整命令。`start` 會先檢查 Docker Linux engine，未啟動時嘗試開啟 Docker Desktop 並給出可操作的錯誤訊息。`collect` 會重用同股票、同分析日且四域完整的既有快照；加上 `-Refresh` 才會重新呼叫資料來源。
 
