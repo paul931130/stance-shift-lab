@@ -23,8 +23,42 @@ def _unavailable(message, **extra):
             "formal_ready": False, "default_available": False, **extra, "message": message}
 
 
+CLOUD_KEYS = {"openrouter": "OPENROUTER_API_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY"}
+
+
+def _cloud_default():
+    """The configured cloud model (non-ollama RESEARCH_MODEL) and whether its key is set."""
+    model = os.getenv("RESEARCH_MODEL", DEFAULT_RESEARCH_MODEL).strip()
+    if not model or model.startswith("ollama/"):
+        return None
+    key = CLOUD_KEYS.get(model.split("/", 1)[0])
+    return {"model": model, "key_name": key, "ready": bool(key and os.getenv(key, "").strip())}
+
+
+def _with_cloud(result, cloud):
+    """Report a keyed cloud model as available next to (or instead of) Ollama.
+
+    Cloud jobs never depend on Ollama; without this the status chip read
+    'MODEL OFFLINE' whenever no Ollama was running (e.g. in a Codespace).
+    """
+    if not cloud:
+        return result
+    result = {**result, "cloud": cloud}
+    if cloud["ready"]:
+        result["ready"] = True
+        result["models"] = [*result.get("models", []), cloud["model"]]
+        result["details"] = [*result.get("details", []), {"id": cloud["model"], "name": cloud["model"],
+                                                           "parameter_size": None, "provider": "cloud"}]
+        result["default_available"] = True
+    return result
+
+
 def probe_models(ctx):
     """List installed models from the configured (local or GPUtw) Ollama endpoint."""
+    return _with_cloud(_probe_ollama(ctx), None if ctx.demo_mode else _cloud_default())
+
+
+def _probe_ollama(ctx):
     if ctx.demo_mode:
         return {"ready": True, "models": [ctx.demo_model_id],
                 "details": [{"id": ctx.demo_model_id, "name": "Deterministic demo provider",
