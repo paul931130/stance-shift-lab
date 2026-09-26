@@ -27,6 +27,20 @@ class FidelityTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=text):
                 validate_financial_numbers({'rationale': text, 'evidence_ids': ['tech']}, evidence)
 
+    def test_numbers_from_calibration_shown_in_the_prompt_are_supported(self):
+        # v3-0926.5: a real Gemini run quoted sentiment mean_score -0.9309722604230046
+        # from decision_calibration, which is not an evidence claim.
+        evidence = [{'evidence_id': 'rev', 'claim': 'Revenues = 91166000000 USD'}]
+        context = {'decision_calibration': {'sentiment_target': {'mean_score': -0.9309722604230046}},
+                   'base_rates': {'hold_band_pct': 1.25}}
+        result = {'rationale': 'Sentiment mean -0.9309722604230046 is outside the 1.25% band.',
+                  'evidence_ids': ['rev']}
+        validate_financial_numbers(result, evidence, context)
+        with self.assertRaises(ValueError):  # without the prompt context it is still unsupported
+            validate_financial_numbers(result, evidence)
+        with self.assertRaises(ValueError):  # rounding a calibration value is still rejected
+            validate_financial_numbers({'rationale': 'mean -0.93', 'evidence_ids': ['rev']}, evidence, context)
+
     def test_one_invalid_citation_is_rejected_instead_of_passing_eighty_percent(self):
         result = dict(action='Buy', expected_return_pct=4.0, confidence=.9, rationale='test', risks=[],
                       evidence_ids=['a', 'b', 'c', 'd', 'invented'])

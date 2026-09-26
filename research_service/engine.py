@@ -13,7 +13,7 @@ from langgraph.graph import StateGraph, START, END
 from .anonymize import PLACEHOLDER, anonymize
 from .backtest import evaluate
 from .data import digest, research_inputs
-from .models import (compact_research_evidence, generate, messages_for,
+from .models import (compact_research_evidence, decision_prompt_context, generate, messages_for,
                      validate_decision, validate_research)
 from .protocol import StudyProtocol, DOMAIN_NAMES, decision_plan, decision_wave, temperature_for
 from .storage import now
@@ -224,7 +224,7 @@ class Engine:
         audit.setdefault("temperature", protocol.temperature if temperature is None else temperature)
         return result, audit
 
-    def validated_decision(self, protocol, call, messages, evidence):
+    def validated_decision(self, protocol, call, messages, evidence, context=None):
         """Generate one decision, retrying only an auditable validation rejection.
 
         Provider transport and JSON failures remain the provider's responsibility.
@@ -247,7 +247,7 @@ class Engine:
             audit = None
             try:
                 result, audit = self.call_model(protocol, attempt_messages, retry_key, temperature_for(protocol, call))
-                result = validate_decision(result, decision_evidence, call)
+                result = validate_decision(result, decision_evidence, call, context)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
@@ -412,7 +412,8 @@ class Engine:
             completed, failures = {}, []
 
             def run_decision(call, messages):
-                return self.validated_decision(protocol, call, messages, state["report"]["evidence"])
+                return self.validated_decision(protocol, call, messages, state["report"]["evidence"],
+                                               decision_prompt_context(state["report"]))
 
             # Ollama defaults to a single runner.  Sending a whole wave at
             # once makes queued CPU requests outlive the runner keep-alive and
