@@ -154,6 +154,27 @@ class ModelReliabilityTests(unittest.TestCase):
         self.assertEqual(request.full_url, "https://gpu.example/ollama/api/chat")
         self.assertEqual(request.get_header("Authorization"), "Bearer gpu-model-key")
 
+    def test_cloud_seed_is_sent_only_to_providers_that_support_it(self):
+        from types import SimpleNamespace
+        seen = {}
+        content = json.dumps({"action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
+                              "rationale": "brief", "evidence_ids": ["e1"], "risks": []})
+
+        def completion(**kwargs):
+            seen[kwargs["model"]] = kwargs
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+                                   usage={"prompt_tokens": 1}, model=kwargs["model"])
+
+        messages = [{"role": "system", "content": "decision"}, {"role": "user", "content": "{}"}]
+        audits = {}
+        with patch("litellm.completion", side_effect=completion):
+            for model in ("gemini/gemini-2.5-flash", "openai/gpt-4.1-mini"):
+                protocol = StudyProtocol(model=model, dataset_kind="synthetic", bootstrap_replicates=199)
+                audits[model] = generate(protocol, messages, seed=7)[1]["usage"]["seed_applied"]
+        self.assertNotIn("seed", seen["gemini/gemini-2.5-flash"])
+        self.assertEqual(seen["openai/gpt-4.1-mini"]["seed"], 7)
+        self.assertEqual(audits, {"gemini/gemini-2.5-flash": False, "openai/gpt-4.1-mini": True})
+
     def test_timeout_and_context_are_explicitly_configurable(self):
         seen = {}
 
