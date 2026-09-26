@@ -1,13 +1,15 @@
-"""Guards for two research-validity properties introduced in v3-0926.1."""
+"""Guards for research-validity properties: v3-0926.1 look-ahead/memory order, v3-0926.2 anonymization."""
 from dataclasses import asdict
 import json
 import tempfile
 import unittest
 
+from research_service.anonymize import anonymize, identifiers
 from research_service.data import research_inputs, validate_dataset
+from research_service.engine import Engine
 from research_service.protocol import StudyProtocol
 from research_service.storage import Store
-from research_service.tests.test_workflow import fixture
+from research_service.tests.test_workflow import fake_model, fixture
 
 
 def rescaled(dataset, factor):
@@ -74,6 +76,56 @@ class MemoryOrderTests(unittest.TestCase):
         audit = self.store.memory_audit(later["config"])
         self.assertEqual([case["id"] for case in audit["pending_earlier_cases"]], [earlier["id"]])
         self.assertEqual(self.store.memory_audit(earlier["config"])["pending_earlier_cases"], [])
+
+
+class AnonymizationTests(unittest.TestCase):
+    def test_every_form_of_the_company_identity_is_replaced(self):
+        text = ("NVIDIA Corporation (NASDAQ:NVDA) CEO Jensen Huang said Nvidia's $NVDA "
+                "guidance beat; nvidia shares rose.")
+        self.assertEqual(anonymize(text, "NVDA"),
+                         "ASSET (NASDAQ:ASSET) CEO ASSET said ASSET's ASSET guidance beat; ASSET shares rose.")
+
+    def test_whole_words_only(self):
+        # The old substring replace turned "CHANGE" into "CHANASSET" for GE.
+        self.assertEqual(anonymize("GE Aerospace: CHANGE in GEOPOLITICAL risk; GE up", "GE"),
+                         "ASSET: CHANGE in GEOPOLITICAL risk; ASSET up")
+        self.assertEqual(anonymize("Intel beats; artificial intelligence demand", "INTC"),
+                         "ASSET beats; artificial intelligence demand")
+
+    def test_other_companies_keys_and_numbers_are_untouched(self):
+        value = {"NVDA": "AMD and NVIDIA", "value": 1.5, "evidence_id": "fnspid-news-42",
+                 "items": ["Jensen Huang", 7]}
+        self.assertEqual(anonymize(value, "NVDA"),
+                         {"NVDA": "AMD and ASSET", "value": 1.5, "evidence_id": "fnspid-news-42",
+                          "items": ["ASSET", 7]})
+
+    def test_no_identifier_reaches_any_model_prompt(self):
+        data = validate_dataset(fixture())
+        for item in data["evidence"]:
+            item["claim"] = "NVIDIA CEO Jensen Huang: Nvidia's $NVDA outlook " + item["claim"]
+        protocol = StudyProtocol(dataset_kind="synthetic", anonymize_ticker=True)
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            dataset_id = store.add_dataset(data)
+            job = store.create({"ticker": "NVDA", "analysis_date": "2024-12-31", "dataset_id": dataset_id,
+                                "protocol": asdict(protocol), "protocol_hash": protocol.fingerprint})
+            prompts = []
+
+            def recording_model(protocol, messages):
+                prompts.append(json.dumps(messages, ensure_ascii=False))
+                return fake_model(protocol, messages)
+
+            engine = Engine(store, recording_model)
+            for _ in range(40):
+                store.save_step(job["id"], engine.advance(job))
+                job = store.get(job["id"])
+                if job["status"] == "complete":
+                    break
+        self.assertEqual(job["status"], "complete")
+        self.assertTrue(prompts)
+        for term in ["NVDA", *identifiers("NVDA")]:
+            leaked = [prompt for prompt in prompts if term.lower() in prompt.lower()]
+            self.assertEqual(leaked, [], f"{term!r} reached a model prompt")
 
 
 if __name__ == "__main__":

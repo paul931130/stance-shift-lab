@@ -2,6 +2,14 @@
 
 正式產品只有一條執行路徑：`research.ps1` → Docker Compose → `research_service` → `http://127.0.0.1:8000`。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## v3-0926.2（2026-09-26）— 完整匿名化：公司名稱與執行長
+
+- 匿名化（`anonymize_ticker`）原本只把股票代號換成 `ASSET`，公司名稱（例如新聞標題裡的 NVIDIA）仍然送進 prompt，模型可以認出公司，記憶污染檢查因此不成立。現在研究 Agent 的證據與中立報告中，股票代號（含 `$NVDA`、`NASDAQ:NVDA`）、公司名稱與正式名稱（`NVIDIA Corporation` 等）、執行長姓名（`Jensen Huang` 等）全部替換為 `ASSET`；清單見 `research_service/anonymize.py`。
+- 改為完整單字比對：原本的子字串替換會把 GE 案例中的 `CHANGE`、`GEOPOLITICAL` 改壞；`Intel` 也不再影響 `intelligence`。只替換字串值，JSON 鍵、數字與證據 ID 不變。
+- 已知限制：產品與品牌名稱（iPhone、Azure、GeForce、Big Mac 等）不替換，報告匿名化結果時需一併說明。新聞相關性評分使用的 `COMPANY_NAMES` 不變，資料就緒判斷不受影響。
+- 回歸測試：以匿名化協議跑完整實驗並記錄所有送入模型的訊息，確認不含任何公司識別字；另驗證完整單字比對與非字串值不變。
+- 協議版本升級：`v3-0926.1` 尚未用於正式實驗；正式實驗請以 `v3-0926.2` 執行。
+
 ## v3-0926.1（2026-09-26）— 技術面特徵去除前視偏誤、記憶與執行順序脫鉤
 
 - 技術面證據原本包含 `mean20`、`mean60` 的**絕對價位**。行情是「今天」下載的還原價，分析日之後才發生的分割與股利會回頭縮放整段歷史（例如 NVDA 2024-06 的 1:10 分割，使 2023 年案例看到約 $40 而非當時的約 $400），等於把未來的公司行動洩漏給模型，也與同期新聞的價位矛盾。現在只提供不受縮放影響的比例：`return20`、`price_vs_mean20`、`price_vs_mean60`、`mean20_vs_mean60`、`volatility60_annual`；方向校準規則（`return20` 與 `mean20_vs_mean60` 同號）不變。

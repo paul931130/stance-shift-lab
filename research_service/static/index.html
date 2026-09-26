@@ -162,8 +162,8 @@
         </div>
         <label>資料缺口策略<select id="missing-policy"><option value="allow_decision">實驗對照 · 保留模型決策</option><option value="force_no_trade">保守門檻 · 強制 NoTrade</option></select></label>
         <p class="hint">缺資料對照仍記錄缺少領域與引用率，但不改寫模型決策；兩種策略使用不同協議雜湊並分開統計。</p>
-        <label class="check"><input id="anonymize" type="checkbox">以 ASSET 替換股票代號</label>
-        <p class="hint">A/B/C/D 使用同一模型。匿名化只能初步檢查訓練記憶污染，不能排除公司名稱等線索。</p>
+        <label class="check"><input id="anonymize" type="checkbox">匿名化：以 ASSET 替換股票代號、公司名稱與執行長姓名</label>
+        <p class="hint">A/B/C/D 使用同一模型。匿名化用來檢查訓練記憶污染：模型若不知道分析的是哪家公司仍表現相近，代表它是在讀證據而非回想股價。產品與品牌名稱（例如 iPhone、Azure）不會替換，報告時請一併說明。</p>
       </details>
       <details id="quality-overrides">
         <summary>資料品質例外（進階，通常不用勾）</summary>
