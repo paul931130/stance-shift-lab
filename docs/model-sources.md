@@ -52,6 +52,7 @@
 2. setup 選 `3`，選擇供應商並貼上金鑰。OpenRouter 預設 `openrouter/qwen/qwen3-14b`，與正式協議同一個模型。
 3. 研究台每次呼叫都要求模型依固定 JSON schema 回答；seed 只傳給支援的供應商（Gemini 不支援，稽核欄位 `seed_applied=false`）。
 4. Gemini：Flash／Flash-Lite 會關閉思考，與本機 Ollama 一致；Pro（例如 `gemini/gemini-3.1-pro-preview`）無法關閉思考，改為低強度思考並額外給 2048 token，稽核記錄 `max_tokens_sent` 與 `reasoning_effort`。以合成案例實測，Pro 比 Flash 更少違反「只用來源數字」規則，但仍會自行計算成長率或漏引來源，被拒的步驟需續跑。
+5. 額度等級較低時（例如 Gemini 3.1 Pro 每分鐘 25 次），研究台遇到 429 會依供應商指示的秒數等待後重試（最多 6 次，記錄於 `rate_limit_waits`）；仍常被限流時，把 `RESEARCH_PARALLEL_WORKERS` 調成 1 或 2。
 
 ## 在 Codespaces 使用
 
