@@ -1,0 +1,22 @@
+{
+  // GitHub Codespaces: runs the same Docker service as ./research.sh start,
+  // then opens it at https://<codespace>-8000.app.github.dev.
+  "name": "Stance Shift Research",
+  "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+  },
+  "hostRequirements": {
+    "cpus": 2,
+    "memory": "8gb",
+    "storage": "32gb"
+  },
+  "postStartCommand": "sh .devcontainer/codespace-start.sh",
+  "forwardPorts": [8000],
+  "portsAttributes": {
+    "8000": {
+      "label": "研究台",
+      "onAutoForward": "openBrowser"
+    }
+  }
+}

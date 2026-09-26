@@ -131,3 +131,24 @@ jobs:
       - name: Service logs on failure
         if: failure()
         run: docker compose -f compose.research.yaml logs research
+
+  # Builds the Codespaces dev container and runs its start hook, the same
+  # path as clicking Code → Codespaces → Create on GitHub.
+  codespace:
+    name: Codespace start
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Enable keyless demo mode
+        run: |
+          cp research.env.example .env.research
+          sed -i 's/^RESEARCH_DEMO_MODE=.*/RESEARCH_DEMO_MODE=true/' .env.research
+
+      - name: Start the dev container and check the service
+        uses: devcontainers/ci@v0.3
+        with:
+          push: never
+          runCmd: |
+            curl -fsS http://127.0.0.1:8000/health
+            curl -fsS http://127.0.0.1:8000/api/models | grep -q '"ready":true'

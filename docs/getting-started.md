@@ -75,7 +75,7 @@ ollama pull qwen3:14b
 
 ```powershell
 docker compose -f compose.research.yaml build research
-docker compose -f compose.research.yaml run --rm --no-deps research `
+docker compose -f compose.research.yaml run --rm --no-deps -v "${PWD}:/app:ro" research `
   python -m unittest discover -s research_service/tests -p test_*.py -v
 Get-ChildItem research_service\static\js\*.js | ForEach-Object { node --check $_.FullName }
 ```

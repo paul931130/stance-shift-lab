@@ -7,6 +7,19 @@
 
 ## 快速開始
 
+### 不用安裝：直接在 GitHub 開（Codespaces）
+
+[![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/paul931130/stance-shift-lab)
+
+按上面的按鈕（或 repo 頁面的 Code → Codespaces → Create），GitHub 會開一台雲端機器、用同一個 Docker 映像啟動研究台，並自動在瀏覽器開啟 `https://<codespace 名稱>-8000.app.github.dev`。第一次建立要下載約 2 GB 套件，需等幾分鐘；之後重新開啟會快很多。
+
+- **金鑰**：到 GitHub → Settings → Codespaces → Secrets 新增，名稱與 `research.env.example` 相同（例如 `GPUTW_OLLAMA_BASE_URL`、`GPUTW_OLLAMA_API_KEY`、`FRED_API_KEY`），並授權給這個 repo；每次啟動會自動寫入 `.env.research`。也可以開啟後在網頁設定區填寫。
+- **模型**：Codespace 沒有 GPU，請接自己的 GPUtw 遠端 Ollama 或雲端模型金鑰。只想看介面，新增 secret `RESEARCH_DEMO_MODE=true`。
+- **存取**：8000 連接埠預設為私人，只有開 Codespace 的 GitHub 帳號登入後看得到；不要改成公開。
+- **費用與資料**：使用的是各自 GitHub 帳號的 Codespaces 額度。閒置會自動停機、資料保留；刪除 Codespace 時資料一併刪除，研究結果請先匯出。
+
+### 在自己電腦上用 Docker 執行
+
 **唯一支援的執行方式是 Docker**，Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個映像。需求只有 Docker Desktop（Linux 可用 Docker Engine + Compose plugin），以及 Ollama、GPUtw 遠端 Ollama 或一組雲端模型金鑰；只想看介面可用下方展示模式，什麼都不用準備。電腦上不需要安裝 Python。
 
 Windows（PowerShell）：
@@ -94,7 +107,7 @@ macOS／Linux：
 
 ```powershell
 docker compose -f compose.research.yaml build research
-docker compose -f compose.research.yaml run --rm --no-deps research python -m unittest discover -s research_service/tests -p test_*.py
+docker compose -f compose.research.yaml run --rm --no-deps -v "${PWD}:/app:ro" research python -m unittest discover -s research_service/tests -p test_*.py
 Get-ChildItem research_service\static\js\*.js | ForEach-Object { node --check $_.FullName }
 ```
 
@@ -106,7 +119,7 @@ Get-ChildItem research_service\static\js\*.js | ForEach-Object { node --check $_
 git clone https://github.com/paul931130/stance-shift-lab.git <暫存路徑>
 cd <暫存路徑>
 docker compose -f compose.research.yaml build research
-docker compose -f compose.research.yaml run --rm --no-deps research python -m unittest discover -s research_service/tests -p test_*.py
+docker compose -f compose.research.yaml run --rm --no-deps -v "${PWD}:/app:ro" research python -m unittest discover -s research_service/tests -p test_*.py
 docker run -d --rm -p 127.0.0.1:8020:8000 -e RESEARCH_CONTAINER_LOCAL=true -v <暫存卷>:/data <image>
 curl http://127.0.0.1:8020/health   # 應為 {"status":"ok",...}
 curl http://127.0.0.1:8020/api/datasets   # 應為空陣列，確認初始狀態乾淨

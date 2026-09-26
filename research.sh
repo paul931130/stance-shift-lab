@@ -73,8 +73,9 @@ case "${1:-help}" in
         need_docker
         $COMPOSE build research
         # Run in the bare image: the service's .env.research (e.g. demo mode)
-        # would change behavior the tests assert on.
-        docker run --rm "$($COMPOSE config --images research)" \
+        # would change behavior the tests assert on. The checkout is mounted
+        # because the image ships only the service, not every script under test.
+        docker run --rm -v "$PWD:/app:ro" "$($COMPOSE config --images research)" \
             python -m unittest discover -s research_service/tests -p 'test_*.py'
         ;;
     doctor)
