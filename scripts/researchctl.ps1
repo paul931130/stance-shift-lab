@@ -294,21 +294,44 @@ function Setup-Research {
     $values['SEC_USER_AGENT'] = Read-PlainSetting 'SEC 研究名稱與聯絡信箱' $values['SEC_USER_AGENT']
     $values['FRED_API_KEY'] = Read-SecretSetting 'FRED API key' $values['FRED_API_KEY']
     $values['ALPHA_VANTAGE_API_KEY'] = Read-SecretSetting 'Alpha Vantage API key' $values['ALPHA_VANTAGE_API_KEY']
-    $values['RESEARCH_MODEL'] = Read-PlainSetting '預設模型（例如 ollama/qwen3:14b）' $values['RESEARCH_MODEL']
-    $values['GPUTW_API_URL'] = Read-PlainSetting 'GPUtw API 位址（可略過）' $values['GPUTW_API_URL']
-    $values['GPUTW_API_KEY'] = Read-SecretSetting 'GPUtw API key（只讀狀態，可略過）' $values['GPUTW_API_KEY']
-    $values['GPUTW_INSTANCE_ID'] = Read-PlainSetting 'GPUtw 執行個體 ID（可略過）' $values['GPUTW_INSTANCE_ID']
-    $values['GPUTW_OLLAMA_BASE_URL'] = Read-PlainSetting 'GPUtw 遠端 Ollama 位址（可略過）' $values['GPUTW_OLLAMA_BASE_URL']
-    $values['GPUTW_OLLAMA_API_KEY'] = Read-SecretSetting '遠端 Ollama 存取 key（可略過）' $values['GPUTW_OLLAMA_API_KEY']
     $localNews = Join-Path $projectRoot 'research-inputs\Stock_news.csv'
     if (Test-Path -LiteralPath $localNews) { $values['FNSPID_NEWS_PATH'] = '/app/research-inputs/Stock_news.csv' }
     $localAlphaCache = Join-Path $projectRoot 'research-inputs\alphavantage_news.csv'
     if (Test-Path -LiteralPath $localAlphaCache) { $values['ALPHA_VANTAGE_NEWS_PATH'] = '/app/research-inputs/alphavantage_news.csv' }
 
-    $cloud = (Read-Host '雲端模型金鑰要設定哪一個？openrouter / openai / gemini / skip [skip]').Trim().ToLowerInvariant()
-    if ($cloud -eq 'openrouter') { $values['OPENROUTER_API_KEY'] = Read-SecretSetting 'OpenRouter API key' $values['OPENROUTER_API_KEY'] }
-    elseif ($cloud -eq 'openai') { $values['OPENAI_API_KEY'] = Read-SecretSetting 'OpenAI API key' $values['OPENAI_API_KEY'] }
-    elseif ($cloud -eq 'gemini') { $values['GEMINI_API_KEY'] = Read-SecretSetting 'Gemini API key' $values['GEMINI_API_KEY'] }
+    # One model source at a time; see docs/model-sources.md.
+    Write-Host ''
+    Write-Host '模型要在哪裡執行？'
+    Write-Host '  1  自己電腦（本機 Ollama，需要夠力的顯示卡或耐心）'
+    Write-Host '  2  雲端租 GPU（GPUtw 遠端 Ollama）'
+    Write-Host '  3  雲端模型 API（OpenRouter／OpenAI／Gemini，只要一把金鑰）'
+    $source = (Read-Host '選擇 1 / 2 / 3 [1]').Trim()
+    if ($source -eq '2') {
+        $values['GPUTW_OLLAMA_BASE_URL'] = Read-PlainSetting 'GPUtw 遠端 Ollama 位址（例如 https://…）' $values['GPUTW_OLLAMA_BASE_URL']
+        if (-not $values['GPUTW_OLLAMA_BASE_URL']) { throw '選擇 GPUtw 時必須填入遠端 Ollama 位址。' }
+        $values['GPUTW_OLLAMA_API_KEY'] = Read-SecretSetting '遠端 Ollama 存取 key（端點沒有保護可略過）' $values['GPUTW_OLLAMA_API_KEY']
+        $values['GPUTW_API_KEY'] = Read-SecretSetting 'GPUtw API key（只讀狀態，可略過）' $values['GPUTW_API_KEY']
+        $values['GPUTW_INSTANCE_ID'] = Read-PlainSetting 'GPUtw 執行個體 ID（可略過）' $values['GPUTW_INSTANCE_ID']
+        if (-not $values['RESEARCH_MODEL'].StartsWith('ollama/')) { $values['RESEARCH_MODEL'] = 'ollama/qwen3:14b' }
+        $values['RESEARCH_MODEL'] = Read-PlainSetting '模型' $values['RESEARCH_MODEL']
+    } elseif ($source -eq '3') {
+        $cloud = (Read-Host '哪一家？openrouter / openai / gemini [openrouter]').Trim().ToLowerInvariant()
+        if (-not $cloud) { $cloud = 'openrouter' }
+        $keyName = @{ openrouter = 'OPENROUTER_API_KEY'; openai = 'OPENAI_API_KEY'; gemini = 'GEMINI_API_KEY' }[$cloud]
+        if (-not $keyName) { throw "不支援的雲端模型：$cloud" }
+        $values[$keyName] = Read-SecretSetting "$cloud API key" $values[$keyName]
+        $suggested = @{ openrouter = 'openrouter/qwen/qwen3-14b'; openai = 'openai/gpt-4.1-mini'; gemini = 'gemini/gemini-2.5-flash' }[$cloud]
+        if (-not $values['RESEARCH_MODEL'].StartsWith("$cloud/")) { $values['RESEARCH_MODEL'] = $suggested }
+        $values['RESEARCH_MODEL'] = Read-PlainSetting '模型（LiteLLM 名稱）' $values['RESEARCH_MODEL']
+        # A leftover GPUtw address would otherwise still take over any ollama/ model.
+        $values['GPUTW_OLLAMA_BASE_URL'] = ''
+    } else {
+        # Local Ollama: clear the GPUtw address, which otherwise takes precedence.
+        $values['GPUTW_OLLAMA_BASE_URL'] = ''
+        if (-not $values['RESEARCH_MODEL'].StartsWith('ollama/')) { $values['RESEARCH_MODEL'] = 'ollama/qwen3:14b' }
+        $values['RESEARCH_MODEL'] = Read-PlainSetting '模型' $values['RESEARCH_MODEL']
+        Write-Host '記得先安裝 Ollama 並執行：ollama pull' $values['RESEARCH_MODEL'].Substring(7)
+    }
 
     $mode = (Read-Host '執行模式 local / server [local]').Trim().ToLowerInvariant()
     if ($mode -eq 'server') {
@@ -351,10 +374,28 @@ function Test-Research {
     if (Test-Path -LiteralPath $news) { Write-Host '[OK] FNSPID 篩選檔存在' } else { Write-Host '[INFO] 未安裝 FNSPID；可由 Alpha Vantage 提供情緒資料' }
     $alphaCache = Join-Path $projectRoot 'research-inputs\alphavantage_news.csv'
     if (Test-Path -LiteralPath $alphaCache) { Write-Host '[OK] Alpha Vantage 新聞快取檔存在（不消耗即時 API 額度）' } else { Write-Host '[INFO] 未安裝 Alpha Vantage 新聞快取；缺口由即時 API 補齊' }
-    try {
-        $tags = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
-        Write-Host "[OK] Ollama 已連線，共 $($tags.models.Count) 個模型"
-    } catch { Write-Host '[WARN] Ollama 未連線；可改用已設定金鑰的雲端模型' }
+    $model = $settings['RESEARCH_MODEL']
+    if ($settings['RESEARCH_DEMO_MODE'] -eq 'true') {
+        Write-Host '[INFO] 模型來源：展示模式（內建合成 provider，不呼叫任何模型）'
+    } elseif ($model -and -not $model.StartsWith('ollama/')) {
+        $provider = $model.Split('/')[0]
+        $keyName = @{ openrouter = 'OPENROUTER_API_KEY'; openai = 'OPENAI_API_KEY'; gemini = 'GEMINI_API_KEY' }[$provider]
+        if ($keyName -and $settings[$keyName]) { Write-Host "[OK] 模型來源：雲端 API · $model · $keyName 已設定" }
+        elseif ($keyName) { Write-Host "[FAIL] 模型來源：雲端 API · $model · 缺少 $keyName" }
+        else { Write-Host "[WARN] 模型來源：雲端 API · $model · 無法判斷需要哪把金鑰" }
+    } elseif ($settings['GPUTW_OLLAMA_BASE_URL']) {
+        $headers = @{}
+        if ($settings['GPUTW_OLLAMA_API_KEY']) { $headers.Authorization = "Bearer $($settings['GPUTW_OLLAMA_API_KEY'])" }
+        try {
+            $tags = Invoke-RestMethod -Uri ($settings['GPUTW_OLLAMA_BASE_URL'].TrimEnd('/') + '/api/tags') -Headers $headers -TimeoutSec 10
+            Write-Host "[OK] 模型來源：GPUtw 遠端 Ollama 已連線，共 $($tags.models.Count) 個模型 · $model"
+        } catch { Write-Host '[FAIL] 模型來源：GPUtw 遠端 Ollama 連不上；確認執行個體已啟動、位址與存取 key 正確' }
+    } else {
+        try {
+            $tags = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
+            Write-Host "[OK] 模型來源：本機 Ollama 已連線，共 $($tags.models.Count) 個模型 · $model"
+        } catch { Write-Host '[FAIL] 模型來源：本機 Ollama 未連線；請安裝並啟動 Ollama，或執行 setup 改選 GPUtw／雲端 API' }
+    }
     try {
         $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health' -TimeoutSec 5
         Write-Host "[OK] 網站服務 healthy · $($health.version)"

@@ -14,13 +14,13 @@
 按上面的按鈕（或 repo 頁面的 Code → Codespaces → Create），GitHub 會開一台雲端機器、用同一個 Docker 映像啟動研究台，並自動在瀏覽器開啟 `https://<codespace 名稱>-8000.app.github.dev`。第一次建立要下載約 2 GB 套件，需等幾分鐘；之後重新開啟會快很多。
 
 - **金鑰**：到 GitHub → Settings → Codespaces → Secrets 新增，名稱與 `research.env.example` 相同（例如 `GPUTW_OLLAMA_BASE_URL`、`GPUTW_OLLAMA_API_KEY`、`FRED_API_KEY`），並授權給這個 repo；每次啟動會自動寫入 `.env.research`。也可以開啟後在網頁設定區填寫。
-- **模型**：Codespace 沒有 GPU，請接自己的 GPUtw 遠端 Ollama 或雲端模型金鑰。只想看介面，新增 secret `RESEARCH_DEMO_MODE=true`。
+- **模型**：Codespace 沒有 GPU，請接自己的 GPUtw 遠端 Ollama 或雲端模型 API 金鑰（需要哪些 secrets 見 [選擇模型來源](docs/model-sources.md)）。只想看介面，新增 secret `RESEARCH_DEMO_MODE=true`。
 - **存取**：8000 連接埠預設為私人，只有開 Codespace 的 GitHub 帳號登入後看得到；不要改成公開。
 - **費用與資料**：使用的是各自 GitHub 帳號的 Codespaces 額度。閒置會自動停機、資料保留；刪除 Codespace 時資料一併刪除，研究結果請先匯出。
 
 ### 在自己電腦上用 Docker 執行
 
-**唯一支援的執行方式是 Docker**，Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個映像。需求只有 Docker Desktop（Linux 可用 Docker Engine + Compose plugin），以及 Ollama、GPUtw 遠端 Ollama 或一組雲端模型金鑰；只想看介面可用下方展示模式，什麼都不用準備。電腦上不需要安裝 Python。
+**唯一支援的執行方式是 Docker**，Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個映像。需求只有 Docker Desktop（Linux 可用 Docker Engine + Compose plugin），以及一個模型來源：自己電腦的 Ollama、雲端租 GPU（GPUtw），或雲端模型 API 金鑰，`setup` 會讓你三選一，比較見 [選擇模型來源](docs/model-sources.md)；只想看介面可用下方展示模式，什麼都不用準備。電腦上不需要安裝 Python。
 
 Windows（PowerShell）：
 
