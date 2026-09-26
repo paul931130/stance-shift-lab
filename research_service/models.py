@@ -8,7 +8,9 @@ import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import SWITCH_ROUND, visible_history
+from .protocol import SWITCH_ROUND, StudyProtocol, visible_history
+
+BACKTEST_HORIZONS = StudyProtocol().horizons
 
 
 DEFAULT_MODEL_TIMEOUT_SECONDS = 240
@@ -120,7 +122,13 @@ def validate_financial_numbers(result, evidence):
     text = " ".join([str(result.get("summary", "")), str(result.get("rationale", "")),
                      str(result.get("strongest_counterpoint", "")),
                      *(str(value) for value in result.get("risks", []))])
-    unsupported = numbers(text) - numbers(source)
+    # v3-0926.3: a window length inside a cited indicator name (return20 ->
+    # "20-day") and the protocol's own backtest horizons are not invented
+    # numbers. Rounded or converted values are still rejected.
+    supported = numbers(source)
+    supported |= {Decimal(value) for value in re.findall(r'(?<=[A-Za-z_])\d+(?![\d.])', source)}
+    supported |= {Decimal(value) for value in BACKTEST_HORIZONS}
+    unsupported = numbers(text) - supported
     if unsupported:
         raise ValueError('財務摘要包含來源未支持的數字；必須原樣保留數值、單位與期間')
 
@@ -324,6 +332,15 @@ def output_schema_for(messages):
     return schema
 
 
+def _plain_json(value):
+    """JSON fallback for provider objects (pydantic models or plain attribute bags)."""
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "__dict__"):
+        return {key: item for key, item in vars(value).items() if not key.startswith("_")}
+    return str(value)
+
+
 def generate(protocol, messages, seed=None, temperature=None):
     output_schema = output_schema_for(messages)
     effective_temperature = protocol.temperature if temperature is None else temperature
@@ -379,9 +396,16 @@ def generate(protocol, messages, seed=None, temperature=None):
                 seed_supported = "seed" in (litellm.get_supported_openai_params(model=protocol.model) or [])
                 if seed is not None and seed_supported:
                     kwargs["seed"] = int(seed)
+                # Gemini 2.5 "thinks" by default and those tokens count against
+                # max_tokens, truncating the JSON answer. Match the Ollama path
+                # (think=False) by disabling it.
+                if protocol.model.startswith("gemini/"):
+                    kwargs["reasoning_effort"] = "disable"
                 provider_result = litellm.completion(**kwargs)
                 content = provider_result.choices[0].message.content
-                usage = dict(provider_result.usage)
+                # LiteLLM usage nests provider objects (e.g. token-detail wrappers);
+                # flatten to plain JSON so the job state can be persisted.
+                usage = json.loads(json.dumps(dict(provider_result.usage), default=_plain_json))
                 usage["provider_model"] = getattr(provider_result, "model", None)
                 usage["system_fingerprint"] = getattr(provider_result, "system_fingerprint", None)
                 usage["seed_applied"] = seed is not None and seed_supported
