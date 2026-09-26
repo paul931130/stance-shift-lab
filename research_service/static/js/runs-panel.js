@@ -142,7 +142,7 @@ function estimateRemaining(s, total, jobStatus) {
 
 function decisionCards(s) {
   if (!s.decisions) return '<p class="hint">四組完成後由 Gatekeeper 同步鎖定決策。</p>';
-  return `<div class="decisions">${Object.entries(s.decisions).map(([g, d]) => `<div><small>${g} 組 · 信心 ${percentage(d.confidence)} · 預測 ${number(d.expected_return_pct)}%</small><strong>${escape(d.action)}</strong><small>模型：${escape(d.model_action || d.candidate_action)} · 推導：${escape(d.derived_action || d.candidate_action)} · 候選：${escape(d.candidate_action)}<br>中性帶 ±${number(d.hold_band_pct)}% · 資料覆蓋 ${percentage(d.gate.domain_coverage)}<br>${d.gate.missing_data_control ? '缺資料對照：未覆寫模型決策<br>' : ''}${escape(d.gate.reasons.join(' / ') || '通過門檻')}</small></div>`).join('')}</div>`;
+  return `<div class="decisions">${Object.entries(s.decisions).map(([g, d]) => `<div><small>${g} 組 · 信心 ${percentage(d.confidence)} · 預測 ${number(d.expected_return_pct)}%</small><strong>${escape(d.action)}</strong><small>模型：${escape(d.model_action || d.candidate_action)} · 推導：${escape(d.derived_action || d.candidate_action)} · 候選：${escape(d.candidate_action)}<br>Hold 門檻 ±${number(d.hold_band_pct)}%（預測報酬在此範圍內視為 Hold） · 資料覆蓋 ${percentage(d.gate.domain_coverage)}<br>${d.gate.missing_data_control ? '缺資料對照：未覆寫模型決策<br>' : ''}${escape(d.gate.reasons.join(' / ') || '通過門檻')}</small></div>`).join('')}</div>`;
 }
 
 // Downstream half of the map: research agents → report → A/B/C/D →
