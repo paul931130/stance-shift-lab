@@ -32,6 +32,8 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 RAW_CSV_PATH = SCRIPT_DIR / "raw_stock_news.csv"
 OUTPUT_PATH = SCRIPT_DIR.parents[1] / "research-inputs" / "Stock_news.csv"
+# Historical list from before v3-0923.1 (LLY was later replaced by INTC; ASTS is live-only).
+# The current 9-ticker study list is research_service.protocol.STUDY_TICKERS.
 TICKERS = {"AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "LLY", "ASTS", "GE"}
 CHUNK_SIZE = 100_000  # 每次讀多少列，CPU-only 機器建議別設太大
 

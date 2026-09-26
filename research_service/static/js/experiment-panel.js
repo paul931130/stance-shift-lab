@@ -49,7 +49,7 @@ export function syncExperimentGuard() {
     catch (error) { result = {ready: false, reason: 'error', message: `無法確認實驗條件：${error.message}`}; }
     if (seq !== preflightSeq) return;
     showGuard(result.ready, result.reason, result.ready
-      ? '資料集、研究分析日、模型與新聞品質均已驗證；設定會一起鎖定於新實驗。'
+      ? '資料集、研究分析日、模型與新聞品質都已通過檢查；開始後這些設定會固定在這筆實驗中。'
       : result.message);
   }, PREFLIGHT_DEBOUNCE_MS);
 }
@@ -150,7 +150,7 @@ async function submitJob() {
   const payload = jobPayload();
   const job = await api('/api/jobs', payload);
   state.selectedJob = job.id;
-  notify(`研究已加入背景佇列，模型為 ${payload.model}。候選決策、風控決策與品質覆寫會一起鎖定於協議。`);
+  notify(`研究已加入背景佇列，模型為 ${payload.model}。本次設定（含決策規則與品質例外）已固定在這筆實驗中。`);
   setTab('runs');
   await refreshJobs();
 }
@@ -177,14 +177,14 @@ export function applyModels(config, m) {
   const cloud = m.cloud;
   const localCount = (m.details || []).filter(item => item.provider !== 'cloud').length;
   chip.dataset.state = state.demoMode ? 'demo' : cloud?.ready ? 'ok' : m.ready ? (formal.length ? 'ok' : 'warn') : 'error';
-  chip.textContent = state.demoMode ? 'DEMO · 內建合成 provider · 不代表正式模型資格'
+  chip.textContent = state.demoMode ? '展示模式 · 內建合成回應，不是正式模型'
     : cloud?.ready ? `雲端模型 · ${cloud.model} · ${cloud.key_name} 已設定${localCount ? ` · 另有 ${localCount} 個 Ollama 模型` : ''}`
     : cloud ? `雲端模型 ${cloud.model} · 缺少 ${cloud.key_name || '對應的 API key'}`
     : m.ready ? (formal.length
       ? `Ollama 已連線 · ${m.models.length} 個本機模型 · ${formal.length} 個符合研究模型門檻`
       : `Ollama 已連線 · ${m.models.length} 個模型 · 無符合研究模型門檻的模型`)
-    : m.http_status === 403 ? 'MODEL 403 · GPUtw Ollama 權限被拒'
-    : m.http_status ? `MODEL HTTP ${m.http_status} · 無法連線` : 'MODEL OFFLINE · 尚未連線';
+    : m.http_status === 403 ? '模型服務拒絕存取（403）· 請檢查 GPUtw Ollama 金鑰'
+    : m.http_status ? `模型服務回應錯誤（HTTP ${m.http_status}）` : '模型未連線 · 請啟動 Ollama 或設定雲端模型';
   const models = [...new Set([config.model, ...m.models])];
   $('model').innerHTML = modelOptions(models, m.details);
   const largest = [...(m.details || [])].sort((a, b) => (Number.parseFloat(b.parameter_size) || 0) - (Number.parseFloat(a.parameter_size) || 0))[0]?.id;

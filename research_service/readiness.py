@@ -194,7 +194,7 @@ def study_readiness(rows):
                                                 for row in by_case.values()),
             "cases": cases, "tickers": tickers,
             "temporal_splits": temporal_split_summary(cases),
-            "note": "四域完整、可比較 SEC 基本面、FinBERT／新聞品質、60 日主要回測與 90 日次要回測分開計數；正式主分析需通過前四項，90 日另計。ASTS 只用於即時查詢。"}
+            "note": "四個面向齊全、可比較 SEC 基本面、FinBERT／新聞品質、60 日主要回測與 90 日次要回測分開計數；正式實驗需通過前四項，90 日另計。ASTS 只用於即時查詢，不在研究名單中。"}
 
 
 def gap_inventory(rows):

@@ -26,14 +26,14 @@ function renderCollectionFlow(dataset, phase) {
     if (phase === 'running') update[`src-${domain}`] = 'active';
     else if (flow.get(`src-${domain}`) === 'active') update[`src-${domain}`] = 'ready';
   }
-  update.snapshot = phase === 'running' ? {status: 'active', sub: '等待四域寫入'}
+  update.snapshot = phase === 'running' ? {status: 'active', sub: '等待四個面向的資料'}
     : dataset ? {status: 'done', sub: `${dataset.ticker} v${dataset.version} · ${dataset.evidence_count} 筆`}
-    : state.selectedJob ? undefined : {status: 'idle', sub: '不可變 dataset'};
+    : state.selectedJob ? undefined : {status: 'idle', sub: '建立後不再變動'};
   flow.setMany(update);
   flow.metric('evidence', dataset ? dataset.evidence_count : '—');
-  if (phase === 'running') flow.caption('資料 Agent 正在從四個來源並行蒐集證據，寫入不可變快照…');
+  if (phase === 'running') flow.caption('資料 Agent 正在同時從四個來源蒐集證據，完成後存成資料集…');
   else if (state.selectedJob) return;
-  else if (dataset) flow.caption(`快照 ${dataset.ticker} v${dataset.version}（研究日 ${datasetCut(dataset) || '未記錄'}）已就緒，可流向 A/B/C/D 實驗。`);
+  else if (dataset) flow.caption(`資料集 ${dataset.ticker} v${dataset.version}（研究日 ${datasetCut(dataset) || '未記錄'}）已就緒，可用於 A/B/C/D 實驗。`);
   else flow.caption('選擇股票與研究分析日，啟動資料 Agent 讓資料開始流動。');
 }
 
@@ -45,7 +45,7 @@ export function renderCollectionAgents(dataset = null, phase = 'idle') {
     if (ok) complete++; else if (dataset) gaps++;
   }
   const readiness = $('data-readiness');
-  if (phase === 'running') readiness.textContent = '四個資料 Agent 已啟動；技術、基本面與總經來源正在並行處理，情緒 Agent 同時檢查可用摘要。';
+  if (phase === 'running') readiness.textContent = '四個資料 Agent 已啟動，正在同時蒐集技術、基本面、情緒與總經資料。';
   else if (!dataset) readiness.textContent = '選擇股票與研究分析日後，讓四個 Agent 開始蒐集與驗證資料。';
   else if (gaps === 0) {
     const quality = dataset.coverage?.sentiment_quality || {}, pending = [];
@@ -54,23 +54,23 @@ export function renderCollectionAgents(dataset = null, phase = 'idle') {
     if (quality.items > 0 && !quality.finbert_complete) pending.push(`FinBERT ${quality.finbert_scored || 0}/${quality.items}`);
     if (!dataset.coverage?.backtest_ready) pending.push('60 日後續行情不足');
     readiness.textContent = pending.length
-      ? `四域證據完整；正式主實驗前仍需處理：${pending.join('、')}。`
-      : '四域證據、新聞品質、FinBERT 與 60 日回測行情均已驗證，可啟動 A/B/C/D 四組實驗。';
-  } else readiness.textContent = `資料結構與行情已驗證；${complete}/4 個領域就緒、${gaps} 個領域有缺口。可直接作為缺資料對照，系統會保留缺口標記並依你選的策略處理決策。`;
+      ? `四個面向的資料都已齊全；正式實驗前還需處理：${pending.join('、')}。`
+      : '四個面向的資料、新聞品質、FinBERT 評分與 60 日回測行情都已通過檢查，可以開始 A/B/C/D 實驗。';
+  } else readiness.textContent = `資料格式與行情已通過檢查；${complete}/4 個面向齊全、${gaps} 個面向有缺口。仍可執行實驗，系統會標記缺口，並依你選的資料缺口策略處理決策。`;
 }
 
 export async function refreshReadiness() {
   const r = await api('/api/readiness');
   const done = r.evidence_complete_cases ?? r.complete_cases, formal = r.formal_experiment_ready_cases ?? 0, total = r.target_cases;
   const ratio = total ? Math.round((formal / total) * 100) : 0;
-  $('study-readiness').innerHTML = `<div class="readiness-meter"><strong>目前可執行 ${formal}/${total} 個正式案例</strong><span>四域完整 ${done} · 60 日行情完整 ${r.backtest_ready_cases}</span></div><div class="meter" role="img" aria-label="正式案例完成度 ${ratio}%"><i></i></div>`;
+  $('study-readiness').innerHTML = `<div class="readiness-meter"><strong>目前可執行 ${formal}/${total} 個正式案例</strong><span>四個面向齊全 ${done} · 60 日回測行情齊全 ${r.backtest_ready_cases}</span></div><div class="meter" role="img" aria-label="正式案例完成度 ${ratio}%"><i></i></div>`;
   const bar = $('study-readiness').querySelector('.meter i');
   requestAnimationFrame(() => { bar.style.width = `${ratio}%`; });
   const gaps = await api('/api/readiness/gaps');
   const rows = (gaps.gap_cases || []).map(row => `<tr><td>${escape(row.ticker)}</td><td>${escape(row.analysis_date)}</td><td>${escape(row.status)}</td><td>${escape((row.deficits || []).join('、'))}</td><td><code>${escape(row.collect_command)}</code></td></tr>`).join('');
   $('gap-inventory-body').innerHTML = rows
-    ? `<p class="hint">共 ${gaps.gap_count} 個缺口。先補「dataset」案例，再處理新聞品質或 SEC 可比較性。</p><div class="table-wrap gap-table"><table><thead><tr><th>股票</th><th>分析日</th><th>狀態</th><th>缺少項目</th><th>終端補資料指令</th></tr></thead><tbody>${rows}</tbody></table></div>`
-    : '<p class="hint">全部研究案例均已達正式主實驗門檻。</p>';
+    ? `<p class="hint">共 ${gaps.gap_count} 個缺口。先補還沒有資料集的案例，再處理新聞品質或 SEC 可比較性。</p><div class="table-wrap gap-table"><table><thead><tr><th>股票</th><th>分析日</th><th>狀態</th><th>缺少項目</th><th>終端補資料指令</th></tr></thead><tbody>${rows}</tbody></table></div>`
+    : '<p class="hint">全部研究案例都已達正式實驗門檻。</p>';
 }
 
 function renderDatasetPreviewList() {
@@ -126,14 +126,14 @@ async function collect() {
   const refresh = $('refresh-data').checked, useFinbert = $('download-finbert').checked;
   resetTerminal();
   terminalLine('YOU', `collect --ticker ${ticker} --as-of ${analysisDate} --domains all${refresh ? ' --refresh' : ''}${useFinbert ? ' --finbert' : ''}`, 'command');
-  terminalLine('COORD', refresh ? `強制建立 ${analysisDate} 新快照，派發 4 個資料 Agent` : `先搜尋 ${ticker}／${analysisDate} 可重用的四域完整快照`);
-  notify('資料 Agent 正在檢查快照與來源…');
+  terminalLine('COORD', refresh ? `強制建立 ${analysisDate} 的新版資料集，派出 4 個資料 Agent` : `先尋找 ${ticker}／${analysisDate} 可重用、四個面向都齊全的資料集`);
+  notify('資料 Agent 正在檢查既有資料集與來源…');
   renderCollectionAgents(null, 'running');
   let r, reported;
   try { ({result: r, reported} = await runCollectionTask({ticker, analysis_date: analysisDate, refresh, use_finbert: useFinbert})); }
   catch (error) { terminalLine('ERROR', error.message, 'error'); renderCollectionAgents(selectedDataset()); throw error; }
-  if (r.reused) terminalLine('CACHE', `HIT dataset v${r.version} · ${r.id.slice(0, 12)}… · 未呼叫外部 API`, 'ok');
-  else terminalLine('COORD', '已完成四域來源派工：Yahoo／SEC／Alpha+FNSPID／ALFRED');
+  if (r.reused) terminalLine('CACHE', `重用既有資料集 v${r.version} · ${r.id.slice(0, 12)}… · 未呼叫外部 API`, 'ok');
+  else terminalLine('COORD', '已派工到四個來源：Yahoo／SEC／Alpha Vantage＋FNSPID／ALFRED');
   // A reused snapshot reports no live progress; list its recorded agents once.
   for (const [domain, item] of Object.entries(r.agents)) if (!reported.has(domain)) agentLine(domain, item);
   for (const limitation of r.limitations) terminalLine('AUDIT', limitation, 'warn');
@@ -142,7 +142,7 @@ async function collect() {
   await refreshReadiness();
   selectDataset(r.id, r.analysis_date);
   setTab('experiment');
-  notify(r.reused ? '已重用符合條件的既有資料快照；未重新呼叫來源 API。' : '資料 Agent 已完成本輪工作，資料集已保存。\n' + r.limitations.join('\n'));
+  notify(r.reused ? '已重用符合條件的既有資料集，沒有重新呼叫資料來源。' : '資料 Agent 已完成，資料集已儲存。\n' + r.limitations.join('\n'));
 }
 
 async function pollAlphaVantageArchive() {
@@ -196,6 +196,6 @@ $('import-file').addEventListener('change', e => task(null, async () => {
   await refreshDatasets();
   await refreshReadiness();
   selectDataset(r.id);
-  notify(r.finbert_applied ? '資料集已驗證，新聞標題已由 FinBERT 分類並保存。' : '資料集已驗證並保存。');
+  notify(r.finbert_applied ? '資料集已通過檢查，新聞標題已由 FinBERT 評分並儲存。' : '資料集已通過檢查並儲存。');
 }));
 $('dataset-search').addEventListener('input', renderDatasetPreviewList);

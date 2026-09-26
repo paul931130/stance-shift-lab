@@ -42,7 +42,7 @@ async function initialize() {
 
   resetTerminal();
   terminalLine('SYSTEM', `Agent Shell ready · protocol ${state.currentProtocolVersion}`, 'ok');
-  terminalLine('COORD', `等待四域資料任務 · worker=${state.parallelWorkers}`);
+  terminalLine('COORD', `等待資料任務 · 並行數 ${state.parallelWorkers}`);
   const readySources = Object.entries(config.sources).filter(([, ready]) => ready).map(([name]) => name.toUpperCase());
   terminalLine('SOURCE', readySources.join(' · ') || '尚未設定外部來源', readySources.length ? 'ok' : 'warn');
 
