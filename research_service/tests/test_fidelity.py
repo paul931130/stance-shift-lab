@@ -41,6 +41,15 @@ class FidelityTests(unittest.TestCase):
         with self.assertRaises(ValueError):  # rounding a calibration value is still rejected
             validate_financial_numbers({'rationale': 'mean -0.93', 'evidence_ids': ['rev']}, evidence, context)
 
+    def test_exact_percent_conversion_is_supported_but_rounding_is_not(self):
+        # v3-0926.6: a real Gemini run wrote 0.500153 as 50.0153% and -0.0677 as -6.77%.
+        evidence = [{'evidence_id': 'rates', 'claim': 'positive_rate = 0.500153; return20 = -0.0677; band 1.25%'}]
+        validate_financial_numbers({'rationale': 'Positive 50.0153% of windows; return20 was -6.77%; '
+                                                 'band 0.0125.', 'evidence_ids': ['rates']}, evidence)
+        for text in ('Positive 50.02% of windows', 'return20 was -6.8%', 'Positive 50% of windows'):
+            with self.assertRaises(ValueError, msg=text):
+                validate_financial_numbers({'rationale': text, 'evidence_ids': ['rates']}, evidence)
+
     def test_one_invalid_citation_is_rejected_instead_of_passing_eighty_percent(self):
         result = dict(action='Buy', expected_return_pct=4.0, confidence=.9, rationale='test', risks=[],
                       evidence_ids=['a', 'b', 'c', 'd', 'invented'])

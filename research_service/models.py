@@ -136,6 +136,9 @@ def validate_financial_numbers(result, evidence, context=None):
     supported = numbers(available)
     supported |= {Decimal(value) for value in re.findall(r'(?<=[A-Za-z_])\d+(?![\d.])', available)}
     supported |= {Decimal(value) for value in BACKTEST_HORIZONS}
+    # v3-0926.6: an exact fraction <-> percent conversion keeps the value
+    # (0.500153 -> 50.0153%); any additional rounding is still rejected.
+    supported |= {value * 100 for value in supported} | {value / 100 for value in supported}
     unsupported = numbers(text) - supported
     if unsupported:
         shown = ', '.join(sorted(format(value, 'f') for value in unsupported)[:5])
