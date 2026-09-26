@@ -13,7 +13,7 @@ from langgraph.graph import StateGraph, START, END
 from .anonymize import PLACEHOLDER, anonymize
 from .backtest import evaluate
 from .data import digest, research_inputs
-from .models import (compact_research_evidence, decision_prompt_context, generate, messages_for,
+from .models import (compact_research_evidence, generate, messages_for, prompt_text,
                      validate_decision, validate_research)
 from .protocol import StudyProtocol, DOMAIN_NAMES, decision_plan, decision_wave, temperature_for
 from .storage import now
@@ -224,7 +224,7 @@ class Engine:
         audit.setdefault("temperature", protocol.temperature if temperature is None else temperature)
         return result, audit
 
-    def validated_decision(self, protocol, call, messages, evidence, context=None):
+    def validated_decision(self, protocol, call, messages, evidence):
         """Generate one decision, retrying only an auditable validation rejection.
 
         Provider transport and JSON failures remain the provider's responsibility.
@@ -247,7 +247,8 @@ class Engine:
             audit = None
             try:
                 result, audit = self.call_model(protocol, attempt_messages, retry_key, temperature_for(protocol, call))
-                result = validate_decision(result, decision_evidence, call, context)
+                # Numbers are checked against everything this prompt showed the model.
+                result = validate_decision(result, decision_evidence, call, prompt_text(messages))
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
@@ -260,9 +261,15 @@ class Engine:
                 validation_failures.append(failure)
                 if attempt >= protocol.provider_retry_attempts:
                     raise
+                number_hint = ""
+                rejected_numbers = re.search(r"來源未支持的數字（([^）]*)）", str(error))
+                if rejected_numbers:
+                    number_hint = (f"These numbers in your text were not found in the supplied report: {rejected_numbers.group(1)}. "
+                                   "Delete them or replace each with the exact figure as written in the report; "
+                                   "do not round, convert units, or compute new figures. ")
                 attempt_messages = [*messages, {"role": "user", "content":
                     "The previous candidate was rejected by evidence validation. Return a new complete JSON "
-                    "object. Do not cite a legacy SEC point fact without a comparable period. Comparative SEC "
+                    "object. " + number_hint + "Do not cite a legacy SEC point fact without a comparable period. Comparative SEC "
                     "metrics present in the allowed list may be cited only with their exact values. Copy evidence_ids exactly from this allowed list "
                     f"only; do not invent, shorten, or transform any ID: {json.dumps(allowed_ids, ensure_ascii=False)}. "
                     f"Validation error: {str(error)[:200]}"}]
@@ -412,8 +419,7 @@ class Engine:
             completed, failures = {}, []
 
             def run_decision(call, messages):
-                return self.validated_decision(protocol, call, messages, state["report"]["evidence"],
-                                               decision_prompt_context(state["report"]))
+                return self.validated_decision(protocol, call, messages, state["report"]["evidence"])
 
             # Ollama defaults to a single runner.  Sending a whole wave at
             # once makes queued CPU requests outlive the runner keep-alive and

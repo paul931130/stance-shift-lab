@@ -50,6 +50,19 @@ class FidelityTests(unittest.TestCase):
             with self.assertRaises(ValueError, msg=text):
                 validate_financial_numbers({'rationale': text, 'evidence_ids': ['rates']}, evidence)
 
+    def test_own_forecast_and_prompt_numbers_are_supported(self):
+        # v3-0926.7: restating one's own forecast, or a figure from an earlier
+        # round shown in the prompt, is not inventing a number.
+        evidence = [{'evidence_id': 'rev', 'claim': 'Revenues = 91166000000 USD'}]
+        result = {'rationale': 'I expect 3.5% with 0.65 confidence; the bear case said -2.25.',
+                  'expected_return_pct': 3.5, 'confidence': 0.65, 'evidence_ids': ['rev']}
+        prompt = '{"history": [{"output": {"expected_return_pct": -2.25}}]}'
+        validate_financial_numbers(result, evidence, prompt)
+        with self.assertRaises(ValueError):  # -2.25 was not in anything the model saw
+            validate_financial_numbers(result, evidence)
+        with self.assertRaises(ValueError):  # a rounded restatement of its own forecast
+            validate_financial_numbers({**result, 'rationale': 'I expect 4% with 0.65 confidence.'}, evidence, prompt)
+
     def test_one_invalid_citation_is_rejected_instead_of_passing_eighty_percent(self):
         result = dict(action='Buy', expected_return_pct=4.0, confidence=.9, rationale='test', risks=[],
                       evidence_ids=['a', 'b', 'c', 'd', 'invented'])
