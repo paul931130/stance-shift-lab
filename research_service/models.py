@@ -8,7 +8,9 @@ import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import SWITCH_ROUND, visible_history
+from .protocol import SWITCH_ROUND, StudyProtocol, visible_history
+
+BACKTEST_HORIZONS = StudyProtocol().horizons
 
 
 DEFAULT_MODEL_TIMEOUT_SECONDS = 240
@@ -120,7 +122,13 @@ def validate_financial_numbers(result, evidence):
     text = " ".join([str(result.get("summary", "")), str(result.get("rationale", "")),
                      str(result.get("strongest_counterpoint", "")),
                      *(str(value) for value in result.get("risks", []))])
-    unsupported = numbers(text) - numbers(source)
+    # v3-0926.3: a window length inside a cited indicator name (return20 ->
+    # "20-day") and the protocol's own backtest horizons are not invented
+    # numbers. Rounded or converted values are still rejected.
+    supported = numbers(source)
+    supported |= {Decimal(value) for value in re.findall(r'(?<=[A-Za-z_])\d+(?![\d.])', source)}
+    supported |= {Decimal(value) for value in BACKTEST_HORIZONS}
+    unsupported = numbers(text) - supported
     if unsupported:
         raise ValueError('財務摘要包含來源未支持的數字；必須原樣保留數值、單位與期間')
 

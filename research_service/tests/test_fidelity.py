@@ -13,6 +13,22 @@ class FidelityTests(unittest.TestCase):
                 validate_financial_numbers({'summary': value, 'evidence_ids': ['rev']}, evidence)
         validate_financial_numbers({'summary': '91,166,000,000 USD', 'evidence_ids': ['rev']}, evidence)
 
+    def test_indicator_windows_and_protocol_horizons_are_supported_numbers(self):
+        # v3-0926.3: these were rejected in real Gemini runs although nothing was invented.
+        evidence = [{'evidence_id': 'tech', 'claim': 'return20 = -0.014023; price_vs_mean60 = -0.012453'}]
+        validate_financial_numbers({'rationale': 'The 20-day return of -0.014023 and the 60-day mean '
+                                                 'support a view over the next 60 sessions (30 and 90 too).',
+                                    'evidence_ids': ['tech']}, evidence)
+
+    def test_rounded_converted_or_uncited_numbers_are_still_rejected(self):
+        evidence = [{'evidence_id': 'tech', 'claim': 'return20 = -0.014023; price_vs_mean60 = -0.012453'},
+                    {'evidence_id': 'vol', 'claim': 'volatility60_annual = 0.41'}]
+        for text in ('return20 was -0.014', 'a -1.4% 20-day return', 'a 45-day outlook'):
+            with self.assertRaises(ValueError, msg=text):
+                validate_financial_numbers({'rationale': text, 'evidence_ids': ['tech']}, evidence)
+        with self.assertRaises(ValueError):  # 0.41 appears only in evidence that was not cited
+            validate_financial_numbers({'rationale': 'volatility 0.41', 'evidence_ids': ['tech']}, evidence)
+
     def test_one_invalid_citation_is_rejected_instead_of_passing_eighty_percent(self):
         result = dict(action='Buy', expected_return_pct=4.0, confidence=.9, rationale='test', risks=[],
                       evidence_ids=['a', 'b', 'c', 'd', 'invented'])
