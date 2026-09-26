@@ -72,7 +72,10 @@ case "${1:-help}" in
     test)
         need_docker
         $COMPOSE build research
-        $COMPOSE run --rm --no-deps research python -m unittest discover -s research_service/tests -p 'test_*.py'
+        # Run in the bare image: the service's .env.research (e.g. demo mode)
+        # would change behavior the tests assert on.
+        docker run --rm "$($COMPOSE config --images research)" \
+            python -m unittest discover -s research_service/tests -p 'test_*.py'
         ;;
     doctor)
         need_docker
