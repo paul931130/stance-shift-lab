@@ -174,8 +174,12 @@ export function applyModels(config, m) {
   const formalIds = new Set(m.formal_models || []);
   const formal = (m.details || []).filter(item => formalIds.has(item.id) || (!formalIds.size && Number.parseFloat(item.parameter_size) >= 14));
   const chip = $('model-state');
-  chip.dataset.state = state.demoMode ? 'demo' : m.ready ? (formal.length ? 'ok' : 'warn') : 'error';
+  const cloud = m.cloud;
+  const localCount = (m.details || []).filter(item => item.provider !== 'cloud').length;
+  chip.dataset.state = state.demoMode ? 'demo' : cloud?.ready ? 'ok' : m.ready ? (formal.length ? 'ok' : 'warn') : 'error';
   chip.textContent = state.demoMode ? 'DEMO · 內建合成 provider · 不代表正式模型資格'
+    : cloud?.ready ? `雲端模型 · ${cloud.model} · ${cloud.key_name} 已設定${localCount ? ` · 另有 ${localCount} 個 Ollama 模型` : ''}`
+    : cloud ? `雲端模型 ${cloud.model} · 缺少 ${cloud.key_name || '對應的 API key'}`
     : m.ready ? (formal.length
       ? `Ollama 已連線 · ${m.models.length} 個本機模型 · ${formal.length} 個符合研究模型門檻`
       : `Ollama 已連線 · ${m.models.length} 個模型 · 無符合研究模型門檻的模型`)

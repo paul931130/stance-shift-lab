@@ -117,3 +117,34 @@ class PreflightTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CloudModelStatusTests(unittest.TestCase):
+    """The status chip used to read 'MODEL OFFLINE' for keyed cloud models
+    whenever no Ollama was reachable (e.g. in a Codespace)."""
+
+    def probe(self, env):
+        from types import SimpleNamespace
+        from urllib.error import URLError
+        from research_service.web.ollama import probe_models
+        with patch.dict("os.environ", env, clear=False), \
+             patch("research_service.web.ollama.get_json", side_effect=URLError("no ollama")):
+            return probe_models(SimpleNamespace(demo_mode=False))
+
+    def test_keyed_cloud_model_is_ready_without_ollama(self):
+        result = self.probe({"RESEARCH_MODEL": "gemini/gemini-3.1-pro-preview", "GEMINI_API_KEY": "k",
+                             "GPUTW_OLLAMA_BASE_URL": ""})
+        self.assertTrue(result["ready"])
+        self.assertEqual(result["models"], ["gemini/gemini-3.1-pro-preview"])
+        self.assertEqual(result["cloud"]["key_name"], "GEMINI_API_KEY")
+
+    def test_cloud_model_without_key_is_not_ready(self):
+        result = self.probe({"RESEARCH_MODEL": "gemini/gemini-3.1-pro-preview", "GEMINI_API_KEY": "",
+                             "GPUTW_OLLAMA_BASE_URL": ""})
+        self.assertFalse(result["ready"])
+        self.assertFalse(result["cloud"]["ready"])
+
+    def test_ollama_default_is_unchanged(self):
+        result = self.probe({"RESEARCH_MODEL": "ollama/qwen3:14b", "GPUTW_OLLAMA_BASE_URL": ""})
+        self.assertFalse(result["ready"])
+        self.assertNotIn("cloud", result)

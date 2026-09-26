@@ -338,6 +338,27 @@ def output_schema_for(messages):
 
 
 GEMINI_THINKING_ALLOWANCE = 2048
+RATE_LIMIT_WAITS = 6
+RATE_LIMIT_MAX_WAIT_SECONDS = 90
+
+
+def _completion_with_rate_limit_wait(litellm, kwargs, usage):
+    """Wait out provider rate limits (HTTP 429) instead of failing the step.
+
+    Free and low-tier quotas (e.g. 25 requests/minute) are hit quickly by
+    parallel decision waves; the provider says how long to wait. Waits are
+    recorded in the usage audit and never consume a protocol retry.
+    """
+    for wait in range(RATE_LIMIT_WAITS + 1):
+        try:
+            return litellm.completion(**kwargs)
+        except litellm.RateLimitError as error:
+            if wait >= RATE_LIMIT_WAITS:
+                raise
+            match = re.search(r'retry in ([\d.]+)s', str(error))
+            delay = min(float(match.group(1)) + 1 if match else 15 * (wait + 1), RATE_LIMIT_MAX_WAIT_SECONDS)
+            usage.setdefault("rate_limit_waits", []).append(round(delay, 1))
+            time.sleep(delay)
 
 
 def _gemini_thinking_required(model):
@@ -420,11 +441,14 @@ def generate(protocol, messages, seed=None, temperature=None):
                         kwargs["max_tokens"] = protocol.max_output_tokens + GEMINI_THINKING_ALLOWANCE
                     else:
                         kwargs["reasoning_effort"] = "disable"
-                provider_result = litellm.completion(**kwargs)
+                provider_result = _completion_with_rate_limit_wait(litellm, kwargs, usage)
                 content = provider_result.choices[0].message.content
                 # LiteLLM usage nests provider objects (e.g. token-detail wrappers);
                 # flatten to plain JSON so the job state can be persisted.
+                waits = usage.get("rate_limit_waits")
                 usage = json.loads(json.dumps(dict(provider_result.usage), default=_plain_json))
+                if waits:
+                    usage["rate_limit_waits"] = waits
                 usage["provider_model"] = getattr(provider_result, "model", None)
                 usage["system_fingerprint"] = getattr(provider_result, "system_fingerprint", None)
                 usage["seed_applied"] = seed is not None and seed_supported

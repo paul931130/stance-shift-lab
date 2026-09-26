@@ -206,6 +206,32 @@ class ModelReliabilityTests(unittest.TestCase):
         self.assertEqual(seen["max_tokens"], protocol.max_output_tokens + GEMINI_THINKING_ALLOWANCE)
         self.assertEqual(usage["max_tokens_sent"], seen["max_tokens"])
 
+    def test_cloud_rate_limit_waits_the_provider_delay_instead_of_failing(self):
+        import litellm
+        from types import SimpleNamespace
+        content = json.dumps({"action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
+                              "rationale": "brief", "evidence_ids": ["e1"], "risks": []})
+        calls = []
+
+        def completion(**kwargs):
+            calls.append(1)
+            if len(calls) < 3:
+                raise litellm.RateLimitError("Quota exceeded. Please retry in 26.8s.",
+                                             llm_provider="gemini", model=kwargs["model"])
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+                                   usage={"prompt_tokens": 1}, model=kwargs["model"])
+
+        protocol = StudyProtocol(model="gemini/gemini-3.1-pro-preview", dataset_kind="synthetic",
+                                 bootstrap_replicates=199)
+        with patch("litellm.completion", side_effect=completion), \
+             patch("research_service.models.time.sleep") as sleep:
+            audit = generate(protocol, [{"role": "system", "content": "decision"},
+                                        {"role": "user", "content": "{}"}])[1]
+        self.assertEqual(len(calls), 3)
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [27.8, 27.8])
+        self.assertEqual(audit["usage"]["rate_limit_waits"], [27.8, 27.8])
+        self.assertEqual(audit["provider_attempts"], 1)  # waits do not consume a protocol retry
+
     def test_timeout_and_context_are_explicitly_configurable(self):
         seen = {}
 
