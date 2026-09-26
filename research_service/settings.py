@@ -48,7 +48,8 @@ class Settings:
         return {"fields": fields, "storage": "server_private", "restart_required": False,
                 "note": "留白保留原值；勾選清除才刪除。FinBERT 在本機執行，不需要 HF_TOKEN。"}
 
-    def save(self, values, clear=()):
+    def save(self, values, clear=None):
+        clear = [] if clear is None else clear
         if not isinstance(values, dict) or not isinstance(clear, list) or any(key not in FIELDS for key in [*values, *clear]):
             raise ValueError("設定包含不支援的欄位")
         changes = {}

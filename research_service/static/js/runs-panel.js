@@ -192,6 +192,10 @@ export async function showJob(id, loadedJob = null) {
     ? `這是協議 ${job.config.protocol.version || '未記錄'} 的既有結果；決策規則修正只會套用於 ${state.currentProtocolVersion} 新建立的實驗。`
     : `${protocolLabel(job.config.protocol)} · 使用目前的 Buy／Hold／Sell 候選決策規則。`;
   const eta = estimateRemaining(s, total, job.status);
+  const pendingMemory = s.memory_audit?.pending_earlier_cases || [];
+  const memoryNotice = pendingMemory.length
+    ? `<p class="protocol-warning">記憶鎖定時，同股票較早的 ${pendingMemory.length} 個案例尚未完成（${escape(pendingMemory.map(c => c.analysis_date).join('、'))}）；此案例的記憶可能不完整，正式統計前建議重跑。</p>`
+    : '';
   renderJobFlow(job, s, total);
   $('run-empty').hidden = true;
   const output = $('run-detail');
@@ -199,7 +203,7 @@ export async function showJob(id, loadedJob = null) {
   // Keep the open/closed state of the audit <details> across poll refreshes.
   const openDetails = [...output.querySelectorAll('details')].map(d => d.open);
   output.innerHTML = `<div class="run-head"><div><div class="section-label">CASE / ${escape(id.slice(0, 8))}</div><h2>${escape(job.config.ticker)} · ${escape(job.config.analysis_date)} <span class="status ${escape(job.status)}">${escape(statuses[job.status])}</span></h2></div><div class="run-progress"><strong>${s.records.length}<small>/${total}</small></strong><span>決策輸出</span></div></div>
-    <p class="${oldProtocol ? 'protocol-warning' : 'hint'}">${escape(protocolNotice)}</p>
+    <p class="${oldProtocol ? 'protocol-warning' : 'hint'}">${escape(protocolNotice)}</p>${memoryNotice}
     <p class="hint">目前：${escape(trace)} · ${s.attempts.length} 次持久化波次${eta ? ` · 依目前平均耗時預估剩餘 ${escape(eta)}` : ''}</p>
     <progress class="progress" max="${total}" value="${s.records.length}" aria-label="決策推論進度"></progress>
     ${job.error ? `<p class="error-text">${escape(friendlyJobError(job.error))}</p>` : ''}

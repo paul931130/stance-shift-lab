@@ -38,7 +38,23 @@ class Store:
                 CREATE TABLE IF NOT EXISTS preregistrations(
                     protocol_hash TEXT PRIMARY KEY, dataset_ids TEXT, frozen_at TEXT);
             """)
+            self._ensure_steps_column(db)
         self.backfill_case_results()
+
+    @staticmethod
+    def _ensure_steps_column(db):
+        """Keep a model-output count beside the state JSON.
+
+        The dashboard polls the job list every few seconds; reading this column
+        avoids parsing every job's full state just to count its records.
+        """
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
+        if "steps" in columns:
+            return
+        db.execute("ALTER TABLE jobs ADD COLUMN steps INTEGER NOT NULL DEFAULT 0")
+        for row in db.execute("SELECT id, state FROM jobs").fetchall():
+            db.execute("UPDATE jobs SET steps=? WHERE id=?",
+                       (len(json.loads(row["state"]).get("records", [])), row["id"]))
 
     @contextmanager
     def connect(self):
@@ -87,7 +103,10 @@ class Store:
 
     def datasets(self):
         with self.connect() as db:
-            rows = db.execute("SELECT * FROM datasets ORDER BY created_at ASC, rowid ASC").fetchall()
+            rows = db.execute("SELECT id, ticker, created_at FROM datasets ORDER BY created_at ASC, rowid ASC").fetchall()
+            uncached = [row["id"] for row in rows if row["id"] not in self._dataset_summary_cache]
+            contents = {key: db.execute("SELECT content FROM datasets WHERE id=?", (key,)).fetchone()["content"]
+                        for key in uncached}
             jobs = db.execute("SELECT config FROM jobs").fetchall()
         uses = {}
         for job in jobs:
@@ -97,7 +116,7 @@ class Store:
         for row in rows:
             cached = self._dataset_summary_cache.get(row["id"])
             if cached is None:
-                content = json.loads(row["content"])
+                content = json.loads(contents[row["id"]])
                 prices, evidence = content["prices"], content["evidence"]
                 evidence_by_domain = {domain: sum(item.get("domain") == domain for item in evidence)
                                       for domain in ("technical", "fundamental", "sentiment", "macro")}
@@ -128,7 +147,8 @@ class Store:
     def create(self, config):
         key, stamp = str(uuid4()), now()
         with self.connect() as db:
-            db.execute("INSERT INTO jobs VALUES(?,?,?,?,?,?,?,?)", (key, "queued", 1, json.dumps(config),
+            db.execute("""INSERT INTO jobs(id,status,wants_run,config,state,error,created_at,updated_at,steps)
+                VALUES(?,?,?,?,?,?,?,?,0)""", (key, "queued", 1, json.dumps(config),
                 json.dumps({"records": [], "research": {}, "trace": [], "attempts": []}), "", stamp, stamp))
         return self.get(key)
 
@@ -148,6 +168,13 @@ class Store:
     def jobs(self):
         with self.connect() as db:
             return [self.unpack(row) for row in db.execute("SELECT * FROM jobs ORDER BY created_at DESC")]
+
+    def job_summaries(self):
+        """Job list without the state JSON, for the frequently polled dashboard."""
+        with self.connect() as db:
+            rows = db.execute("""SELECT id,status,config,error,updated_at,steps,wants_run
+                FROM jobs ORDER BY created_at DESC""").fetchall()
+        return [{**dict(row), "config": json.loads(row["config"])} for row in rows]
 
     def control(self, key, command):
         with self.connect() as db:
@@ -177,7 +204,12 @@ class Store:
     def claim(self):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT * FROM jobs WHERE status='queued' AND wants_run=1 ORDER BY created_at LIMIT 1").fetchone()
+            # Run cases in analysis-date order, not submission order. A case's
+            # memory only contains earlier matured cases of the same protocol,
+            # so processing earlier dates first makes that memory independent
+            # of the order in which a batch happened to be queued.
+            row = db.execute("""SELECT * FROM jobs WHERE status='queued' AND wants_run=1
+                ORDER BY json_extract(config, '$.analysis_date'), created_at LIMIT 1""").fetchone()
             if not row:
                 return None
             db.execute("UPDATE jobs SET status='running',updated_at=? WHERE id=?", (now(), row["id"]))
@@ -193,8 +225,9 @@ class Store:
         with self.connect() as db:
             row = db.execute("SELECT wants_run,status,config,created_at FROM jobs WHERE id=?", (key,)).fetchone()
             status = "cancelled" if row["status"] == "cancelled" else "paused" if error else "complete" if state.get("finished") else "queued" if row["wants_run"] else "paused"
-            db.execute("UPDATE jobs SET state=?,status=?,wants_run=?,error=?,updated_at=? WHERE id=?",
-                (json.dumps(state, ensure_ascii=False, allow_nan=False), status, 0 if error else row["wants_run"], error, now(), key))
+            db.execute("UPDATE jobs SET state=?,status=?,wants_run=?,error=?,updated_at=?,steps=? WHERE id=?",
+                (json.dumps(state, ensure_ascii=False, allow_nan=False), status, 0 if error else row["wants_run"], error, now(),
+                 len(state.get("records", [])), key))
             if state.get("finished"):
                 self._upsert_case_results(db, key, json.loads(row["config"]), state, row["created_at"])
 
@@ -239,6 +272,23 @@ class Store:
             value["correct"] = None if value["correct"] is None else bool(value["correct"])
             unique.setdefault(value["analysis_date"], value)
         return list(unique.values())[:20]
+
+    def memory_audit(self, config):
+        """Earlier same-ticker cases of this protocol that were unfinished when memory was frozen.
+
+        Date-ordered scheduling prevents this for batches, but a case can still
+        start before an earlier one is added or resumed. Recording it keeps any
+        order-dependent memory visible in the job state and its export.
+        """
+        with self.connect() as db:
+            rows = db.execute("""SELECT id, status, json_extract(config, '$.analysis_date') AS analysis_date
+                FROM jobs WHERE json_extract(config, '$.protocol_hash')=? AND json_extract(config, '$.ticker')=?
+                  AND json_extract(config, '$.analysis_date') < ? AND status NOT IN ('complete', 'cancelled')
+                ORDER BY analysis_date, created_at""",
+                (config["protocol_hash"], config["ticker"], config["analysis_date"])).fetchall()
+        return {"rule": "memory uses earlier matured cases of the same protocol and ticker; "
+                        "cases are scheduled by analysis date",
+                "pending_earlier_cases": [dict(row) for row in rows]}
 
     def freeze(self, protocol_hash, dataset_ids):
         """Record the dataset IDs a study analyzed at the moment it was frozen.

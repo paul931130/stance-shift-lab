@@ -312,6 +312,7 @@ class Engine:
         if "inputs" not in state:
             state["inputs"] = research_inputs(dataset, config["analysis_date"], protocol)
             state["memory"] = {group: self.store.memory(config, group) for group in "ABCD"}
+            state["memory_audit"] = self.store.memory_audit(config)
             label = "coordinator"
         elif len(state["research"]) < 4:
             pending = [domain for domain in DOMAIN_NAMES if domain not in state["research"]]

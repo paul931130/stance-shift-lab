@@ -725,8 +725,7 @@ def _sentiment_summary(items):
             "direction": direction, "score_definition": "mean(P(positive)-P(negative))"}
 
 
-def _technical_calibration(return20, mean20, mean60, volatility):
-    mean_gap = mean20 / mean60 - 1
+def _technical_calibration(return20, mean_gap, volatility):
     if return20 > 0 and mean_gap > 0:
         direction = "upward"
     elif return20 < 0 and mean_gap < 0:
@@ -735,8 +734,7 @@ def _technical_calibration(return20, mean20, mean60, volatility):
         direction = "mixed"
     magnitude = max(abs(return20), abs(mean_gap))
     strength = "weak" if magnitude < .02 else "moderate" if magnitude < .07 else "strong"
-    return {"return20": round(return20, 6), "mean20": round(mean20, 6), "mean60": round(mean60, 6),
-            "mean20_vs_mean60": round(mean_gap, 6), "annual_volatility": round(volatility, 6),
+    return {"return20": round(return20, 6), "mean20_vs_mean60": round(mean_gap, 6), "annual_volatility": round(volatility, 6),
             "direction": direction, "strength": strength,
             "rule": "upward/downward only when return20 and mean20_vs_mean60 have the same non-zero sign"}
 
@@ -826,8 +824,16 @@ def research_inputs(dataset, analysis_date, protocol=None):
         else:
             selection[domain] = {"available": len(domain_items), "selected": len(selected),
                                  "strategy": "latest_then_evidence_id"}
-    technical = [("return20", closes[-1] / closes[-21] - 1), ("mean20", sum(closes[-20:]) / 20),
-                 ("mean60", sum(closes[-60:]) / 60), ("volatility60_annual", vol)]
+    mean20, mean60 = sum(closes[-20:]) / 20, sum(closes[-60:]) / 60
+    # Scale-free features only. Adjusted prices are rescaled by splits and
+    # dividends that happen after the analysis date, so an absolute price level
+    # (e.g. NVDA's pre-split ~$400 shown as ~$40) would leak future corporate
+    # actions and contradict same-day news. Ratios are unaffected by that rescaling.
+    technical = [("return20", closes[-1] / closes[-21] - 1),
+                 ("price_vs_mean20", closes[-1] / mean20 - 1),
+                 ("price_vs_mean60", closes[-1] / mean60 - 1),
+                 ("mean20_vs_mean60", mean20 / mean60 - 1),
+                 ("volatility60_annual", vol)]
     for key, value in technical:
         evidence.append({"evidence_id": f"price-{key}-{history[-1]['date']}", "domain": "technical",
             "claim": f"{key} = {value:.6f}", "value": value, "available_at": history[-1]["date"], "source": dataset["source"]})
@@ -840,7 +846,7 @@ def research_inputs(dataset, analysis_date, protocol=None):
     base_rates = _base_rates(history, primary_horizon, vol, hold_band_sigma)
     decision_calibration = {
         "rules_version": "target-context-calibration-v1",
-        "technical": _technical_calibration(technical[0][1], technical[1][1], technical[2][1], technical[3][1]),
+        "technical": _technical_calibration(dict(technical)["return20"], dict(technical)["mean20_vs_mean60"], vol),
         "sentiment": {"target": _sentiment_summary(target_sentiment),
                       "context": _sentiment_summary(context_sentiment)},
         "limits": [

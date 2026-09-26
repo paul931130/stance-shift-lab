@@ -26,9 +26,14 @@ python -m venv .venv
 ruff check research_service scripts
 python -m unittest discover -s research_service/tests -p "test_*.py"
 Get-ChildItem research_service\static\js\*.js | ForEach-Object { node --check $_.FullName }
-node --check research_service\static\readiness-rules.js
-node --test research_service\tests_js\*.test.js
 docker build -f Dockerfile.research -t stance-shift-lab-research .
+```
+
+瀏覽器端對端測試（demo 模式跑一次完整實驗）需要先安裝 Chromium；未安裝時上面的 unittest 會自動略過它：
+
+```powershell
+python -m playwright install chromium
+python -m unittest research_service.tests.test_e2e_demo -v
 ```
 
 這些檢查跟 CI（`.github/workflows/ci.yml`）跑的一樣；PR 送出後 CI 也會自動跑一次。

@@ -87,7 +87,6 @@
 docker compose -f compose.research.yaml build research
 docker compose -f compose.research.yaml run --rm --no-deps research python -m unittest discover -s research_service/tests -p test_*.py
 Get-ChildItem research_service\static\js\*.js | ForEach-Object { node --check $_.FullName }
-node --test research_service\tests_js\*.test.js
 ```
 
 ### 全新環境可重現性驗證

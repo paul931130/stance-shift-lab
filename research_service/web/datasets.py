@@ -1,0 +1,282 @@
+"""Dataset snapshots: listing, import, collection tasks, FinBERT scoring and news sources."""
+from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date, timedelta
+import json
+import os
+import threading
+from uuid import uuid4
+
+from fastapi import APIRouter, HTTPException, Request
+
+from ..data import (check_sentiment_sources, download_prices, fetch_fundamental, fetch_macro,
+                    fetch_sentiment, score_sentiment_finbert, validate_dataset)
+from ..errors import NotFoundError
+from ..logging_config import get_logger
+from ..protocol import TICKERS, validate_case
+from ..readiness import gap_inventory, study_readiness
+from ..storage import now
+from .context import DownloadInput, TaskRegistry
+
+logger = get_logger(__name__)
+
+DOMAINS = ("technical", "fundamental", "sentiment", "macro")
+SOURCE_NAMES = {"technical": "行情", "fundamental": "SEC", "sentiment": "新聞", "macro": "ALFRED"}
+RUNNING_COLLECTION = ("queued", "collecting", "finbert")
+RUNNING_FINBERT = ("queued", "downloading", "loading", "scoring")
+
+
+def build_router(ctx):
+    router = APIRouter()
+    store = ctx.store
+    finbert_tasks = TaskRegistry()
+    collection_tasks = TaskRegistry()
+    av_archive_task = {"stage": "idle", "message": "尚未開始"}
+    av_archive_lock = threading.RLock()
+
+    @router.get("/api/datasets")
+    def datasets():
+        return store.datasets()
+
+    @router.get("/api/datasets/{key}")
+    def dataset_content(key: str):
+        return store.dataset(key)
+
+    @router.get("/api/readiness")
+    def readiness():
+        return study_readiness(store.datasets())
+
+    @router.get("/api/readiness/gaps")
+    def readiness_gaps():
+        return gap_inventory(store.datasets())
+
+    @router.get("/api/readiness/splits")
+    def readiness_splits():
+        """Expose the train/validation/test manifest without changing datasets."""
+        return study_readiness(store.datasets())["temporal_splits"]
+
+    @router.get("/api/template")
+    def template():
+        return {"ticker": "NVDA", "kind": "historical", "source": "填入實際來源與授權說明",
+            "requested_analysis_date": "2024-12-31", "price_basis": "adjusted_ohlc", "prices": [{"date": "2024-01-02", "open": 0, "high": 0, "low": 0, "close": 0}],
+            "evidence": [{"evidence_id": "source-001", "domain": "sentiment", "claim": "填入可查證的新聞摘要",
+                "source": "https://來源網址", "available_at": "2024-12-30"}],
+            "instructions": "這是格式範本，不能直接執行；請填入至少 61 日正數 OHLC 與可驗證證據。四域名稱為 technical/fundamental/sentiment/macro；macro 必須另有 vintage_date。"}
+
+    @router.post("/api/datasets/import")
+    async def import_dataset(request: Request, use_finbert: bool = False):
+        body = await request.body()
+        if len(body) > 6_000_000:
+            raise HTTPException(413, "Upload exceeds 6 MB")
+        try:
+            data = json.loads(body)
+        except json.JSONDecodeError as error:
+            raise ValueError("上傳內容不是有效 JSON") from error
+        data.pop("_collection", None)  # Collection status is server-generated audit metadata.
+        if data.get("ticker") not in TICKERS:
+            raise ValueError("股票不在研究名單")
+        data = validate_dataset(data)
+        if data["kind"] == "historical":
+            validate_case(data["ticker"], data.get("requested_analysis_date", ""))
+        if use_finbert:
+            data = validate_dataset(score_sentiment_finbert(data))
+        return {"id": store.add_dataset(data), "finbert_applied": use_finbert}
+
+    # ---------- FinBERT scoring (creates a new, content-addressed version) ----------
+    def perform_finbert(key):
+        def progress(**values):
+            finbert_tasks.update(key, **values)
+        try:
+            data = store.dataset(key)
+            data["parent_dataset_id"] = key
+            enriched = validate_dataset(score_sentiment_finbert(data, progress=progress))
+            result = {"id": store.add_dataset(enriched), "parent_dataset_id": key,
+                      "finbert_applied": True, "items": enriched["processing"]["sentiment"]["items"]}
+            progress(stage="complete", result=result)
+            return result
+        except Exception as error:
+            logger.warning("finbert scoring failed dataset=%s: %s: %s", key, type(error).__name__, error)
+            progress(stage="failed", message=f"{type(error).__name__}：評分未完成，原資料未變更；可重試")
+            raise
+
+    def begin_finbert(key):
+        store.dataset(key)
+        if (finbert_tasks.get(key) or {}).get("stage") in RUNNING_FINBERT:
+            raise HTTPException(409, "此資料集正在評分，請查看進度")
+        finbert_tasks.put(key, {"stage": "queued", "completed": 0, "total": 0})
+
+    @router.get("/api/datasets/{key}/finbert")
+    def finbert_progress(key: str):
+        store.dataset(key)
+        return finbert_tasks.get(key) or {"stage": "idle", "message": "尚未開始；若服務曾重啟，可重試並重用成功評分快取"}
+
+    @router.post("/api/datasets/{key}/finbert")
+    def apply_finbert(key: str):
+        begin_finbert(key)
+        return perform_finbert(key)
+
+    @router.post("/api/datasets/{key}/finbert/start", status_code=202)
+    def start_finbert(key: str):
+        begin_finbert(key)
+
+        def run():
+            try:
+                perform_finbert(key)
+            except Exception:
+                pass  # Failure is exposed by the progress endpoint, never silently marked complete.
+        threading.Thread(target=run, daemon=True, name="finbert-task").start()
+        return {"dataset_id": key, "stage": "queued"}
+
+    # ---------- Four-domain collection ----------
+    def reusable_snapshot(payload):
+        for existing in store.datasets():
+            if (existing.get("ticker") == payload.ticker and existing.get("kind") == "historical"
+                    and existing.get("requested_analysis_date") == payload.analysis_date
+                    and existing.get("coverage", {}).get("research_ready")):
+                return existing
+        return None
+
+    def collect_dataset(payload, progress=None):
+        """Build (or reuse) one dataset snapshot; shared by the sync API and background tasks."""
+        report = progress or (lambda **_: None)
+        validate_case(payload.ticker, payload.analysis_date)
+        existing = None if payload.refresh else reusable_snapshot(payload)
+        if existing:
+            result_id = apply_finbert(existing["id"])["id"] if payload.use_finbert else existing["id"]
+            return {"id": result_id, "analysis_date": payload.analysis_date,
+                    "limitations": existing.get("limitations", []), "agents": existing.get("_collection", {}),
+                    "version": existing.get("version"), "reused": True}
+        cutoff = (date.fromisoformat(payload.analysis_date) - timedelta(days=1)).isoformat()
+        report(stage="collecting", agents={})
+        agents, collected = {}, {}
+        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="collection-agent") as pool:
+            futures = {
+                pool.submit(download_prices, payload.ticker, payload.analysis_date): "technical",
+                pool.submit(fetch_fundamental, payload.ticker, payload.analysis_date): "fundamental",
+                pool.submit(fetch_sentiment, payload.ticker, payload.analysis_date,
+                            allow_live=not payload.offline_news_only): "sentiment",
+                pool.submit(fetch_macro, cutoff): "macro",
+            }
+            # Report each domain as soon as its agent finishes so the UI can
+            # show progress; the snapshot is still assembled in a fixed
+            # domain order below, keeping the content-addressed ID stable.
+            for future in as_completed(futures):
+                domain = futures[future]
+                name = SOURCE_NAMES[domain]
+                if domain == "technical":
+                    data = future.result()  # Prices are mandatory; failure aborts the snapshot.
+                    agents[domain] = {"status": "complete", "records": len(data["prices"]),
+                        "message": f"已取得一致還原 OHLC；{data['source']}"}
+                else:
+                    try:
+                        evidence, note = future.result()
+                        collected[domain] = (evidence, [note] if note else [])
+                        empty_status = "needs_input" if domain == "sentiment" else "needs_configuration"
+                        message = f"已取得 {len(evidence)} 筆證據"
+                        if note:
+                            message += f"；附帶來源提醒：{note}"
+                        agents[domain] = {"status": "complete" if evidence else empty_status,
+                            "records": len(evidence), "message": message if evidence else note}
+                    except Exception as error:
+                        logger.warning("dataset collection failed ticker=%s domain=%s: %s: %s",
+                                       payload.ticker, domain, type(error).__name__, error)
+                        collected[domain] = ([], [f"{name} 下載失敗；可重新下載或匯入可驗證的摘要"])
+                        agents[domain] = {"status": "error", "records": 0,
+                            "message": f"{name} 下載失敗：{type(error).__name__}"}
+                report(agents={key: dict(value) for key, value in agents.items()})
+        for domain in ("fundamental", "sentiment", "macro"):
+            evidence, notes = collected[domain]
+            data["evidence"].extend(evidence)
+            data["limitations"].extend(notes)
+        if not any(item["domain"] == "sentiment" for item in data["evidence"]):
+            data["limitations"].append("自動新聞來源無可用摘要；情緒域保留缺資料標記，也可匯入具公開時間的新聞摘要")
+        sentiment_items = [item for item in data["evidence"] if item["domain"] == "sentiment"]
+        if payload.use_finbert and sentiment_items:
+            report(stage="finbert")
+            data = score_sentiment_finbert(data)
+            count = data["processing"]["sentiment"]["items"]
+            agents["sentiment"]["finbert"] = {"status": "complete", "items": count, "model": "ProsusAI/finbert", "input": "headline"}
+            agents["sentiment"]["message"] += f"；本機 FinBERT 已完成 {count} 則標題"
+        elif payload.use_finbert:
+            agents["sentiment"]["finbert"] = {"status": "skipped", "items": 0,
+                "model": "ProsusAI/finbert", "input": "headline", "reason": "no_headlines"}
+        agents = {domain: agents[domain] for domain in DOMAINS}
+        data["_collection"] = agents
+        return {"id": store.add_dataset(validate_dataset(data)), "analysis_date": payload.analysis_date,
+            "limitations": data["limitations"], "agents": agents, "reused": False}
+
+    # Terminal scripts keep the synchronous call; the web UI uses the
+    # background task below so a slow source never trips the browser timeout.
+    @router.post("/api/datasets/download")
+    def download(payload: DownloadInput):
+        return collect_dataset(payload)
+
+    @router.post("/api/collections", status_code=202)
+    def start_collection(payload: DownloadInput):
+        validate_case(payload.ticker, payload.analysis_date)
+        case = f"{payload.ticker}:{payload.analysis_date}"
+        running = collection_tasks.find(lambda task: task["case"] == case and task["stage"] in RUNNING_COLLECTION)
+        if running:
+            return running  # A double click joins the running collection.
+        task_id = uuid4().hex
+        task = collection_tasks.put(task_id, {"id": task_id, "case": case, "stage": "queued",
+                                              "agents": {}, "created_at": now()})
+
+        def progress(**values):
+            collection_tasks.update(task_id, **values)
+
+        def run():
+            try:
+                progress(stage="complete", result=collect_dataset(payload, progress))
+            except Exception as error:
+                logger.warning("collection task failed case=%s: %s: %s", case, type(error).__name__, error)
+                # Validation messages are written for researchers; anything else
+                # may embed provider URLs, so expose only the exception type.
+                detail = str(error) if isinstance(error, ValueError) else f"{type(error).__name__}：資料蒐集未完成，可重試"
+                progress(stage="failed", message=detail)
+        threading.Thread(target=run, daemon=True, name="collection-task").start()
+        return task
+
+    @router.get("/api/collections/{task_id}")
+    def collection_status(task_id: str):
+        task = collection_tasks.get(task_id)
+        if not task:
+            raise NotFoundError("找不到資料蒐集任務；若服務曾重啟，請重新啟動資料 Agent")
+        return task
+
+    # ---------- News sources ----------
+    @router.post("/api/sources/check")
+    def source_check(payload: DownloadInput):
+        validate_case(payload.ticker, payload.analysis_date)
+        return check_sentiment_sources(payload.ticker, payload.analysis_date)
+
+    @router.get("/api/sources/alpha-vantage-archive")
+    def alpha_vantage_archive_status():
+        with av_archive_lock:
+            return dict(av_archive_task)
+
+    @router.post("/api/sources/alpha-vantage-archive/start", status_code=202)
+    def start_alpha_vantage_archive():
+        if not os.getenv("ALPHA_VANTAGE_API_KEY", "").strip():
+            raise ValueError("尚未設定 ALPHA_VANTAGE_API_KEY；請先在上方設定表單填入")
+        with av_archive_lock:
+            if av_archive_task.get("stage") == "running":
+                raise HTTPException(409, "新聞快取正在更新中，請查看進度")
+            av_archive_task.clear()
+            av_archive_task.update(stage="running", completed=0, total=0, message="準備中…", updated_at=now())
+
+        def run():
+            from ..av_archive import refresh_archive
+
+            def progress(**values):
+                with av_archive_lock:
+                    av_archive_task.update(values, updated_at=now())
+            try:
+                refresh_archive(progress=progress)
+            except Exception as error:
+                logger.warning("alpha vantage archive refresh failed: %s: %s", type(error).__name__, error)
+                progress(stage="failed", message=f"{type(error).__name__}：更新未完成，已抓到的資料仍保留；可重試")
+        threading.Thread(target=run, daemon=True, name="av-archive-refresh").start()
+        with av_archive_lock:
+            return dict(av_archive_task)
+
+    return router

@@ -11,8 +11,6 @@ export const state = {
   demoMode: false,
   currentTab: 'data',
   autoStatsJob: null,
-  modelDetails: new Map(),
-  installedModels: new Set(),
   submitting: false,
   scoring: false,
   hasActiveJobs: false,

@@ -314,7 +314,7 @@ class WorkflowTests(unittest.TestCase):
     def test_local_model_error_message_does_not_claim_gpu_tw(self):
         with patch.dict(os.environ, {"GPUTW_OLLAMA_BASE_URL": "",
                                      "OLLAMA_BASE_URL": "http://127.0.0.1:11434"}, clear=False), \
-             patch("research_service.app.get_json", side_effect=OSError("offline")):
+             patch("research_service.web.ollama.get_json", side_effect=OSError("offline")):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 result = client.get('/api/models').json()
         self.assertIn("本機 Ollama", result["message"])
@@ -331,14 +331,14 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         cloned = response.json()
         self.assertEqual(cloned["config"]["parent_job_id"], legacy["id"])
-        self.assertEqual(cloned["config"]["protocol"]["version"], "v3-0923.1")
+        self.assertEqual(cloned["config"]["protocol"]["version"], StudyProtocol().version)
         self.assertTrue(cloned["config"]["protocol"]["allow_small_model"])
         self.assertEqual(cloned["config"]["migration"]["from_protocol_version"], "v3-0908.2")
 
     def test_ollama_metadata_closes_an_unnamed_small_model_loophole(self):
         tags = {"models": [{"name": "gemma4:latest", "digest": "demo", "size": 1,
                              "details": {"parameter_size": "8.0B", "context_length": 4096}}]}
-        with patch("research_service.app.get_json", return_value=tags):
+        with patch("research_service.web.ollama.get_json", return_value=tags):
             with TestClient(create_app(self.store, start_worker=False)) as client:
                 rejected = client.post('/api/jobs', json={"dataset_id": self.dataset_id,
                     "analysis_date": "2024-12-31", "model": "ollama/gemma4:latest"})
@@ -357,7 +357,7 @@ class WorkflowTests(unittest.TestCase):
             {"name": "gemma3:4b", "digest": "gemma4b-digest", "size": 1,
              "details": {"parameter_size": "4.3B", "context_length": 8192}},
         ]}
-        with patch("research_service.app.get_json", return_value=tags):
+        with patch("research_service.web.ollama.get_json", return_value=tags):
             with TestClient(create_app(self.store, start_worker=False)) as client:
                 model_listing = client.get('/api/models').json()
                 permitted = client.post('/api/jobs', json={"dataset_id": self.dataset_id,
@@ -392,10 +392,10 @@ class WorkflowTests(unittest.TestCase):
         technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         by_domain = {domain: [next(item for item in self.data["evidence"] if item["domain"] == domain)]
                      for domain in ("fundamental", "sentiment", "macro")}
-        with patch("research_service.app.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))) as prices, \
-             patch("research_service.app.fetch_fundamental", return_value=(by_domain["fundamental"], "")), \
-             patch("research_service.app.fetch_sentiment", return_value=(by_domain["sentiment"], "")), \
-             patch("research_service.app.fetch_macro", return_value=(by_domain["macro"], "")):
+        with patch("research_service.web.datasets.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))) as prices, \
+             patch("research_service.web.datasets.fetch_fundamental", return_value=(by_domain["fundamental"], "")), \
+             patch("research_service.web.datasets.fetch_sentiment", return_value=(by_domain["sentiment"], "")), \
+             patch("research_service.web.datasets.fetch_macro", return_value=(by_domain["macro"], "")):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 first = client.post('/api/datasets/download', json={"ticker":"NVDA", "analysis_date":"2024-12-31"})
                 second = client.post('/api/datasets/download', json={"ticker":"NVDA", "analysis_date":"2024-12-31"})
@@ -419,7 +419,7 @@ class WorkflowTests(unittest.TestCase):
         by_domain = {domain: [next(item for item in self.data["evidence"] if item["domain"] == domain)]
                      for domain in ("fundamental", "sentiment", "macro")}
         case = {"ticker": "NVDA", "analysis_date": "2024-12-31", "refresh": True}
-        with patch("research_service.app.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))),              patch("research_service.app.fetch_fundamental", return_value=(by_domain["fundamental"], "")),              patch("research_service.app.fetch_sentiment", return_value=(by_domain["sentiment"], "")),              patch("research_service.app.fetch_macro", return_value=(by_domain["macro"], "")):
+        with patch("research_service.web.datasets.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))),              patch("research_service.web.datasets.fetch_fundamental", return_value=(by_domain["fundamental"], "")),              patch("research_service.web.datasets.fetch_sentiment", return_value=(by_domain["sentiment"], "")),              patch("research_service.web.datasets.fetch_macro", return_value=(by_domain["macro"], "")):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 sync = client.post('/api/datasets/download', json=case).json()
                 started = client.post('/api/collections', json=case)
@@ -432,7 +432,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(list(task["result"]["agents"]), ["technical", "fundamental", "sentiment", "macro"])
         self.assertEqual(set(task["agents"]), {"technical", "fundamental", "sentiment", "macro"})
 
-        with patch("research_service.app.download_prices", side_effect=RuntimeError("https://provider/?apikey=SECRET")),              patch("research_service.app.fetch_fundamental", return_value=([], "")),              patch("research_service.app.fetch_sentiment", return_value=([], "")),              patch("research_service.app.fetch_macro", return_value=([], "")):
+        with patch("research_service.web.datasets.download_prices", side_effect=RuntimeError("https://provider/?apikey=SECRET")),              patch("research_service.web.datasets.fetch_fundamental", return_value=([], "")),              patch("research_service.web.datasets.fetch_sentiment", return_value=([], "")),              patch("research_service.web.datasets.fetch_macro", return_value=([], "")):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 failed = self._wait_for_collection(client, client.post('/api/collections', json=case).json())
                 missing = client.get('/api/collections/does-not-exist')
@@ -449,7 +449,7 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(missing.status_code, 404)
             self.assertEqual(missing.json()["detail"], "找不到實驗")
             # A stray KeyError is a bug, not a missing record: 500 without internals.
-            with patch.object(self.store, "jobs", side_effect=KeyError("internal_field")):
+            with patch.object(self.store, "job_summaries", side_effect=KeyError("internal_field")):
                 broken = client.get('/api/jobs')
         self.assertEqual(broken.status_code, 500)
         self.assertNotIn("internal_field", broken.json()["detail"])
@@ -474,7 +474,7 @@ class WorkflowTests(unittest.TestCase):
             mismatch = client.post('/api/jobs', json={"dataset_id":historical_id, "analysis_date":"2024-09-30"})
             self.assertEqual(mismatch.status_code, 422)
             self.assertIn("不能用於", mismatch.json()["detail"])
-            with patch("research_service.app.score_sentiment_finbert", side_effect=enrich):
+            with patch("research_service.web.datasets.score_sentiment_finbert", side_effect=enrich):
                 response = client.post(f'/api/datasets/{historical_id}/finbert')
             self.assertEqual(response.status_code, 200)
             self.assertNotEqual(response.json()["id"], historical_id)
@@ -498,10 +498,10 @@ class WorkflowTests(unittest.TestCase):
 
         technical = json.loads(json.dumps(self.data))
         technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
-        with patch("research_service.app.download_prices", side_effect=lambda *_: tracked(technical)), \
-             patch("research_service.app.fetch_fundamental", side_effect=lambda *_: tracked(([], "SEC not configured"))), \
-             patch("research_service.app.fetch_sentiment", side_effect=lambda *_, **__: tracked(([], "news not configured"))), \
-             patch("research_service.app.fetch_macro", side_effect=lambda *_: tracked(([], "FRED not configured"))):
+        with patch("research_service.web.datasets.download_prices", side_effect=lambda *_: tracked(technical)), \
+             patch("research_service.web.datasets.fetch_fundamental", side_effect=lambda *_: tracked(([], "SEC not configured"))), \
+             patch("research_service.web.datasets.fetch_sentiment", side_effect=lambda *_, **__: tracked(([], "news not configured"))), \
+             patch("research_service.web.datasets.fetch_macro", side_effect=lambda *_: tracked(([], "FRED not configured"))):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 response = client.post('/api/datasets/download', json={"ticker":"NVDA", "analysis_date":"2024-12-31"})
         self.assertEqual(response.status_code, 200)
@@ -513,11 +513,11 @@ class WorkflowTests(unittest.TestCase):
     def test_download_with_finbert_keeps_zero_news_as_missing_data(self):
         technical = json.loads(json.dumps(self.data))
         technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
-        with patch("research_service.app.download_prices", return_value=technical), \
-             patch("research_service.app.fetch_fundamental", return_value=([], "SEC not configured")), \
-             patch("research_service.app.fetch_sentiment", return_value=([], "news not configured")), \
-             patch("research_service.app.fetch_macro", return_value=([], "FRED not configured")), \
-             patch("research_service.app.score_sentiment_finbert", side_effect=AssertionError("must not score an empty set")):
+        with patch("research_service.web.datasets.download_prices", return_value=technical), \
+             patch("research_service.web.datasets.fetch_fundamental", return_value=([], "SEC not configured")), \
+             patch("research_service.web.datasets.fetch_sentiment", return_value=([], "news not configured")), \
+             patch("research_service.web.datasets.fetch_macro", return_value=([], "FRED not configured")), \
+             patch("research_service.web.datasets.score_sentiment_finbert", side_effect=AssertionError("must not score an empty set")):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 response = client.post('/api/datasets/download', json={
                     "ticker": "NVDA", "analysis_date": "2024-12-31", "use_finbert": True})

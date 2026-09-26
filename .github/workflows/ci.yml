@@ -71,11 +71,25 @@ jobs:
 
       - name: node --check static assets
         run: |
-          node --check research_service/static/readiness-rules.js
           for module in research_service/static/js/*.js; do node --check "$module" || exit 1; done
 
-      - name: Run frontend unit tests
-        run: node --test research_service/tests_js/*.test.js
+  browser-e2e:
+    name: Browser end-to-end (demo mode)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install the package and Playwright
+        run: |
+          pip install . "playwright>=1.47"
+          python -m playwright install --with-deps chromium
+
+      - name: Run the demo experiment through the UI
+        run: python -m unittest research_service.tests.test_e2e_demo -v
 
   docker-build:
     name: Docker image build

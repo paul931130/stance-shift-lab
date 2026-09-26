@@ -14,7 +14,8 @@ class ProtocolTests(unittest.TestCase):
         self.assertTrue(protocol.compute_matched)
         self.assertEqual(protocol.fingerprint, StudyProtocol(**asdict(protocol)).fingerprint)
         self.assertNotEqual(protocol.fingerprint, replace(protocol, voting_samples=5).fingerprint)
-        self.assertEqual((protocol.version, protocol.missing_data_policy), ("v3-0923.1", "allow_decision"))
+        self.assertRegex(protocol.version, r"^v3-\d{4}\.\d+$")
+        self.assertEqual(protocol.missing_data_policy, "allow_decision")
         self.assertNotEqual(protocol.fingerprint, replace(protocol, missing_data_policy="force_no_trade").fingerprint)
         StudyProtocol(version="v3-0905.1", missing_data_policy="force_no_trade")
         with self.assertRaises(ValueError):

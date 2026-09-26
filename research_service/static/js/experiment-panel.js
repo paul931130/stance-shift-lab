@@ -7,36 +7,51 @@ import { flow } from './flow.js';
 import { setTab } from './nav.js';
 import { refreshJobs } from './runs-panel.js';
 
-const GUARD_MESSAGES = {
-  no_dataset: () => '尚未選擇資料集，因此不能啟動實驗。',
-  date_mismatch: () => '資料集與研究分析日不一致，不能啟動實驗。',
-  sentiment_quality: r => `新聞品質尚未通過：目標相關率 ${percentage(r.quality?.target_relevance_rate ?? r.quality?.ticker_mention_rate)}、FinBERT ${r.quality?.finbert_scored || 0}/${r.quality?.items || 0}；請建立新版或明確勾選資料品質敏感性覆寫。`,
-  fundamental_quality: () => '此資料集只有不可比較的 SEC 點時欄位；請重新採集新版資料，或明確勾選點時基本面敏感性覆寫。',
-  model_not_installed: r => `本機尚未安裝 ${r.localModel}；請改選已安裝模型或先安裝正式模型。`,
-  model_too_small: r => `${r.localModel} 為 ${r.localParameterSize || '正式門檻以下'}；目前只有通過 canary 的 qwen3:8b 例外放行，其他小模型請勾選冒煙測試。`,
-  ready: () => '資料集、研究分析日、模型與新聞品質均已驗證；設定會一起鎖定於新實驗。',
-};
 const OVERRIDE_FOR = {sentiment_quality: 'override-sentiment', fundamental_quality: 'override-fundamental', model_too_small: 'override-model'};
+const PREFLIGHT_DEBOUNCE_MS = 250;
+let preflightTimer = null, preflightSeq = 0;
 
-export function syncExperimentGuard() {
-  const localModel = $('model').value, detail = state.modelDetails.get(localModel);
-  const result = globalThis.computeExperimentReadiness({
-    dataset: selectedDataset(), analysisDate: $('analysis-date').value,
-    allowLowQualitySentiment: $('allow-low-quality-sentiment').checked,
-    allowPointFundamental: $('allow-point-fundamental').checked,
-    allowSmallModel: $('allow-small-model').checked,
-    cloudModel: $('cloud-model').value, localModel,
-    localAvailable: state.installedModels.has(localModel),
-    localParameterSize: detail?.parameter_size,
-    demoMode: state.demoMode,
-  });
-  $('run-button').disabled = !result.ready || state.submitting;
+// The form fields as the job API expects them; shared by preflight and submit.
+function jobPayload() {
+  return {
+    dataset_id: $('dataset').value, analysis_date: $('analysis-date').value,
+    model: $('cloud-model').value.trim() || $('model').value,
+    study: $('study').value, voting_samples: Number($('voting').value),
+    missing_data_policy: $('missing-policy').value, anonymize_ticker: $('anonymize').checked,
+    allow_point_fundamental: $('allow-point-fundamental').checked,
+    allow_small_model: $('allow-small-model').checked,
+    allow_low_quality_sentiment: $('allow-low-quality-sentiment').checked,
+  };
+}
+
+function showGuard(ready, reason, message) {
+  $('run-button').disabled = !ready || state.submitting;
   const guard = $('experiment-guard');
-  guard.classList.toggle('ready', result.ready);
-  guard.textContent = GUARD_MESSAGES[result.reason](result);
+  guard.classList.toggle('ready', ready);
+  guard.classList.toggle('checking', reason === 'checking');
+  guard.textContent = message;
   for (const el of document.querySelectorAll('.check-wrap.needs-override')) el.classList.remove('needs-override');
-  const neededId = OVERRIDE_FOR[result.reason];
+  const neededId = OVERRIDE_FOR[reason];
   if (neededId) { $('quality-overrides').open = true; $(neededId).classList.add('needs-override'); }
+}
+
+// The server's preflight runs the exact validation used when a job is
+// created, so the readiness rules live in one place. Requests are debounced
+// and sequenced so a slow reply never overwrites a newer form state.
+export function syncExperimentGuard() {
+  clearTimeout(preflightTimer);
+  const seq = ++preflightSeq;
+  if (!$('dataset').value) { showGuard(false, 'no_dataset', '尚未選擇資料集，因此不能啟動實驗。'); return; }
+  showGuard(false, 'checking', '正在向伺服器確認資料集、分析日與模型…');
+  preflightTimer = setTimeout(async () => {
+    let result;
+    try { result = await api('/api/jobs/preflight', jobPayload()); }
+    catch (error) { result = {ready: false, reason: 'error', message: `無法確認實驗條件：${error.message}`}; }
+    if (seq !== preflightSeq) return;
+    showGuard(result.ready, result.reason, result.ready
+      ? '資料集、研究分析日、模型與新聞品質均已驗證；設定會一起鎖定於新實驗。'
+      : result.message);
+  }, PREFLIGHT_DEBOUNCE_MS);
 }
 
 function renderDatasetOptions(preserveValue) {
@@ -132,17 +147,10 @@ async function scoreSelectedDataset(id) {
 }
 
 async function submitJob() {
-  const model = $('cloud-model').value.trim() || $('model').value;
-  const job = await api('/api/jobs', {
-    dataset_id: $('dataset').value, analysis_date: $('analysis-date').value, model,
-    study: $('study').value, voting_samples: Number($('voting').value),
-    missing_data_policy: $('missing-policy').value, anonymize_ticker: $('anonymize').checked,
-    allow_point_fundamental: $('allow-point-fundamental').checked,
-    allow_small_model: $('allow-small-model').checked,
-    allow_low_quality_sentiment: $('allow-low-quality-sentiment').checked,
-  });
+  const payload = jobPayload();
+  const job = await api('/api/jobs', payload);
   state.selectedJob = job.id;
-  notify(`研究已加入背景佇列，模型為 ${model}。候選決策、風控決策與品質覆寫會一起鎖定於協議。`);
+  notify(`研究已加入背景佇列，模型為 ${payload.model}。候選決策、風控決策與品質覆寫會一起鎖定於協議。`);
   setTab('runs');
   await refreshJobs();
 }
@@ -162,8 +170,7 @@ export function initExperimentPanel(config, models) {
 // Apply the Ollama probe result: populate the local model picker and the
 // model status chip in the top bar.
 export function applyModels(config, m) {
-  state.modelDetails = new Map((m.details || []).map(item => [item.id, item]));
-  state.installedModels = new Set(m.models || []);
+  const installed = new Set(m.models || []);
   const formalIds = new Set(m.formal_models || []);
   const formal = (m.details || []).filter(item => formalIds.has(item.id) || (!formalIds.size && Number.parseFloat(item.parameter_size) >= 14));
   const chip = $('model-state');
@@ -177,7 +184,7 @@ export function applyModels(config, m) {
   const models = [...new Set([config.model, ...m.models])];
   $('model').innerHTML = modelOptions(models, m.details);
   const largest = [...(m.details || [])].sort((a, b) => (Number.parseFloat(b.parameter_size) || 0) - (Number.parseFloat(a.parameter_size) || 0))[0]?.id;
-  $('model').value = state.installedModels.has(config.model) ? config.model : (formal[0]?.id || largest || config.model);
+  $('model').value = installed.has(config.model) ? config.model : (formal[0]?.id || largest || config.model);
   if (!m.default_available && largest) chip.textContent += `；設定的預設模型 ${config.model} 尚未安裝，畫面已先選 ${$('model').value}`;
   syncExperimentGuard();
 }

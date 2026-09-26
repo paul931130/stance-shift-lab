@@ -12,6 +12,8 @@ import json
 import re
 from typing import Literal
 
+from .errors import PreflightError
+
 # The current backtest deliberately excludes ASTS because the frozen FNSPID
 # input does not cover it. LLY was replaced by INTC in v3-0923.1: FNSPID has
 # no LLY coverage between 2020-07 and 2023-11 (a 17-month gap Alpha Vantage's
@@ -44,7 +46,7 @@ COMPANY_NAMES = {
 class StudyProtocol:
     # Display, extraction and validation rules change what enters a report.
     # Version them so a partially completed job cannot mix evidence rules.
-    version: str = "v3-0923.1"
+    version: str = "v3-0926.1"
     study: Literal["study1", "study2"] = "study1"
     model: str = DEFAULT_RESEARCH_MODEL
     allow_small_model: bool = False
@@ -77,7 +79,7 @@ class StudyProtocol:
     study_universe: tuple[str, ...] = STUDY_TICKERS
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1"):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1"):
             raise ValueError("Unsupported protocol version")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")
@@ -88,7 +90,7 @@ class StudyProtocol:
         if (SMALL_MODEL_PATTERN.search(self.model)
                 and self.model.strip().lower() not in FORMAL_SMALL_MODEL_ALLOWLIST
                 and not self.allow_small_model):
-            raise ValueError("研究用模型參數量未達正式門檻；目前只有通過 canary 的 qwen3:8b 例外放行，其他小模型請明確設定 allow_small_model=True 進行冒煙測試")
+            raise PreflightError("model_too_small", "研究用模型參數量未達正式門檻；目前只有通過 canary 的 qwen3:8b 例外放行，其他小模型請明確設定 allow_small_model=True 進行冒煙測試")
         if self.max_rounds != 3 or self.voting_samples not in (5, 7):
             raise ValueError("v3 fixes three rounds and supports voting n=5 or n=7")
         if self.primary_horizon != 60 or self.horizons != (30, 60, 90):

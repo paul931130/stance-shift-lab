@@ -10,8 +10,9 @@
 4. 使用同主機 Ollama 時，容器內的 `OLLAMA_BASE_URL` 改為 `http://host.docker.internal:11434`，並確認 Ollama 僅允許受信任主機或 Docker 網路連線。或者指定雲端模型及伺服器端 API key。
 5. 本機執行 `docker compose --env-file .env.research -f compose.research.yaml up -d --build`。正式上線執行 `docker compose --env-file .env.research -f compose.research.yaml -f compose.production.yaml up -d --build`。資料保存在具名 volume `research-data`，不要執行 `down -v` 除非確定要刪除研究資料。
 6. 將 HTTPS 反向代理導向主機 `127.0.0.1:8000`。容器的主機連接埠僅綁 loopback；TLS 由反向代理負責。
+7. 設定 `RESEARCH_TRUSTED_PROXIES` 為服務實際看到的代理位址（Docker 部署通常是 bridge 閘道，例如 `172.17.0.1`；非 Docker 部署通常是 `127.0.0.1`）。登入限流才會依 `X-Forwarded-For` 最右側、也就是代理實際看到的客戶端位址計算；未設定時所有登入都來自代理位址，一個人連續輸錯就會把擁有者一起鎖住。
 
-登入後的 cookie 是 12 小時短期簽章 session，不保存研究室主金鑰，並設為 HttpOnly、Secure、SameSite=Strict。遠端介面必須使用 HTTPS；健康檢查不洩露研究資料。只有單一研究室擁有者，存取金鑰可存取所有研究資料，不提供多租戶身分隔離。研究 API 拒絕不符允許主機及來源的修改要求。
+登入後的 cookie 是 12 小時短期簽章 session，不保存研究室主金鑰，並設為 HttpOnly、Secure、SameSite=Strict。登出會立即撤銷該 session；服務重新啟動後所有 session 失效，需要重新登入。遠端介面必須使用 HTTPS；健康檢查不洩露研究資料。只有單一研究室擁有者，存取金鑰可存取所有研究資料，不提供多租戶身分隔離。研究 API 拒絕不符允許主機及來源的修改要求。
 
 可從 `deploy/Caddyfile.example` 複製 Caddy 設定並替換實際網域：
 
