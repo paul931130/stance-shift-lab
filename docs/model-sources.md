@@ -50,7 +50,8 @@
 
 1. 申請 [OpenRouter](https://openrouter.ai/)、OpenAI 或 Gemini 的 API key。
 2. setup 選 `3`，選擇供應商並貼上金鑰。OpenRouter 預設 `openrouter/qwen/qwen3-14b`，與正式協議同一個模型。
-3. 研究台每次呼叫都要求模型依固定 JSON schema 回答並帶入 seed；若供應商不支援，工作會停在可重試狀態並在執行終端顯示錯誤，請改用支援 structured outputs 的模型。
+3. 研究台每次呼叫都要求模型依固定 JSON schema 回答；seed 只傳給支援的供應商（Gemini 不支援，稽核欄位 `seed_applied=false`）。
+4. Gemini：Flash／Flash-Lite 會關閉思考，與本機 Ollama 一致；Pro（例如 `gemini/gemini-3.1-pro-preview`）無法關閉思考，改為低強度思考並額外給 2048 token，稽核記錄 `max_tokens_sent` 與 `reasoning_effort`。以合成案例實測，Pro 比 Flash 更少違反「只用來源數字」規則，但仍會自行計算成長率或漏引來源，被拒的步驟需續跑。
 
 ## 在 Codespaces 使用
 

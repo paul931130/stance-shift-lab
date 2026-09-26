@@ -332,6 +332,14 @@ def output_schema_for(messages):
     return schema
 
 
+GEMINI_THINKING_ALLOWANCE = 2048
+
+
+def _gemini_thinking_required(model):
+    """Gemini Pro models reject disabling thinking; Flash/Flash-Lite accept it."""
+    return "-pro" in model
+
+
 def _plain_json(value):
     """JSON fallback for provider objects (pydantic models or plain attribute bags)."""
     if hasattr(value, "model_dump"):
@@ -400,7 +408,13 @@ def generate(protocol, messages, seed=None, temperature=None):
                 # max_tokens, truncating the JSON answer. Match the Ollama path
                 # (think=False) by disabling it.
                 if protocol.model.startswith("gemini/"):
-                    kwargs["reasoning_effort"] = "disable"
+                    if _gemini_thinking_required(protocol.model):
+                        # Pro models cannot disable thinking: keep it low and add
+                        # room for it so the visible answer keeps its full budget.
+                        kwargs["reasoning_effort"] = "low"
+                        kwargs["max_tokens"] = protocol.max_output_tokens + GEMINI_THINKING_ALLOWANCE
+                    else:
+                        kwargs["reasoning_effort"] = "disable"
                 provider_result = litellm.completion(**kwargs)
                 content = provider_result.choices[0].message.content
                 # LiteLLM usage nests provider objects (e.g. token-detail wrappers);
@@ -409,6 +423,8 @@ def generate(protocol, messages, seed=None, temperature=None):
                 usage["provider_model"] = getattr(provider_result, "model", None)
                 usage["system_fingerprint"] = getattr(provider_result, "system_fingerprint", None)
                 usage["seed_applied"] = seed is not None and seed_supported
+                usage["max_tokens_sent"] = kwargs["max_tokens"]
+                usage["reasoning_effort"] = kwargs.get("reasoning_effort")
             content = content.strip()
             if content.startswith("```"):
                 content = content.split("\n", 1)[1].rsplit("```", 1)[0]

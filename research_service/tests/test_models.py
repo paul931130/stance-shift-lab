@@ -184,6 +184,28 @@ class ModelReliabilityTests(unittest.TestCase):
         self.assertEqual(seen["openai/gpt-4.1-mini"]["seed"], 7)
         self.assertEqual(audits, {"gemini/gemini-2.5-flash": False, "openai/gpt-4.1-mini": True})
 
+    def test_gemini_pro_keeps_thinking_but_gets_extra_token_room(self):
+        from types import SimpleNamespace
+        from research_service.models import GEMINI_THINKING_ALLOWANCE
+        seen = {}
+        content = json.dumps({"action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
+                              "rationale": "brief", "evidence_ids": ["e1"], "risks": []})
+
+        def completion(**kwargs):
+            seen.update(kwargs)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+                                   usage={"prompt_tokens": 1}, model=kwargs["model"])
+
+        protocol = StudyProtocol(model="gemini/gemini-3.1-pro-preview", dataset_kind="synthetic",
+                                 bootstrap_replicates=199)
+        with patch("litellm.completion", side_effect=completion):
+            usage = generate(protocol, [{"role": "system", "content": "decision"},
+                                        {"role": "user", "content": "{}"}])[1]["usage"]
+        # Pro cannot disable thinking; it must not eat the answer's token budget.
+        self.assertEqual(seen["reasoning_effort"], "low")
+        self.assertEqual(seen["max_tokens"], protocol.max_output_tokens + GEMINI_THINKING_ALLOWANCE)
+        self.assertEqual(usage["max_tokens_sent"], seen["max_tokens"])
+
     def test_timeout_and_context_are_explicitly_configurable(self):
         seen = {}
 
