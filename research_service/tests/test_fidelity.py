@@ -52,7 +52,7 @@ class FidelityTests(unittest.TestCase):
                  'evidence_ids': ['revenue-yoy']}
         self.assertEqual(validate_decision(valid, evidence)['action'], 'Buy')
         drifted = {**valid, 'rationale': 'Revenue growth was 6.666667%.'}
-        with self.assertRaisesRegex(ValueError, '來源未支持的數字'):
+        with self.assertRaisesRegex(ValueError, r'來源未支持的數字（6\.666667）'):
             validate_decision(drifted, evidence)
 
     def test_point_in_time_financial_fields_cannot_be_rewritten_as_a_loss_or_quality_claim(self):

@@ -130,7 +130,8 @@ def validate_financial_numbers(result, evidence):
     supported |= {Decimal(value) for value in BACKTEST_HORIZONS}
     unsupported = numbers(text) - supported
     if unsupported:
-        raise ValueError('財務摘要包含來源未支持的數字；必須原樣保留數值、單位與期間')
+        shown = ', '.join(sorted(format(value, 'f') for value in unsupported)[:5])
+        raise ValueError(f'財務摘要包含來源未支持的數字（{shown}）；必須原樣保留數值、單位與期間')
 
 
 def validate_financial_interpretation(result, evidence=None):
