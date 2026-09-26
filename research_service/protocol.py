@@ -46,7 +46,7 @@ COMPANY_NAMES = {
 class StudyProtocol:
     # Display, extraction and validation rules change what enters a report.
     # Version them so a partially completed job cannot mix evidence rules.
-    version: str = "v3-0926.6"
+    version: str = "v3-0926.7"
     study: Literal["study1", "study2"] = "study1"
     model: str = DEFAULT_RESEARCH_MODEL
     allow_small_model: bool = False
@@ -75,11 +75,11 @@ class StudyProtocol:
     bootstrap_replicates: int = 1999
     bootstrap_block_length: int = 20
     inference_seed: int = 905
-    provider_retry_attempts: int = 2
+    provider_retry_attempts: int = 3
     study_universe: tuple[str, ...] = STUDY_TICKERS
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6"):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7"):
             raise ValueError("Unsupported protocol version")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")

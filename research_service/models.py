@@ -129,11 +129,14 @@ def validate_financial_numbers(result, evidence, context=None):
     # backtest horizons are not invented numbers. Rounded or converted values
     # are still rejected.
     available = ' '.join(e['claim'] for e in evidence if isinstance(e.get('claim'), str))
-    # v3-0926.5: the decision prompt also hands the model decision_calibration
-    # and base_rates (and tells it to read them); their numbers are not invented.
+    # v3-0926.7: context is everything the model was shown (the full prompt:
+    # report, calibration, base rates, earlier rounds, memory). Numbers it
+    # repeats from there, or from its own forecast fields, are not invented.
     if context is not None:
-        available += ' ' + json.dumps(context, ensure_ascii=False)
+        available += ' ' + (context if isinstance(context, str) else json.dumps(context, ensure_ascii=False))
     supported = numbers(available)
+    supported |= {Decimal(str(result[key])) for key in ("expected_return_pct", "confidence", "confidence_shift")
+                  if isinstance(result.get(key), (int, float)) and not isinstance(result.get(key), bool)}
     supported |= {Decimal(value) for value in re.findall(r'(?<=[A-Za-z_])\d+(?![\d.])', available)}
     supported |= {Decimal(value) for value in BACKTEST_HORIZONS}
     # v3-0926.6: an exact fraction <-> percent conversion keeps the value
@@ -182,6 +185,11 @@ def _compact_base_rates(base_rates):
     return {key: base_rates.get(key) for key in
             ("horizon_sessions", "hold_band_pct", "horizon_sigma_pct", "basis", "positive_rate", "median_return_pct")
             if base_rates.get(key) is not None}
+
+
+def prompt_text(messages):
+    """All text a prompt showed the model, for checking which numbers it was given."""
+    return " ".join(str(message.get("content", "")) for message in messages)
 
 
 def decision_prompt_context(report):
@@ -295,6 +303,7 @@ def messages_for(call, report, records, memory, protocol):
         f"Choose Hold only when that point forecast is inside the {band_text} neutral band; otherwise choose Buy or Sell even when uncertain. "
         "Hold is not a way to avoid committing; uncertainty lowers confidence, never substitutes for a forecast. Read decision_calibration before research summaries. "
         "Target evidence is direct company evidence; context news cannot decide direction by itself. Use supplied comparative SEC metrics only as stated: copy their numbers exactly and never invent a growth rate, benchmark, valuation, or financial-quality label. Legacy SEC point facts without a comparable period are excluded from this decision payload. "
+        "Every number you write in rationale, risks or strongest_counterpoint must be copied exactly as it appears in the supplied report or in your own forecast fields: do not round it, convert units, or compute a new figure such as a growth rate or percentage change. If you cannot copy a number exactly, describe it in words instead. "
         "Use only supplied evidence IDs exactly; URLs and invented IDs are forbidden. Keep rationale under 320 characters and give at most 4 concise risks. "
         "Return one compact JSON object with action (Buy, Hold, Sell), expected_return_pct (-60..60), confidence (0..1), rationale (string), evidence_ids (array of supplied IDs), risks (array of strings).")
     if call.kind == "debate":
