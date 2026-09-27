@@ -394,10 +394,10 @@ class WorkflowTests(unittest.TestCase):
         technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         by_domain = {domain: [next(item for item in self.data["evidence"] if item["domain"] == domain)]
                      for domain in ("fundamental", "sentiment", "macro")}
-        with patch("research_service.web.datasets.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))) as prices, \
-             patch("research_service.web.datasets.fetch_fundamental", return_value=(by_domain["fundamental"], "")), \
-             patch("research_service.web.datasets.fetch_sentiment", return_value=(by_domain["sentiment"], "")), \
-             patch("research_service.web.datasets.fetch_macro", return_value=(by_domain["macro"], "")):
+        with patch("research_service.collect.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))) as prices, \
+             patch("research_service.collect.fetch_fundamental", return_value=(by_domain["fundamental"], "")), \
+             patch("research_service.collect.fetch_sentiment", return_value=(by_domain["sentiment"], "")), \
+             patch("research_service.collect.fetch_macro", return_value=(by_domain["macro"], "")):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 first = client.post('/api/datasets/download', json={"ticker":"NVDA", "analysis_date":"2024-12-31"})
                 second = client.post('/api/datasets/download', json={"ticker":"NVDA", "analysis_date":"2024-12-31"})
@@ -421,7 +421,7 @@ class WorkflowTests(unittest.TestCase):
         by_domain = {domain: [next(item for item in self.data["evidence"] if item["domain"] == domain)]
                      for domain in ("fundamental", "sentiment", "macro")}
         case = {"ticker": "NVDA", "analysis_date": "2024-12-31", "refresh": True}
-        with patch("research_service.web.datasets.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))),              patch("research_service.web.datasets.fetch_fundamental", return_value=(by_domain["fundamental"], "")),              patch("research_service.web.datasets.fetch_sentiment", return_value=(by_domain["sentiment"], "")),              patch("research_service.web.datasets.fetch_macro", return_value=(by_domain["macro"], "")):
+        with patch("research_service.collect.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))),              patch("research_service.collect.fetch_fundamental", return_value=(by_domain["fundamental"], "")),              patch("research_service.collect.fetch_sentiment", return_value=(by_domain["sentiment"], "")),              patch("research_service.collect.fetch_macro", return_value=(by_domain["macro"], "")):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 sync = client.post('/api/datasets/download', json=case).json()
                 started = client.post('/api/collections', json=case)
@@ -434,7 +434,7 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(list(task["result"]["agents"]), ["technical", "fundamental", "sentiment", "macro"])
         self.assertEqual(set(task["agents"]), {"technical", "fundamental", "sentiment", "macro"})
 
-        with patch("research_service.web.datasets.download_prices", side_effect=RuntimeError("https://provider/?apikey=SECRET")),              patch("research_service.web.datasets.fetch_fundamental", return_value=([], "")),              patch("research_service.web.datasets.fetch_sentiment", return_value=([], "")),              patch("research_service.web.datasets.fetch_macro", return_value=([], "")):
+        with patch("research_service.collect.download_prices", side_effect=RuntimeError("https://provider/?apikey=SECRET")),              patch("research_service.collect.fetch_fundamental", return_value=([], "")),              patch("research_service.collect.fetch_sentiment", return_value=([], "")),              patch("research_service.collect.fetch_macro", return_value=([], "")):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 failed = self._wait_for_collection(client, client.post('/api/collections', json=case).json())
                 missing = client.get('/api/collections/does-not-exist')
@@ -500,10 +500,10 @@ class WorkflowTests(unittest.TestCase):
 
         technical = json.loads(json.dumps(self.data))
         technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
-        with patch("research_service.web.datasets.download_prices", side_effect=lambda *_: tracked(technical)), \
-             patch("research_service.web.datasets.fetch_fundamental", side_effect=lambda *_: tracked(([], "SEC not configured"))), \
-             patch("research_service.web.datasets.fetch_sentiment", side_effect=lambda *_, **__: tracked(([], "news not configured"))), \
-             patch("research_service.web.datasets.fetch_macro", side_effect=lambda *_: tracked(([], "FRED not configured"))):
+        with patch("research_service.collect.download_prices", side_effect=lambda *_: tracked(technical)), \
+             patch("research_service.collect.fetch_fundamental", side_effect=lambda *_: tracked(([], "SEC not configured"))), \
+             patch("research_service.collect.fetch_sentiment", side_effect=lambda *_, **__: tracked(([], "news not configured"))), \
+             patch("research_service.collect.fetch_macro", side_effect=lambda *_: tracked(([], "FRED not configured"))):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 response = client.post('/api/datasets/download', json={"ticker":"NVDA", "analysis_date":"2024-12-31"})
         self.assertEqual(response.status_code, 200)
@@ -515,10 +515,10 @@ class WorkflowTests(unittest.TestCase):
     def test_download_with_finbert_keeps_zero_news_as_missing_data(self):
         technical = json.loads(json.dumps(self.data))
         technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
-        with patch("research_service.web.datasets.download_prices", return_value=technical), \
-             patch("research_service.web.datasets.fetch_fundamental", return_value=([], "SEC not configured")), \
-             patch("research_service.web.datasets.fetch_sentiment", return_value=([], "news not configured")), \
-             patch("research_service.web.datasets.fetch_macro", return_value=([], "FRED not configured")), \
+        with patch("research_service.collect.download_prices", return_value=technical), \
+             patch("research_service.collect.fetch_fundamental", return_value=([], "SEC not configured")), \
+             patch("research_service.collect.fetch_sentiment", return_value=([], "news not configured")), \
+             patch("research_service.collect.fetch_macro", return_value=([], "FRED not configured")), \
              patch("research_service.web.datasets.score_sentiment_finbert", side_effect=AssertionError("must not score an empty set")):
             with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
                 response = client.post('/api/datasets/download', json={
