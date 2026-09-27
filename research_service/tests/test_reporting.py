@@ -142,5 +142,22 @@ class StableModelIdentityTests(unittest.TestCase):
         self.assertNotEqual(stable_model_identity(first), stable_model_identity(other))
 
 
+class KnowledgeCutoffTests(unittest.TestCase):
+    def job(self, analysis_date, maturity, model="gemini/gemini-3.1-pro-preview"):
+        return {"config": {"analysis_date": analysis_date, "protocol": {"model": model}},
+                "state": {"cases": [{"horizon": 60, "maturity_date": maturity}]}}
+
+    def test_cases_are_placed_by_their_outcome_window(self):
+        from research_service.knowledge import knowledge_segment, split_by_knowledge
+
+        self.assertEqual(knowledge_segment(self.job("2024-06-30", "2024-09-26")), "before_cutoff")
+        self.assertEqual(knowledge_segment(self.job("2024-12-31", "2025-04-01")), "straddles_cutoff")
+        self.assertEqual(knowledge_segment(self.job("2025-03-31", "2025-06-26")), "after_cutoff")
+        self.assertIsNone(knowledge_segment(self.job("2024-06-30", "2024-09-26", model="ollama/unknown")))
+        groups = split_by_knowledge([self.job("2025-03-31", "2025-06-26"),
+                                     self.job("2024-06-30", "2024-09-26", model="ollama/unknown")])
+        self.assertEqual((len(groups["after_cutoff"]), len(groups["unknown_cutoff"])), (1, 1))
+
+
 if __name__ == "__main__":
     unittest.main()

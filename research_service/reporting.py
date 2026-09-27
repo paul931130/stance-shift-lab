@@ -361,7 +361,55 @@ def stability_report(jobs):
                     "未做正式顯著性檢定，也不取代主分析。"}
 
 
-def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dataset_ids=None, frozen_at=None):
+def _primary_rows(report):
+    return [row for row in report.get("summary", [])
+            if row.get("horizon") == 60 and row.get("cost_model") == "corwin_schultz"
+            and row.get("decision_layer") == "candidate" and row.get("portfolio_basis") == "all"
+            and row.get("group") in GROUPS]
+
+
+def knowledge_cutoff_report(complete, include_inference=True):
+    """Primary results before, across and after the model's knowledge cutoff.
+
+    Pre-registered companion analysis: if the model remembers outcomes before
+    its cutoff, accuracy there is inflated and group differences may be an
+    artefact of memory. Claims should hold after the cutoff as well.
+    """
+    from .knowledge import KNOWLEDGE_CUTOFFS, cutoff_for, split_by_knowledge
+
+    groups = split_by_knowledge(complete)
+    models = sorted({job["config"].get("protocol", {}).get("model") for job in complete})
+    segments = {}
+    for name in ("before_cutoff", "straddles_cutoff", "after_cutoff"):
+        subset = groups[name]
+        if not subset:
+            segments[name] = {"cases": 0}
+            continue
+        part = study_report(subset, include_inference=include_inference, formal_only=False, split_knowledge=False)
+        segments[name] = {"cases": part.get("unique_cases", 0), "status": part.get("status"),
+                          "primary": _primary_rows(part),
+                          "comparisons": [item for item in part.get("comparisons", [])
+                                          if item.get("horizon") == 60 and item.get("cost_model") == "corwin_schultz"
+                                          and item.get("decision_layer") == "candidate"
+                                          and item.get("portfolio_basis") == "all"]}
+    by_group = {}
+    for group in GROUPS:
+        values = {name: next((row.get("selective_accuracy") for row in segments[name].get("primary", [])
+                              if row["group"] == group), None) for name in segments}
+        before, after = values.get("before_cutoff"), values.get("after_cutoff")
+        by_group[group] = {"selective_accuracy": values,
+                           "after_minus_before": None if before is None or after is None else after - before}
+    known = [cutoff_for(model) for model in models if cutoff_for(model)]
+    return {"models": models, "cutoffs": {model: KNOWLEDGE_CUTOFFS.get(str(model).lower()) for model in models},
+            "unknown_cutoff_cases": len(groups["unknown_cutoff"]), "segments": segments, "by_group": by_group,
+            "status": "cutoff_recorded" if known else "cutoff_not_recorded",
+            "note": "截止日前（模型可能記得結果）、跨越截止日、截止日後（樣本外）分開計算。"
+                    "主要結論應在截止日後同樣成立；只在截止日前成立的組間差異可能來自模型記憶。"
+                    "截止日後樣本較少且市場環境不同，差異需一併考量。"}
+
+
+def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dataset_ids=None, frozen_at=None,
+                 split_knowledge=True):
     complete, excluded = _completed_unique(
         jobs, formal_only=formal_only,
         eligible_dataset_ids=None if eligible_dataset_ids is None else set(eligible_dataset_ids),
@@ -429,6 +477,7 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
             "excluded_nonformal_reasons": excluded["nonformal_reasons"], "summary": summary,
             "comparisons": comparisons, "completeness": _completeness(complete),
             "stability": stability,
+            **({"knowledge_cutoff": knowledge_cutoff_report(complete, include_inference)} if split_knowledge else {}),
             "conventions": [
                 "Primary analysis: decision_layer=candidate, horizon=60, cost_model=corwin_schultz, portfolio_basis=all",
                 "Candidate actions measure the decision mechanism; gated actions are a separate risk-control sensitivity layer",

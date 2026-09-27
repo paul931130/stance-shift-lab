@@ -20,6 +20,18 @@ function comparisonBars(rows, key, label, format) {
   }).join('')}</figure>`;
 }
 
+// Pre-registered companion analysis: results before, across and after the
+// model's knowledge cutoff, so memory-driven accuracy is visible.
+const SEGMENT_LABELS = {before_cutoff: '截止日前（可能記得結果）', straddles_cutoff: '跨越截止日', after_cutoff: '截止日後（樣本外）'};
+function knowledgeCutoffBlock(k) {
+  if (!k) return '';
+  if (k.status !== 'cutoff_recorded') return `<section class="stats-substep"><div class="section-label">4.1b / 模型知識截止日</div><p class="hint">這個模型沒有登記知識截止日，無法分辨哪些案例模型可能已經知道結果。</p></section>`;
+  const cutoffs = Object.entries(k.cutoffs || {}).filter(([, v]) => v).map(([m, v]) => `${escape(m)}：${escape(v.cutoff)}`).join('、');
+  const head = Object.keys(SEGMENT_LABELS).map(name => `<th>${SEGMENT_LABELS[name]}<br><small>${k.segments[name]?.cases || 0} 個案例</small></th>`).join('');
+  const body = Object.entries(k.by_group).map(([group, item]) => `<tr><td>${escape(group)}</td>${Object.keys(SEGMENT_LABELS).map(name => `<td>${percentage(item.selective_accuracy[name])}</td>`).join('')}<td>${item.after_minus_before == null ? '—' : `${(item.after_minus_before * 100).toFixed(1)} pt`}</td></tr>`).join('');
+  return `<section class="stats-substep"><div class="section-label">4.1b / 模型知識截止日前後</div><p class="hint">知識截止日：${cutoffs}。${escape(k.note)}</p><div class="table-wrap"><table><thead><tr><th>方法</th>${head}<th>後 − 前</th></tr></thead><tbody>${body}</tbody></table></div><p class="hint">表內為有下注時的方向準確率（60 日、扣成本）。</p></section>`;
+}
+
 export async function showStatistics() {
   if (!state.selectedProtocol) return;
   loadedFor = state.selectedProtocol;
@@ -39,6 +51,7 @@ export async function showStatistics() {
   element.innerHTML = `<section class="stats-substep"><div class="section-label">4.1 / 回測摘要</div><h2>同協議研究比較</h2><p class="hint">只比較用同一套研究規則（同協議版本）跑出的結果。以下為 60 個交易日、扣除估計交易成本（Corwin–Schultz）、各案例等權重的結果，共 ${report.unique_cases || 0} 個完成的案例；同一案例重跑的紀錄會保留但不重複計算。</p>${insufficient}${preregBlock}
     <div class="chart-pair">${comparisonBars(primary, 'selective_accuracy', '有下注時的方向準確率', percentage)}${comparisonBars(primary, 'sharpe', 'Sharpe', number)}</div>
     <div class="table-wrap"><table><thead><tr><th>方法</th><th>下注比例</th><th>有下注時準確率</th><th>Hold 比例</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div></section>
+    ${knowledgeCutoffBlock(report.knowledge_cutoff)}
     <section class="stats-substep"><div class="section-label">4.2 / 品質與匯出</div><p class="hint">試跑檢查（pilot）：${pilot.verdict === 'proceed' ? '通過，可以開始正式批次' : pilot.verdict === 'blocked' ? '尚未通過' : '—'}。這是正式批次前的健檢，用來確認各組結果沒有異常（例如全部都 Hold）。「Hold 門檻」的敏感度分析是用既有預測重算，不會重新呼叫模型。</p>${pilotReasons(pilot.blocking_reasons)}<div class="actions"><a href="/api/studies/${protocol}/summary.csv">下載摘要表（summary.csv）</a><a href="/api/studies/${protocol}" download="statistics.json">下載完整統計（statistics.json）</a></div></section>
     <section class="stats-substep"><div class="section-label">4.3 / 詳細稽核</div><details><summary>試跑檢查、Hold 門檻與資料完整性（原始數據）</summary>${copyablePre(JSON.stringify({pilot, hold_band: band, completeness: report.completeness}, null, 2))}</details><details><summary>統計檢定結果與計算方式（原始數據）</summary>${copyablePre(JSON.stringify({comparisons: report.comparisons, conventions: report.conventions}, null, 2))}</details></section>`;
   requestAnimationFrame(() => { for (const bar of element.querySelectorAll('.bar-track i')) bar.style.width = `${bar.dataset.width}%`; });
