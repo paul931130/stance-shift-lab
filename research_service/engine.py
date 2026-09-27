@@ -13,8 +13,8 @@ from langgraph.graph import StateGraph, START, END
 from .anonymize import PLACEHOLDER, anonymize
 from .backtest import evaluate
 from .data import digest, research_inputs
-from .models import (compact_research_evidence, generate, messages_for, prompt_text,
-                     validate_decision, validate_research)
+from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate, messages_for,
+                     prompt_text, unalias_evidence_ids, validate_decision, validate_research)
 from .protocol import StudyProtocol, DOMAIN_NAMES, decision_plan, decision_wave, temperature_for
 from .storage import now
 from .logging_config import get_logger
@@ -211,7 +211,10 @@ class Engine:
         builder.add_edge("coordinator_step", END)
         self.graph = builder.compile()
 
-    def call_model(self, protocol, messages, call_key, temperature=None):
+    def call_model(self, protocol, messages, call_key, temperature=None, aliases=None):
+        """Call the provider; with ``aliases`` the prompt shows short evidence IDs and the answer is mapped back."""
+        if aliases:
+            messages = alias_messages(messages, aliases)
         seed = (protocol.inference_seed + int(digest(call_key)[:8], 16)) % 2_147_483_647
         kwargs = {}
         if self.model_accepts_seed:
@@ -219,6 +222,8 @@ class Engine:
         if self.model_accepts_temperature:
             kwargs["temperature"] = protocol.temperature if temperature is None else temperature
         result, audit = self.model_call(protocol, messages, **kwargs)
+        if aliases:
+            result = unalias_evidence_ids(result, aliases)
         audit = dict(audit)
         audit.setdefault("seed", seed)
         audit.setdefault("temperature", protocol.temperature if temperature is None else temperature)
@@ -241,12 +246,14 @@ class Engine:
         # exact IDs while still rejecting unsupported point-only facts.
         decision_evidence = [item for item in evidence
                              if item.get("domain") != "fundamental" or item.get("comparative") is True]
-        allowed_ids = [item["evidence_id"] for item in decision_evidence]
+        aliases = evidence_aliases(evidence)
+        allowed_ids = [aliases[item["evidence_id"]] for item in decision_evidence]
         for attempt in range(1, protocol.provider_retry_attempts + 1):
             retry_key = call.key if attempt == 1 else f"{call.key}:validation-retry-{attempt}"
             audit = None
             try:
-                result, audit = self.call_model(protocol, attempt_messages, retry_key, temperature_for(protocol, call))
+                result, audit = self.call_model(protocol, attempt_messages, retry_key, temperature_for(protocol, call),
+                                                aliases)
                 # Numbers are checked against everything this prompt showed the model.
                 result = validate_decision(result, decision_evidence, call, prompt_text(messages))
                 audit = dict(audit)
@@ -278,12 +285,13 @@ class Engine:
         """Retry a source-validation rejection before emitting a degraded fallback."""
         validation_failures = []
         attempt_messages = messages
-        allowed_ids = [item["evidence_id"] for item in items]
+        aliases = evidence_aliases(items)
+        allowed_ids = list(aliases.values())
         for attempt in range(1, protocol.provider_retry_attempts + 1):
             retry_key = f"research-{domain}" if attempt == 1 else f"research-{domain}:validation-retry-{attempt}"
             audit = None
             try:
-                result, audit = self.call_model(protocol, attempt_messages, retry_key, protocol.temperature)
+                result, audit = self.call_model(protocol, attempt_messages, retry_key, protocol.temperature, aliases)
                 result = validate_research(result, items, domain)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures

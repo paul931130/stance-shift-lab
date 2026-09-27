@@ -187,6 +187,40 @@ def _compact_base_rates(base_rates):
             if base_rates.get(key) is not None}
 
 
+def evidence_aliases(evidence):
+    """Short prompt-only IDs (E1, E2, ...) for the evidence a call may cite.
+
+    v3-0927.1: models copied long IDs such as ``alpha-news-4593362d3e0499d6dc44``
+    or SEC accession-number IDs with dropped or altered characters, which was the
+    most common validation failure. Prompts now show these aliases and every
+    answer is mapped back to the real IDs before validation and storage, so the
+    stored and exported citations are unchanged.
+    """
+    ids = list(dict.fromkeys(item["evidence_id"] for item in evidence))
+    return {evidence_id: f"E{index}" for index, evidence_id in enumerate(ids, 1)}
+
+
+def alias_messages(messages, aliases):
+    """Replace each quoted real evidence ID in the prompt with its alias."""
+    ordered = sorted(aliases, key=len, reverse=True)
+    result = []
+    for message in messages:
+        content = str(message.get("content", ""))
+        for evidence_id in ordered:
+            content = content.replace(json.dumps(evidence_id, ensure_ascii=False), json.dumps(aliases[evidence_id]))
+        result.append({**message, "content": content})
+    return result
+
+
+def unalias_evidence_ids(result, aliases):
+    """Map a model answer's cited aliases back to real IDs; unknown values stay for validation to reject."""
+    if isinstance(result, dict) and isinstance(result.get("evidence_ids"), list):
+        reverse = {alias: evidence_id for evidence_id, alias in aliases.items()}
+        result = {**result, "evidence_ids": [reverse.get(value, value) if isinstance(value, str) else value
+                                             for value in result["evidence_ids"]]}
+    return result
+
+
 def prompt_text(messages):
     """All text a prompt showed the model, for checking which numbers it was given."""
     return " ".join(str(message.get("content", "")) for message in messages)

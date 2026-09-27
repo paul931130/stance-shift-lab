@@ -46,6 +46,35 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(research.store.claim())
         self.assertEqual(research.resume(job_id)["status"], "complete")
 
+    def test_prompts_show_short_evidence_ids_and_records_keep_real_ids(self):
+        research = DemoResearch(self.tmp.name)
+        real_ids = {item["evidence_id"] for item in demo_dataset()["evidence"]}
+        prompts = []
+
+        def recording(protocol, messages, **kwargs):
+            prompts.append(" ".join(message["content"] for message in messages))
+            return demo_model(protocol, messages, **kwargs)
+
+        research.engine.model_call = recording
+        result = research.run("NVDA", "2024-12-31")
+        self.assertEqual(result["status"], "complete")
+        self.assertTrue(prompts)
+        for prompt in prompts:
+            self.assertFalse([evidence_id for evidence_id in real_ids if f'"{evidence_id}"' in prompt])
+        self.assertTrue(any('"E1"' in prompt for prompt in prompts))
+        stored = research.store.get(result["job_id"])["state"]["records"]
+        cited = {evidence_id for record in stored for evidence_id in record["output"]["evidence_ids"]}
+        self.assertTrue(cited)
+        self.assertLessEqual(cited, real_ids)
+
+    def test_unknown_alias_is_still_rejected(self):
+        from research_service.models import evidence_aliases, unalias_evidence_ids
+
+        aliases = evidence_aliases([{"evidence_id": "alpha-news-4593362d3e0499d6dc44"}, {"evidence_id": "sec-x"}])
+        self.assertEqual(aliases, {"alpha-news-4593362d3e0499d6dc44": "E1", "sec-x": "E2"})
+        mapped = unalias_evidence_ids({"evidence_ids": ["E2", "E99", "sec-x"]}, aliases)
+        self.assertEqual(mapped["evidence_ids"], ["sec-x", "E99", "sec-x"])
+
     def test_start_creates_the_job_already_paused(self):
         research = DemoResearch(self.tmp.name)
         job = research.store.get(research.start("NVDA", "2024-12-31"))

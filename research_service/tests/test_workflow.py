@@ -688,7 +688,7 @@ class WorkflowTests(unittest.TestCase):
                  "rationale": "Synthetic retry result", "evidence_ids": ["technical-1"], "risks": []}
         seen = []
 
-        def patched(_protocol, _messages, _key, _temperature):
+        def patched(_protocol, _messages, _key, _temperature, _aliases=None):
             seen.append(_key)
             if len(seen) == 1:
                 raise JsonSchemaValidationError("synthetic schema rejection")
