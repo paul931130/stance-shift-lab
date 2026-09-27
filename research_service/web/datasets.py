@@ -1,6 +1,4 @@
 """Dataset snapshots: listing, import, collection tasks, FinBERT scoring and news sources."""
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, timedelta
 import json
 import os
 import threading
@@ -8,8 +6,8 @@ from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
 
-from ..data import (check_sentiment_sources, download_prices, fetch_fundamental, fetch_macro,
-                    fetch_sentiment, score_sentiment_finbert, validate_dataset)
+from ..collect import collect_dataset as collect_snapshot
+from ..data import check_sentiment_sources, score_sentiment_finbert, validate_dataset
 from ..errors import NotFoundError
 from ..logging_config import get_logger
 from ..protocol import TICKERS, validate_case
@@ -19,8 +17,6 @@ from .context import DownloadInput, TaskRegistry
 
 logger = get_logger(__name__)
 
-DOMAINS = ("technical", "fundamental", "sentiment", "macro")
-SOURCE_NAMES = {"technical": "行情", "fundamental": "SEC", "sentiment": "新聞", "macro": "ALFRED"}
 RUNNING_COLLECTION = ("queued", "collecting", "finbert")
 RUNNING_FINBERT = ("queued", "downloading", "loading", "scoring")
 
@@ -128,83 +124,11 @@ def build_router(ctx):
         threading.Thread(target=run, daemon=True, name="finbert-task").start()
         return {"dataset_id": key, "stage": "queued"}
 
-    # ---------- Four-domain collection ----------
-    def reusable_snapshot(payload):
-        for existing in store.datasets():
-            if (existing.get("ticker") == payload.ticker and existing.get("kind") == "historical"
-                    and existing.get("requested_analysis_date") == payload.analysis_date
-                    and existing.get("coverage", {}).get("research_ready")):
-                return existing
-        return None
-
+    # ---------- Four-domain collection (research_service.collect) ----------
     def collect_dataset(payload, progress=None):
-        """Build (or reuse) one dataset snapshot; shared by the sync API and background tasks."""
-        report = progress or (lambda **_: None)
-        validate_case(payload.ticker, payload.analysis_date)
-        existing = None if payload.refresh else reusable_snapshot(payload)
-        if existing:
-            result_id = apply_finbert(existing["id"])["id"] if payload.use_finbert else existing["id"]
-            return {"id": result_id, "analysis_date": payload.analysis_date,
-                    "limitations": existing.get("limitations", []), "agents": existing.get("_collection", {}),
-                    "version": existing.get("version"), "reused": True}
-        cutoff = (date.fromisoformat(payload.analysis_date) - timedelta(days=1)).isoformat()
-        report(stage="collecting", agents={})
-        agents, collected = {}, {}
-        with ThreadPoolExecutor(max_workers=4, thread_name_prefix="collection-agent") as pool:
-            futures = {
-                pool.submit(download_prices, payload.ticker, payload.analysis_date): "technical",
-                pool.submit(fetch_fundamental, payload.ticker, payload.analysis_date): "fundamental",
-                pool.submit(fetch_sentiment, payload.ticker, payload.analysis_date,
-                            allow_live=not payload.offline_news_only): "sentiment",
-                pool.submit(fetch_macro, cutoff): "macro",
-            }
-            # Report each domain as soon as its agent finishes so the UI can
-            # show progress; the snapshot is still assembled in a fixed
-            # domain order below, keeping the content-addressed ID stable.
-            for future in as_completed(futures):
-                domain = futures[future]
-                name = SOURCE_NAMES[domain]
-                if domain == "technical":
-                    data = future.result()  # Prices are mandatory; failure aborts the snapshot.
-                    agents[domain] = {"status": "complete", "records": len(data["prices"]),
-                        "message": f"已取得一致還原 OHLC；{data['source']}"}
-                else:
-                    try:
-                        evidence, note = future.result()
-                        collected[domain] = (evidence, [note] if note else [])
-                        empty_status = "needs_input" if domain == "sentiment" else "needs_configuration"
-                        message = f"已取得 {len(evidence)} 筆證據"
-                        if note:
-                            message += f"；附帶來源提醒：{note}"
-                        agents[domain] = {"status": "complete" if evidence else empty_status,
-                            "records": len(evidence), "message": message if evidence else note}
-                    except Exception as error:
-                        logger.warning("dataset collection failed ticker=%s domain=%s: %s: %s",
-                                       payload.ticker, domain, type(error).__name__, error)
-                        collected[domain] = ([], [f"{name} 下載失敗；可重新下載或匯入可驗證的摘要"])
-                        agents[domain] = {"status": "error", "records": 0,
-                            "message": f"{name} 下載失敗：{type(error).__name__}"}
-                report(agents={key: dict(value) for key, value in agents.items()})
-        for domain in ("fundamental", "sentiment", "macro"):
-            evidence, notes = collected[domain]
-            data["evidence"].extend(evidence)
-            data["limitations"].extend(notes)
-        if not any(item["domain"] == "sentiment" for item in data["evidence"]):
-            data["limitations"].append("自動新聞來源沒有可用的新聞；情緒面會標記為資料缺口，也可以匯入附發布時間的新聞摘要")
-        sentiment_items = [item for item in data["evidence"] if item["domain"] == "sentiment"]
-        if payload.use_finbert and sentiment_items:
-            report(stage="finbert")
-            data = score_sentiment_finbert(data)
-            count = data["processing"]["sentiment"]["items"]
-            agents["sentiment"]["finbert"] = {"status": "complete", "items": count, "model": "ProsusAI/finbert", "input": "headline"}
-            agents["sentiment"]["message"] += f"；本機 FinBERT 已完成 {count} 則標題"
-        elif payload.use_finbert:
-            agents["sentiment"]["finbert"] = {"status": "skipped", "items": 0,
-                "model": "ProsusAI/finbert", "input": "headline", "reason": "no_headlines"}
-        agents = {domain: agents[domain] for domain in DOMAINS}
-        data["_collection"] = agents
-        return {"id": store.add_dataset(validate_dataset(data)), "analysis_date": payload.analysis_date,
-            "limitations": data["limitations"], "agents": agents, "reused": False}
+        return collect_snapshot(store, payload.ticker, payload.analysis_date, refresh=payload.refresh,
+                                use_finbert=payload.use_finbert, offline_news_only=payload.offline_news_only,
+                                progress=progress, apply_finbert=apply_finbert)
 
     # Terminal scripts keep the synchronous call; the web UI uses the
     # background task below so a slow source never trips the browser timeout.

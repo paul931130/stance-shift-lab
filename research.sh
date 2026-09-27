@@ -218,6 +218,13 @@ case "${1:-help}" in
         docker run --rm -v "$PWD:/app:ro" "$($COMPOSE config --images research)" \
             python -m unittest discover -s research_service/tests -p 'test_*.py'
         ;;
+    cli)
+        # Interactive stance-shift inside the same image and data volume as the web service.
+        need_docker
+        ensure_env
+        shift
+        $COMPOSE run --rm research python -m research_service.cli "$@"
+        ;;
     doctor)
         need_docker
         echo "[OK] Docker 與 Compose 可用，engine 已啟動"
@@ -237,6 +244,7 @@ case "${1:-help}" in
 
 .env.research 的 RESEARCH_OLLAMA_CONTAINER=true（或 gpu）會讓 Docker 一起跑 Ollama。
   test    在容器內執行單元測試
+  cli     在容器內執行 stance-shift（不加參數會一步步問股票、日期、模型）
 研究操作（建立資料集、執行實驗、匯出）請在網頁介面完成。
 EOF
         ;;

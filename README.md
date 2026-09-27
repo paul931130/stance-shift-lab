@@ -10,11 +10,89 @@
 - **C 固定立場辯論**：看多、看空各自辯論 3 輪後裁決。
 - **D 立場交換辯論**：辯論中途讓雙方交換立場。
 
-四組用的是同一份資料，差別只在決策方式。整個研究台是一個網頁，在瀏覽器操作。
+四組用的是同一份資料，差別只在決策方式。每一步都留下可追溯的紀錄（引用了哪些證據、模型怎麼回答、把關怎麼判），可以在終端機用 `stance-shift` 一步步跑，也可以開網頁研究台看完整比較與統計。
 
-## 快速開始
+## 安裝與 CLI
 
-有三種跑法，擇一即可。模型來源有三種：雲端模型 API、GPUtw 雲端 GPU、Ollama；Codespaces 沒有顯示卡，只接前兩種。
+### 安裝
+
+需要 Python 3.12 以上。
+
+```bash
+git clone https://github.com/paul931130/stance-shift-lab.git
+cd stance-shift-lab
+python -m venv .venv
+source .venv/bin/activate        # Windows：.venv\Scripts\activate
+pip install ".[finbert]"         # 不需要新聞情緒評分可改成 pip install .
+```
+
+不想裝 Python，也可以用 Docker（`./research.sh cli`）或直接在 GitHub 開（Codespaces），見下方[其他跑法](#其他跑法網頁研究台docker-與-codespaces)。
+
+### 金鑰
+
+資料來源（建立資料集要用，都免費）：`SEC_USER_AGENT`（填 `你的名字 你的email`）、`FRED_API_KEY`（[申請](https://fred.stlouisfed.org/docs/api/api_key.html)）、`ALPHA_VANTAGE_API_KEY`（[申請](https://www.alphavantage.co/support/#api-key)）。
+
+模型三選一：
+
+```bash
+GEMINI_API_KEY=...             # 雲端模型 API：Gemini（或 OPENROUTER_API_KEY、OPENAI_API_KEY）
+GPUTW_OLLAMA_BASE_URL=...      # 雲端租 GPU：GPUtw 遠端 Ollama 位址
+GPUTW_OLLAMA_API_KEY=...       #            及存取 key
+                               # 自己電腦的 Ollama：不用金鑰，先執行 ollama pull qwen3:14b
+```
+
+可以把它們寫進專案資料夾的 `.env`（`cp research.env.example .env` 再填），也可以什麼都不先填：`stance-shift` 第一次執行時會問，並記在 `research-data/` 裡，網頁研究台也讀得到。
+
+### 用 CLI 跑一個案例
+
+```bash
+stance-shift
+```
+
+會一步步問股票、分析日、模型來源；上一次的答案會變成預設值，直接按 Enter 就沿用。接著即時顯示四個資料 Agent、四個研究 Agent，以及 A/B/C/D 每一次模型回答（以下為示意）：
+
+```text
+[資料] 四個資料 Agent 開始蒐集…
+  ✓ 技術面：已取得一致還原 OHLC；Yahoo Finance
+  ✓ 基本面：已取得 12 筆證據
+[決策] 中立研究報告已鎖定，A/B/C/D 開始決策
+  [ 1/22] A 單次判斷 · 決策 → Buy  預期 4.0%  信心 0.75
+  [13/22] D 立場交換辯論 · 第 2 輪 看空 → Sell  預期 -4.0%  信心 0.75
+  …
+=== NVDA · 2024-12-31 · gemini/gemini-2.5-flash ===
+組別            決策       預期報酬     信心  把關原因
+A 單次判斷       Buy          4%   0.75  —
+…
+```
+
+給腳本用、不問問題：
+
+```bash
+stance-shift run NVDA 2024-12-31 --model gemini/gemini-2.5-flash --finbert
+stance-shift run NVDA 2024-12-31 --model ollama/qwen3:14b --json   # 只輸出 JSON
+stance-shift jobs                    # 最近的實驗
+stance-shift resume <實驗 ID>        # 模型斷線等中斷後，從保存的進度繼續
+stance-shift serve                   # 開網頁研究台 http://127.0.0.1:8000/
+```
+
+研究股票固定為 9 檔：AAPL、NVDA、GOOGL、MSFT、AMZN、JPM、MCD、INTC、GE；分析日為 2021–2025 的季末，或今天（當下分析，不計入正式統計）。環境變數 `STANCE_SHIFT_TICKER`、`STANCE_SHIFT_DATE`、`STANCE_SHIFT_MODEL` 有設定時會跳過對應的問題。
+
+### Python 用法
+
+```python
+from research_service import StanceShiftResearch
+
+research = StanceShiftResearch(model="gemini/gemini-2.5-flash")
+result = research.run("NVDA", "2024-12-31", use_finbert=True)
+for group, decision in result["decisions"].items():
+    print(group, decision["name"], decision["action"], decision["expected_return_pct"])
+```
+
+`run` 會自動蒐集（或重用）資料集、跑完四組並回測；結果和網頁研究台存在同一個資料庫，之後用 `stance-shift serve` 可以看到完整紀錄。也可以分步：`collect()` 建資料集、`start()` 建立實驗、`resume()` 執行或續跑。其他實驗選項（`voting_samples`、`anonymize_ticker`、`missing_data_policy`、資料品質例外）和網頁表單相同。
+
+## 其他跑法：網頁研究台、Docker 與 Codespaces
+
+網頁研究台能做 CLI 做不到的事：180 個案例的資料就緒度、批次排程、四組配對統計、試跑檢查與事前登記、匯出研究產物 ZIP。三種跑法都能開網頁研究台，擇一即可。模型來源有三種：雲端模型 API、GPUtw 雲端 GPU、Ollama；Codespaces 沒有顯示卡，只接前兩種。
 
 | | 跑法一：GitHub Codespaces | 跑法二：自己電腦 Docker | 跑法三：自己電腦 pip |
 | --- | --- | --- | --- |
@@ -156,34 +234,18 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
 - **備份**：Windows 執行 `.\research.ps1 backup`（存到 `backups\`）；macOS／Linux 瀏覽器開 <http://127.0.0.1:8000/api/backup> 下載 ZIP。
 - **不要執行 `docker compose down -v`**，那會刪掉所有研究資料。
 
-### 跑法三：不用 Docker，直接 pip 安裝
+### 跑法三：pip 安裝後開網頁
 
-適合已經有 Python、不想裝 Docker 的人，三種模型來源都能接。少了 Docker，電腦上的 Ollama 直接用 `127.0.0.1:11434` 連，不用任何網路設定。
+照上方「[安裝](#安裝)」裝好後，三種模型來源都能接；少了 Docker，電腦上的 Ollama 直接用 `127.0.0.1:11434` 連，不用任何網路設定。
 
-1. **安裝 Python 3.12 以上**（[python.org](https://www.python.org/downloads/)；Windows 安裝時勾選「Add python.exe to PATH」）。
-2. **下載程式並安裝**：
-
-   ```bash
-   git clone https://github.com/paul931130/stance-shift-lab.git
-   cd stance-shift-lab
-   python -m venv .venv
-   # 啟用虛擬環境：Windows 用 .venv\Scripts\activate；macOS／Linux 用 source .venv/bin/activate
-   pip install .
-   ```
-
-   要用 FinBERT 分析新聞情緒（正式實驗需要），改成 `pip install ".[finbert]"`，會多下載約 1–2 GB。
-3. **準備模型（三選一）**：
-   - 雲端模型 API：準備一把 Gemini／OpenRouter／OpenAI 的金鑰。
-   - GPUtw 雲端 GPU：照 [GPUtw 整合指南](docs/gputw-integration.md) 開好執行個體，記下遠端 Ollama 位址與存取 key。
-   - 自己電腦的 Ollama：安裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`，保持 Ollama 開著。
-4. **啟動研究台**（在專案資料夾、虛擬環境已啟用）：
+1. **啟動研究台**（在專案資料夾、虛擬環境已啟用）：
 
    ```bash
    stance-shift serve
    ```
 
    瀏覽器開 <http://127.0.0.1:8000/>。這個視窗要保持開著，按 Ctrl+C 停止。
-5. **填設定**：按「資料準備」頁的「設定模型與金鑰」：
+2. **填設定**（已經用 `stance-shift` 或 `.env` 設過的可以跳過）：按「資料準備」頁的「設定模型與金鑰」：
    - 資料來源金鑰：`SEC_USER_AGENT`、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`。
    - 用雲端模型 API：在「雲端模型金鑰」填金鑰，「回測模型」填模型名稱（例如 `gemini/gemini-2.5-flash`）。
    - 用 GPUtw：在「GPUtw／遠端 Ollama」填 `GPUTW_OLLAMA_BASE_URL` 與 `GPUTW_OLLAMA_API_KEY`。
@@ -191,15 +253,15 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
    - FNSPID 新聞檔：放在 `research-inputs/Stock_news.csv`，並把 `FNSPID_NEWS_PATH` 填成 `research-inputs/Stock_news.csv`。
 
    按「儲存設定」立即生效，設定存在專案的 `research-data/` 資料夾，下次啟動還在。
-6. 接著照下方「[確認模型並開始研究](#確認模型並開始研究)」。
+3. 接著照下方「[確認模型並開始研究](#確認模型並開始研究)」。
 
-**之後每次**：進專案資料夾 → 啟用虛擬環境 → `stance-shift serve`。**更新程式**：`git pull` 後再執行一次 `pip install .`。**備份**：研究資料全部在 `research-data/`，複製這個資料夾即可。
+**之後每次**：進專案資料夾 → 啟用虛擬環境 → `stance-shift serve`（或直接用 `stance-shift` 在終端機跑）。**更新程式**：`git pull` 後再執行一次 `pip install .`。**備份**：研究資料全部在 `research-data/`，複製這個資料夾即可。
 
-pip 跑法與 Docker 用的是同一份程式，但 CI 的完整啟動檢查以 Docker 為準；遇到安裝問題，改用跑法二最省事。
+pip 跑法與 Docker 用的是同一份程式；遇到安裝問題，改用跑法二最省事。
 
 ### 確認模型並開始研究
 
-兩種跑法打開研究台後都一樣：
+三種跑法打開研究台後都一樣：
 
 1. **確認模型**：看頁面上方的模型狀態。
    - 顯示「雲端模型 · … · 已設定」或「Ollama 已連線」：可以開始。
@@ -223,18 +285,11 @@ pip 跑法與 Docker 用的是同一份程式，但 CI 的完整啟動檢查以 
 
 ### 進階：終端機指令
 
-網頁負責研究操作與看結果；終端機負責安裝設定、啟停、檢查、日誌與批次工作。Windows 的 `research.ps1` 指令最完整：
+研究操作用 `stance-shift`（見上方「[安裝與 CLI](#安裝與-cli)」）；用 Docker 時，`./research.sh cli`（Windows：`docker compose -f compose.research.yaml run --rm research python -m research_service.cli`）會在容器內執行同一個 `stance-shift`，和網頁研究台共用資料。
 
-```powershell
-.\research.ps1 help                      # 全部指令
-.\research.ps1 collect NVDA 2024-12-31   # 建立資料集；加 -Refresh 強制重新下載
-.\research.ps1 run NVDA 2024-12-31       # 跑實驗
-.\research.ps1 jobs
-.\research.ps1 logs
-```
+`research.sh`／`research.ps1` 負責 Docker 的安裝設定、啟停、檢查與日誌：`setup`、`start`、`stop`、`status`、`logs`、`doctor`、`test`，Windows 另有 `backup`。`research.ps1` 裡的 `collect`、`run`、`jobs` 等研究指令仍可使用，但之後會由跨平台的 `stance-shift` 取代。
 
-macOS／Linux 的 `research.sh` 提供 `setup`、`start`、`stop`、`status`、`logs`、`test`、`doctor`。`power-plan`、`model-canary` 等工具在容器內執行，例如
-`docker compose -f compose.research.yaml run --rm --no-deps research python -m research_service.cli model-canary`；它們只做設計模擬或合成格式檢查，不會建立正式案例。pip 安裝後也可以直接執行 `stance-shift power-plan`、`stance-shift model-canary`。
+`stance-shift power-plan`（研究設計模擬）與 `stance-shift model-canary`（用合成資料檢查模型是否相容）不會建立正式案例。
 
 ## 回測資料
 

@@ -1,6 +1,14 @@
 # 版本紀錄
 
-正式產品只有一條執行路徑：`research.ps1` → Docker Compose → `research_service` → `http://127.0.0.1:8000`。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
+研究台可以用 `stance-shift` CLI、Python API 或網頁研究台（Docker、pip、Codespaces）操作，三者共用同一套流程與資料庫。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
+
+## 未發布（2026-09-27）— CLI 與 Python API（不改協議）
+
+- 參考 TradingAgents：`pip install` 後直接執行 `stance-shift`，會一步步問股票、分析日與模型來源（雲端 API／GPUtw／本機 Ollama），記住上次答案，並即時顯示資料 Agent、研究 Agent 與 A/B/C/D 每次模型回答，最後列出四組決策與 60 日回測。
+- 新增 `stance-shift run`（給腳本用，可 `--json`）、`stance-shift resume`、`stance-shift jobs`；Docker 使用者用 `./research.sh cli`。
+- 新增 Python API：`from research_service import StanceShiftResearch`，`run()`／`collect()`／`start()`／`resume()`。
+- CLI 與 Python API 走和網頁相同的資料蒐集、實驗檢查（`prepare`）、引擎與資料庫，結果可在網頁研究台檢視；資料蒐集移到 `research_service/collect.py` 供三者共用。
+- 協議與決策提示詞不變，protocol hash 不變。
 
 ## v3-0926.7（2026-09-26）— 減少「來源未支持的數字」：從源頭預防、比對完整提示詞、重試時明確指出
 
