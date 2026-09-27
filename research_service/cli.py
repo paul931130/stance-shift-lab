@@ -50,6 +50,45 @@ def _run(args):
     return 0
 
 
+def _refresh_fundamentals(args):
+    from .collect import refresh_fundamentals, reusable_snapshot
+    from .interactive import load_env_files
+    from .protocol import QUARTER_DATES, STUDY_TICKERS
+    from .storage import Store
+
+    load_env_files()
+    store = Store(os.getenv("RESEARCH_DATA_DIR", "research-data"))
+    cases = ([(ticker, day) for ticker in STUDY_TICKERS for day in QUARTER_DATES] if args.all
+             else [tuple(case.upper().split(":", 1)) for case in args.cases])
+    if not cases or any(len(case) != 2 for case in cases):
+        print("請指定 TICKER:分析日（例如 NVDA:2024-12-31），或加 --all", file=sys.stderr)
+        return 2
+    # One SEC companyfacts download per company, not one per quarter.
+    from .data import get_json
+    downloads = {}
+
+    def requester(url, headers):
+        if url not in downloads:
+            downloads[url] = get_json(url, headers)
+        return downloads[url]
+
+    failures = 0
+    for ticker, day in cases:
+        existing = reusable_snapshot(store, ticker, day)
+        if not existing:
+            print(f"{ticker} {day}: 沒有完整的既有資料集，略過")
+            failures += 1
+            continue
+        try:
+            result = refresh_fundamentals(store, existing["id"], requester)
+        except Exception as error:  # one case must not stop the batch
+            print(f"{ticker} {day}: 失敗 {type(error).__name__}: {error}")
+            failures += 1
+            continue
+        print(f"{ticker} {day}: {existing['id'][:12]} -> {result['id'][:12]}（{result['items']} 筆基本面證據）")
+    return 1 if failures else 0
+
+
 def _jobs():
     from .storage import Store
 
@@ -92,6 +131,10 @@ def main(argv=None):
     resume.add_argument("--model", default=None, help=argparse.SUPPRESS)
     resume.add_argument("--json", action="store_true")
     subparsers.add_parser("jobs", help="列出最近的實驗")
+    refresh = subparsers.add_parser("refresh-fundamentals",
+                                    help="只重建資料集的 SEC 基本面證據（另存新版本，不重抓新聞與行情）")
+    refresh.add_argument("cases", nargs="*", help="TICKER:分析日，例如 NVDA:2024-12-31")
+    refresh.add_argument("--all", action="store_true", help="研究範圍內所有股票 × 季末")
     subparsers.add_parser("version")
     subparsers.add_parser("doctor")
     power = subparsers.add_parser("power-plan", help="simulation-based design planning")
@@ -130,6 +173,8 @@ def main(argv=None):
         return 0 if result["status"] == "pass" else 1
     if args.command in ("run", "resume"):
         return _run(args)
+    if args.command == "refresh-fundamentals":
+        return _refresh_fundamentals(args)
     if args.command == "jobs":
         return _jobs()
     if args.command == "serve":

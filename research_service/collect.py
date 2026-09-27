@@ -22,6 +22,34 @@ def finbert_version(store, key, progress=None):
             "finbert_applied": True, "items": enriched["processing"]["sentiment"]["items"]}
 
 
+def refresh_fundamentals(store, key, requester=None):
+    """Rebuild only the SEC fundamental evidence of a snapshot, as a new version.
+
+    Prices, news and macro data are kept byte for byte, so no news quota is
+    spent. The new snapshot records ``parent_dataset_id`` and is used by jobs
+    created afterwards; jobs already run keep pointing at the old snapshot.
+    """
+    data = store.dataset(key)
+    analysis_date = data.get("requested_analysis_date")
+    if data.get("kind") != "historical" or not analysis_date:
+        raise ValueError("只能重建有研究分析日的歷史資料集")
+    fetched, note = (fetch_fundamental(data["ticker"], analysis_date, requester) if requester
+                     else fetch_fundamental(data["ticker"], analysis_date))
+    if not fetched:
+        raise ValueError(note or "SEC 沒有可用的基本面資料")
+    by_domain = {domain: [item for item in data["evidence"] if item.get("domain") == domain] for domain in DOMAINS}
+    by_domain["fundamental"] = fetched
+    data["evidence"] = [item for domain in DOMAINS for item in by_domain[domain]]
+    data["parent_dataset_id"] = key
+    data.setdefault("processing", {})["fundamental"] = {
+        "refreshed_from": key, "items": len(fetched),
+        "selection_rule": next((item.get("selection_rule") for item in fetched if item.get("selection_rule")), None)}
+    if isinstance(data.get("_collection"), dict):
+        data["_collection"]["fundamental"] = {"status": "complete", "records": len(fetched),
+                                              "message": f"已重建 {len(fetched)} 筆 SEC 基本面證據"}
+    return {"id": store.add_dataset(validate_dataset(data)), "parent_dataset_id": key, "items": len(fetched)}
+
+
 def reusable_snapshot(store, ticker, analysis_date):
     """The newest complete historical snapshot for this case, if any."""
     for existing in store.datasets():

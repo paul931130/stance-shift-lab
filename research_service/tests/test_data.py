@@ -112,6 +112,65 @@ class SecFundamentalTests(unittest.TestCase):
         self.assertAlmostEqual(ratio["ratio_pct"], 33.333333, places=6)
         self.assertIn("current=30000000000 USD", revenue["claim"])
 
+    def test_year_to_date_cash_flow_and_negative_base_sign(self):
+        def fact(start, end, val, accn, filed, fp):
+            return {"start": start, "end": end, "val": val, "accn": accn, "filed": filed, "form": "10-Q", "fp": fp}
+
+        q1 = fact("2024-01-01", "2024-03-31", -154_000_000_000, "q1-24", "2024-05-01", "Q1")
+        q1_prior = fact("2023-01-01", "2023-03-31", -111_000_000_000, "q1-23", "2023-05-01", "Q1")
+        # The Q3 10-Q reports cash flow only for the nine months to date.
+        ytd = fact("2024-01-01", "2024-09-30", -60_000_000_000, "q3-24", "2024-10-30", "Q3")
+        ytd_prior = fact("2023-01-01", "2023-09-30", -40_000_000_000, "q3-23", "2023-10-30", "Q3")
+        payload = {"facts": {"us-gaap": {"NetCashProvidedByUsedInOperatingActivities": {"units": {"USD": [
+            q1_prior, q1, ytd_prior, ytd]}}}}}
+        with patch.dict("os.environ", {"SEC_USER_AGENT": "Research test@example.com"}):
+            items, _ = fetch_fundamental("JPM", "2024-12-31", lambda _url, _headers: payload)
+        cash = next(item for item in items if item["metric"] == "OperatingCashFlow")
+        self.assertEqual((cash["current_accession"], cash["period_days"]), ("q3-24", 273))
+        self.assertAlmostEqual(cash["change_pct"], -50.0, places=6)  # worse, so negative
+        self.assertIn("period_days=273", cash["claim"])
+
+    def test_bank_revenue_uses_net_of_interest_expense_quarters(self):
+        def fact(start, end, val, accn, filed, form="10-Q"):
+            return {"start": start, "end": end, "val": val, "accn": accn, "filed": filed, "form": form}
+
+        payload = {"facts": {"us-gaap": {
+            "Revenues": {"units": {"USD": [
+                fact("2022-01-01", "2022-12-31", 128_000_000_000, "k-22", "2023-02-21", "10-K"),
+                fact("2023-01-01", "2023-12-31", 158_000_000_000, "k-23", "2024-02-16", "10-K")]}},
+            "RevenuesNetOfInterestExpense": {"units": {"USD": [
+                fact("2023-07-01", "2023-09-30", 40_000_000_000, "q3-23", "2023-10-30"),
+                fact("2024-07-01", "2024-09-30", 43_000_000_000, "q3-24", "2024-10-30")]}},
+        }}}
+        with patch.dict("os.environ", {"SEC_USER_AGENT": "Research test@example.com"}):
+            items, _ = fetch_fundamental("JPM", "2024-12-31", lambda _url, _headers: payload)
+        revenue = next(item for item in items if item["metric"] == "Revenue")
+        self.assertEqual(revenue["current_period"], "2024-09-30")
+
+    def test_refresh_fundamentals_keeps_other_domains_and_links_parent(self):
+        import tempfile
+        from research_service.collect import refresh_fundamentals
+        from research_service.demo import demo_dataset
+        from research_service.storage import Store
+
+        base = {**demo_dataset(), "kind": "historical", "requested_analysis_date": "2024-12-31"}
+        new_fact = {"evidence_id": "sec-comparison-new", "domain": "fundamental", "claim": "Revenue: new",
+                    "available_at": "2024-11-20", "source": "https://www.sec.gov/", "comparative": True}
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            old_id = store.add_dataset(base)
+            with patch("research_service.collect.fetch_fundamental", return_value=([new_fact], "")):
+                result = refresh_fundamentals(store, old_id, requester=lambda *_: {})
+            fresh = store.dataset(result["id"])
+        self.assertEqual(fresh["parent_dataset_id"], old_id)
+        self.assertEqual([item["evidence_id"] for item in fresh["evidence"] if item["domain"] == "fundamental"],
+                         ["sec-comparison-new"])
+        def others(data):
+            return [item for item in data["evidence"] if item["domain"] != "fundamental"]
+
+        self.assertEqual(others(fresh), others(base))
+        self.assertEqual(fresh["prices"], base["prices"])
+
     def test_selector_falls_back_to_non_directional_point_facts(self):
         payload = {"facts": {"us-gaap": {"Assets": {"units": {"USD": [{
             "end": "2024-09-29", "val": 90_000_000_000,
