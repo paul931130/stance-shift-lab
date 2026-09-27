@@ -61,7 +61,19 @@ def _jobs():
     return 0
 
 
+def _utf8_output():
+    """Output redirected to a file or pipe (e.g. --json > run.json on Windows) is
+    written as UTF-8 instead of the legacy code page, which cannot hold Chinese."""
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            if not stream.isatty() and (stream.encoding or "").lower().replace("-", "") != "utf8":
+                stream.reconfigure(encoding="utf-8")
+        except (AttributeError, ValueError, OSError):
+            pass
+
+
 def main(argv=None):
+    _utf8_output()
     parser = argparse.ArgumentParser(
         prog="stance-shift",
         description="多代理人立場交換回測。不加指令直接執行 stance-shift，會一步步問股票、分析日與模型。")

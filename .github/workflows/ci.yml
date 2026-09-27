@@ -51,6 +51,24 @@ jobs:
           curl -fsS -o /dev/null http://127.0.0.1:8011/assets/js/settings-panel.js || { cat serve.log; exit 1; }
           kill %1
 
+      - name: README CLI and Python usage run end to end (demo mode)
+        working-directory: ${{ runner.temp }}
+        env:
+          RESEARCH_DEMO_MODE: "true"
+          RESEARCH_DATA_DIR: readme-cli-data
+        run: |
+          stance-shift < /dev/null | tee cli.log
+          grep -q "D 立場交換辯論" cli.log
+          stance-shift run NVDA 2024-12-31 --json > run.json
+          python -c "import json; r = json.load(open('run.json', encoding='utf-8')); assert r['status'] == 'complete' and set(r['decisions']) == set('ABCD'), r"
+          stance-shift jobs | grep -c complete | grep -qx 2
+          python - <<'PY'
+          from research_service import StanceShiftResearch
+          research = StanceShiftResearch(model="gemini/gemini-2.5-flash")
+          result = research.run("NVDA", "2024-12-31", use_finbert=True)
+          assert set(result["decisions"]) == set("ABCD"), result
+          PY
+
       - name: Run unittest suite
         run: python -m unittest discover -s research_service/tests -p "test_*.py" -v
 
@@ -66,6 +84,18 @@ jobs:
 
       - name: Install the package
         run: python -m pip install .
+
+      - name: README CLI runs on Windows (demo mode)
+        working-directory: ${{ runner.temp }}
+        env:
+          RESEARCH_DEMO_MODE: "true"
+          RESEARCH_DATA_DIR: readme-cli-data
+        run: |
+          stance-shift run NVDA 2024-12-31 --json > run.json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          python -c "import json; r = json.load(open('run.json', encoding='utf-8')); assert r['status'] == 'complete', r"
+          stance-shift run NVDA 2024-12-31
+          if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Run unittest suite
         run: python -m unittest discover -s research_service/tests -p "test_*.py" -v
@@ -136,6 +166,11 @@ jobs:
 
       - name: Unit tests inside the image
         run: ./research.sh test
+
+      - name: README Docker CLI (./research.sh cli) runs a case
+        run: |
+          ./research.sh cli run NVDA 2024-12-31 --json > run.json
+          python3 -c "import json; r = json.load(open('run.json', encoding='utf-8')); assert r['status'] == 'complete', r"
 
       - name: Ollama container option reaches the research service
         run: |

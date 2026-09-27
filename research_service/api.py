@@ -44,6 +44,12 @@ class StanceShiftResearch:
     def __init__(self, data_dir=None, model=None, model_call=None, parallel_workers=None):
         self.store = Store(data_dir or os.getenv("RESEARCH_DATA_DIR", "research-data"))
         self.settings = Settings(self.store.root)
+        # RESEARCH_DEMO_MODE=true: the web service's keyless walkthrough. The
+        # built-in synthetic dataset and provider replace every external call.
+        self.demo_mode = model_call is None and os.getenv("RESEARCH_DEMO_MODE", "").strip().lower() in ("1", "true", "yes", "on")
+        if self.demo_mode:
+            from .demo import DEMO_MODEL, demo_model
+            model, model_call = DEMO_MODEL, demo_model
         self.model = model or os.getenv("RESEARCH_MODEL", DEFAULT_RESEARCH_MODEL)
         self.engine = (Engine(self.store, model_call, parallel_workers) if model_call
                        else Engine(self.store, parallel_workers=parallel_workers))
@@ -52,6 +58,14 @@ class StanceShiftResearch:
 
     def collect(self, ticker, analysis_date, *, refresh=False, use_finbert=False, progress=None):
         """Build or reuse the four-domain dataset for a case; returns its id and agent report."""
+        if self.demo_mode:
+            from .demo import DEMO_ANALYSIS_DATE, demo_dataset
+
+            demo = demo_dataset()
+            if (ticker.upper(), analysis_date) != (demo["ticker"], DEMO_ANALYSIS_DATE):
+                raise ValueError(f"展示模式只有 {demo['ticker']} {DEMO_ANALYSIS_DATE} 的合成資料")
+            return {"id": self.store.add_dataset(demo), "analysis_date": analysis_date, "reused": True,
+                    "limitations": demo.get("limitations", []), "agents": {}}
         return collect_dataset(self.store, ticker.upper(), analysis_date, refresh=refresh,
                                use_finbert=use_finbert, progress=_forward(progress, "collect"))
 

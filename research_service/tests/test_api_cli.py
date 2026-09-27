@@ -109,6 +109,31 @@ class InteractiveCliTests(unittest.TestCase):
         self.assertEqual(set(json.loads(output)["decisions"]), set("ABCD"))
 
 
+class DemoModeTests(unittest.TestCase):
+    """RESEARCH_DEMO_MODE=true lets the CLI and API run end to end with no keys or network."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        patcher = patch.dict(os.environ, {"RESEARCH_DEMO_MODE": "true", "RESEARCH_DATA_DIR": self.tmp.name})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def test_api_runs_the_synthetic_case_and_refuses_other_cases(self):
+        research = api.StanceShiftResearch()
+        self.assertTrue(research.demo_mode)
+        self.assertEqual(research.run("NVDA", "2024-12-31")["model"], DEMO_MODEL)
+        with self.assertRaisesRegex(ValueError, "展示模式"):
+            research.collect("MSFT", "2024-12-31")
+
+    def test_cli_without_arguments_asks_nothing(self):
+        output = io.StringIO()
+        with patch("builtins.input", side_effect=AssertionError("demo mode must not ask")), redirect_stdout(output):
+            self.assertEqual(main([]), 0)
+        self.assertIn("展示模式", output.getvalue())
+        self.assertIn("D 立場交換辯論", output.getvalue())
+
+
 class EnvFileTests(unittest.TestCase):
     def test_env_file_fills_missing_values_only_and_skips_docker_ollama_host(self):
         from research_service.interactive import load_env_files

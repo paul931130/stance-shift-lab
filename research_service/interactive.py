@@ -199,6 +199,16 @@ def _num(value):
     return "—" if value is None else f"{value:g}"
 
 
+def _demo(research):
+    from .demo import DEMO_ANALYSIS_DATE
+
+    print("展示模式（RESEARCH_DEMO_MODE=true）：使用內建合成 NVDA 資料與固定回應，不連網、不呼叫模型，也不是研究結果。")
+    dataset_id = research.collect("NVDA", DEMO_ANALYSIS_DATE)["id"]
+    job_id = research.start("NVDA", DEMO_ANALYSIS_DATE, dataset_id=dataset_id)
+    print_result(research.resume(job_id, progress=progress))
+    return 0
+
+
 def interactive(data_dir=None):
     from . import StanceShiftResearch, ResearchRunError
     from .errors import PreflightError
@@ -206,6 +216,8 @@ def interactive(data_dir=None):
     load_env_files()
     research = StanceShiftResearch(data_dir=data_dir)
     remembered = Remembered(research.store.root)
+    if research.demo_mode:
+        return _demo(research)
     print("Stance Shift Research：多代理人立場交換回測（按 Enter 採用括號內的上次答案）")
     print(f"研究股票：{' '.join(STUDY_TICKERS)}")
     ticker = os.getenv("STANCE_SHIFT_TICKER") or ask("股票", remembered.get("ticker", "NVDA"), STUDY_TICKERS)

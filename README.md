@@ -83,6 +83,20 @@ source .venv/bin/activate        # Windows：.venv\Scripts\activate
 pip install ".[finbert]"         # 不需要新聞情緒評分可改成 pip install .
 ```
 
+Linux 上 `pip` 預設會裝含 CUDA 的 PyTorch（整個環境約 7 GB）。FinBERT 只需要 CPU，先執行下面這行再裝，可省下約 5 GB：
+
+```bash
+pip install torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
+```
+
+裝好後可以先不填任何金鑰試跑一次，看看整個流程：
+
+```bash
+RESEARCH_DEMO_MODE=true stance-shift     # Windows PowerShell：$env:RESEARCH_DEMO_MODE="true"; stance-shift
+```
+
+展示模式使用內建的合成 NVDA 2024-12-31 資料與固定回應，不連網、不呼叫模型，結果不是研究資料。
+
 ### Docker
 
 不想裝 Python，也可以用 Docker：
