@@ -42,7 +42,7 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: stance-shift version
 
-      - name: pip install serves the web app (README 跑法三)
+      - name: pip install serves the web app (docs/run-options.md 跑法三)
         working-directory: ${{ runner.temp }}
         run: |
           RESEARCH_DATA_DIR=pip-serve-data stance-shift serve --port 8011 > serve.log 2>&1 &
