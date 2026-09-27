@@ -28,7 +28,7 @@ def _is_complete(job):
     return job.get("status") == "complete" and bool(job.get("state", {}).get("finished"))
 
 
-def _formal_exclusion_reason(job, eligible_dataset_ids):
+def _formal_exclusion_reason(job, eligible_dataset_ids, frozen_at=None):
     """Fail closed unless a completed job carries formal-study provenance."""
     config = job.get("config", {})
     protocol = config.get("protocol", {})
@@ -51,15 +51,19 @@ def _formal_exclusion_reason(job, eligible_dataset_ids):
         return "study_not_preregistered"
     if config.get("dataset_id") not in eligible_dataset_ids:
         return "not_preregistered_dataset"
+    # A sample locked after results existed would let a researcher choose it
+    # having seen them: only jobs created after the lock are formal.
+    if frozen_at is not None and not str(job.get("created_at", "")) > str(frozen_at):
+        return "run_before_preregistration"
     return None
 
 
-def _completed_unique(jobs, *, formal_only=False, eligible_dataset_ids=None):
+def _completed_unique(jobs, *, formal_only=False, eligible_dataset_ids=None, frozen_at=None):
     """Return first valid result per case without mutating rerun audit records."""
     completed = [job for job in jobs if _is_complete(job)]
     degraded = [job for job in completed
                 if job.get("state", {}).get("report", {}).get("degraded_research_domains")]
-    nonformal = [(job, _formal_exclusion_reason(job, eligible_dataset_ids) if formal_only else None)
+    nonformal = [(job, _formal_exclusion_reason(job, eligible_dataset_ids, frozen_at) if formal_only else None)
                  for job in completed if job not in degraded]
     excluded_nonformal = [(job, reason) for job, reason in nonformal if reason]
     usable = [job for job, reason in nonformal if not reason]
@@ -332,10 +336,11 @@ def stability_report(jobs):
             "note": "重複性指標是 full-protocol test-retest 的描述統計；未做正式顯著性檢定，也不取代主分析。"}
 
 
-def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dataset_ids=None):
+def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dataset_ids=None, frozen_at=None):
     complete, excluded = _completed_unique(
         jobs, formal_only=formal_only,
-        eligible_dataset_ids=None if eligible_dataset_ids is None else set(eligible_dataset_ids))
+        eligible_dataset_ids=None if eligible_dataset_ids is None else set(eligible_dataset_ids),
+        frozen_at=frozen_at)
     stability = stability_report(jobs)
     if not complete:
         return {"status": "no_formal_cases" if formal_only and excluded["completed"] else "no_completed_cases",

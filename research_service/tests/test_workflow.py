@@ -701,6 +701,33 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(seen, ["a-decision", "a-decision:validation-retry-2"])
         self.assertEqual(audit["validation_retries"][0]["error_type"], "ValidationError")
 
+    def test_unsupported_positive_magnitude_retry_explains_negative_source_sign(self):
+        engine = Engine(self.store, fake_model)
+        call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
+        evidence = [{"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True,
+                     "claim": "Revenue: year_over_year_change_pct=-1.400692"}]
+        messages = messages_for(call, {"evidence": evidence}, [], [], self.protocol)
+        invalid = {"action": "Sell", "expected_return_pct": -2.0, "confidence": .6,
+                   "rationale": "Revenue declined by 1.400692%.",
+                   "evidence_ids": ["sec-yoy"], "risks": []}
+        valid = {"action": "Sell", "expected_return_pct": -2.0, "confidence": .6,
+                 "rationale": "The supplied comparison indicates a decline.",
+                 "evidence_ids": ["sec-yoy"], "risks": []}
+        seen = []
+
+        def patched(_protocol, retry_messages, _key, _temperature, _aliases=None):
+            seen.append(retry_messages)
+            chosen = invalid if len(seen) == 1 else valid
+            return chosen, {"prompt_hash": "synthetic", "usage": {}, "raw_response": json.dumps(chosen)}
+
+        engine.call_model = patched
+        result, audit = engine.validated_decision(self.protocol, call, messages, evidence)
+        retry_text = seen[1][-1]["content"]
+        self.assertIn("-1.400692 (negative values)", retry_text)
+        self.assertIn("or omit the numbers", retry_text)
+        self.assertEqual(result["action"], "Sell")
+        self.assertEqual(audit["validation_retries"][0]["error_type"], "ValueError")
+
     def test_comparable_fundamental_citation_is_valid_decision_evidence(self):
         engine = Engine(self.store, fake_model)
         call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
@@ -806,6 +833,18 @@ class WorkflowTests(unittest.TestCase):
             report = client.get(f'/api/studies/{protocol_hash}').json()
             self.assertEqual(report["preregistration"]["post_freeze_dataset_ids"], [other_dataset_id])
             self.assertEqual(report["excluded_nonformal_reasons"], {"non_historical_dataset": 2})
+
+    def test_preregister_locks_a_planned_batch_without_creating_jobs(self):
+        with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            case = {"dataset_id": self.dataset_id, "analysis_date": "2024-12-31"}
+            locked = client.post('/api/studies/preregister', json={"cases": [case]})
+            self.assertEqual(locked.status_code, 200, locked.text)
+            body = locked.json()
+            self.assertEqual((body["dataset_ids"], body["cases"]), ([self.dataset_id], 1))
+            self.assertEqual(self.store.job_summaries(), [])
+            self.assertEqual(self.store.preregistration(body["protocol_hash"])["frozen_at"], body["frozen_at"])
+            mixed = client.post('/api/studies/preregister', json={"cases": [case, {**case, "voting_samples": 5}]})
+            self.assertEqual(mixed.status_code, 422)
 
     def test_freeze_rejects_changing_the_dataset_set_after_the_fact(self):
         job = self.complete(self.create("2024-12-31"))

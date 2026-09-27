@@ -271,9 +271,18 @@ class Engine:
                 number_hint = ""
                 rejected_numbers = re.search(r"來源未支持的數字（([^）]*)）", str(error))
                 if rejected_numbers:
+                    rejected = [value.strip() for value in rejected_numbers.group(1).split(",")]
+                    context = prompt_text(messages)
+                    signed_matches = [f"-{value}" for value in rejected
+                                      if f"-{value}" in context]
                     number_hint = (f"These numbers in your text were not found in the supplied report: {rejected_numbers.group(1)}. "
                                    "Delete them or replace each with the exact figure as written in the report; "
-                                   "do not round, convert units, or compute new figures. ")
+                                   "do not round, convert units, or compute new figures. "
+                                   "If you cannot reproduce an exact figure, remove all numbers from that sentence. ")
+                    if signed_matches:
+                        number_hint += ("Sign check: the report contains " + ", ".join(signed_matches) +
+                                        " (negative values), not the corresponding positive magnitudes. "
+                                        "Keep the minus sign exactly, or omit the numbers. ")
                 attempt_messages = [*messages, {"role": "user", "content":
                     "The previous candidate was rejected by evidence validation. Return a new complete JSON "
                     "object. " + number_hint + "Do not cite a legacy SEC point fact without a comparable period. Comparative SEC "

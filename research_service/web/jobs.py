@@ -206,9 +206,10 @@ def build_router(ctx):
         job = store.get(key)
         protocol_hash = job["config"]["protocol_hash"]
         same_protocol = store.jobs(protocol_hash)
-        preregistration = store.preregistration(protocol_hash)
-        eligible_dataset_ids = preregistration["dataset_ids"] if preregistration else None
-        return Response(export_job(job, study_report(same_protocol, eligible_dataset_ids=eligible_dataset_ids)),
+        preregistration = store.preregistration(protocol_hash) or {}
+        report = study_report(same_protocol, eligible_dataset_ids=preregistration.get("dataset_ids"),
+                              frozen_at=preregistration.get("frozen_at"))
+        return Response(export_job(job, report),
                         media_type="application/zip",
                         headers={"Content-Disposition": f'attachment; filename="research-{key}.zip"'})
 

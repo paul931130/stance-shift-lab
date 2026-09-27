@@ -214,10 +214,12 @@ $('batch-file').addEventListener('change', e => task(null, async () => {
   const dates = [...new Set(cases.map(c => c.analysis_date))].filter(Boolean).sort();
   const datasets = new Set(cases.map(c => c.dataset_id));
   const models = [...new Set(cases.map(c => c.model).filter(Boolean))];
-  const summary = `即將建立 ${cases.length} 筆研究案例\n分析日：${dates.join('、') || '（未指定）'}\n涉及資料集：${datasets.size} 種\n模型：${models.join('、') || '使用各筆預設值'}\n\n確定要送出並排入佇列嗎？`;
+  const lock = $('batch-preregister').checked;
+  const summary = `即將建立 ${cases.length} 筆研究案例\n分析日：${dates.join('、') || '（未指定）'}\n涉及資料集：${datasets.size} 種\n模型：${models.join('、') || '使用各筆預設值'}\n${lock ? '\n會先鎖定這批研究樣本（事前登記，不能撤銷），之後才排入佇列；只有鎖定後建立的實驗算正式結果。\n' : '\n不鎖定樣本：這批結果只算探索性分析。\n'}\n確定要送出並排入佇列嗎？`;
   if (!cases.length || !window.confirm(summary)) { e.target.value = ''; return; }
+  if (lock) await api('/api/studies/preregister', payload);
   const ids = await api('/api/batches', payload);
-  notify(`已加入 ${ids.length} 個研究案例。`);
+  notify(`已加入 ${ids.length} 個研究案例${lock ? '，研究樣本已先鎖定' : '（探索性分析）'}。`);
   await refreshJobs();
   e.target.value = '';
 }));
