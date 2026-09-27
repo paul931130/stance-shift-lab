@@ -66,23 +66,60 @@ Codespace 是 GitHub 借你的一台雲端電腦，研究台會在上面用同�
 
 ### 在自己電腦上用 Docker 執行
 
-**唯一支援的執行方式是 Docker**，Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個映像。需求只有 Docker Desktop（Linux 可用 Docker Engine + Compose plugin），以及一個模型來源：自己電腦的 Ollama、雲端租 GPU（GPUtw），或雲端模型 API 金鑰，`setup` 會讓你三選一，比較見 [選擇模型來源](docs/model-sources.md)；只想看介面可用下方展示模式，什麼都不用準備。電腦上不需要安裝 Python。
+Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像，電腦上不需要安裝 Python。資料存在自己電腦的 Docker volume，關機、重開都還在，不會有 Codespace「開新的就不見」的問題。模型一樣三選一：自己電腦的 Ollama、雲端租 GPU（GPUtw），或雲端模型 API。
 
-Windows（PowerShell）：
+#### 第一次（只做一次）
 
-```powershell
-.\research.ps1 setup
-.\research.ps1 start
-```
+1. **安裝 Docker 並打開**：Windows／macOS 裝 [Docker Desktop](https://www.docker.com/products/docker-desktop/) 並啟動它（工具列看到鯨魚圖示）；Linux 裝 Docker Engine 加 Compose plugin。
+2. **下載程式**：裝 [Git](https://git-scm.com/) 後在終端機執行下面指令；不想裝 Git，也可在 GitHub 頁面 Code → Download ZIP 後解壓縮。
 
-macOS／Linux：
+   ```bash
+   git clone https://github.com/paul931130/stance-shift-lab.git
+   cd stance-shift-lab
+   ```
 
-```bash
-./research.sh setup
-./research.sh start
-```
+3. **準備模型（三選一）**：
 
-開啟 <http://127.0.0.1:8000/>。Windows 也可直接雙擊 `start-research.cmd`。CI 會在每次推送時於 x86-64 與 ARM64 兩種架構實際啟動這個 Docker 服務並驗證可用。
+   | 模型來源 | 事前準備 | setup 選 | 要填的東西 |
+   | --- | --- | --- | --- |
+   | 雲端模型 API（最簡單） | 申請 Gemini／OpenRouter／OpenAI 的 API key | `3` | 供應商、金鑰、模型名稱（例如 `gemini/gemini-2.5-flash`） |
+   | 雲端租 GPU（GPUtw） | 依 [GPUtw 整合指南](docs/gputw-integration.md) 開好 Ollama 執行個體並下載 `qwen3:14b`；瀏覽器開 `你的位址/api/tags` 看得到模型才算成功 | `2` | 遠端 Ollama 位址、存取 key |
+   | 自己電腦的 Ollama | 裝 [Ollama](https://ollama.com/)，執行 `ollama pull qwen3:14b`（建議 16 GB 以上 VRAM） | `1` | 不用填，模型保留 `ollama/qwen3:14b` |
+
+   Linux 用本機 Ollama 時，要讓 Ollama 監聽 `0.0.0.0`，做法見 [Clone 後首次啟動](docs/getting-started.md)；Windows／macOS 不需要。
+
+4. **設定、檢查、啟動**（Windows 在專案資料夾開 PowerShell；macOS／Linux 開終端機）：
+
+   ```powershell
+   .\research.ps1 setup     # 問「模型要在哪裡執行？」選 1／2／3，再填資料來源金鑰
+   .\research.ps1 doctor    # 「模型來源」一行顯示連線正常才算接上
+   .\research.ps1 start     # 第一次會下載約 2 GB，需要幾分鐘
+   ```
+
+   ```bash
+   ./research.sh setup
+   ./research.sh doctor
+   ./research.sh start
+   ```
+
+   PowerShell 若出現「無法載入，因為這個系統上已停用指令碼執行」，先執行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` 再重試；或直接雙擊 `start-research.cmd` 啟動。
+
+5. **打開研究台**：瀏覽器開 <http://127.0.0.1:8000/>，右上角模型狀態要顯示你的模型，不是「離線」。金鑰也可以之後按「設定模型與金鑰」在網頁填。
+6. **（選用）放 FNSPID 新聞檔**：把已授權的 `Stock_news.csv` 放進專案的 `research-inputs/` 資料夾。沒有也能只用 Alpha Vantage 新聞。
+7. **開始研究**：「資料準備」建立資料集 →「建立實驗」按「開始研究實驗」→「Agent 執行」看進度 →「統計結果」比較四組。
+
+#### 之後每次
+
+1. 打開 Docker Desktop。
+2. 在專案資料夾執行 `.\research.ps1 start`（macOS／Linux：`./research.sh start`），開 <http://127.0.0.1:8000/>。
+3. 用完執行 `stop`；資料會留著。
+
+- **換模型來源**：重新執行 `setup` 選另一個，再執行 `start`；或在網頁「設定模型與金鑰」改。
+- **拿到新程式**：`git pull` 後再 `start`，資料不受影響。
+- **備份**：Windows 執行 `.\research.ps1 backup`（存到 `backups\`）；macOS／Linux 在瀏覽器開 <http://127.0.0.1:8000/api/backup> 下載 ZIP。不要執行 `docker compose down -v`，那會刪掉所有資料。
+- **GPUtw 用完記得到控制台停止執行個體**，不然會持續計費。
+
+CI 會在每次推送時於 x86-64 與 ARM64 兩種架構實際啟動這個 Docker 服務並驗證可用。
 
 若只要展示介面與完整工作流、不使用 API key 或模型，可在 `.env.research` 暫時設定
 `RESEARCH_DEMO_MODE=true` 後啟動服務。展示模式會自動放入一筆固定的合成 NVDA
