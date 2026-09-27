@@ -319,23 +319,36 @@ def stability_report(jobs):
     repeated = {key: runs for key, runs in by_case.items() if len(runs) >= 2}
     groups = {}
     for group in GROUPS:
-        actions, expected, confidence, evidence_overlap = [], [], [], []
+        # Test-retest compares runs of the SAME case only; pooling all runs
+        # would count differences between cases as instability.
+        agreeing = pairs = 0
+        expected, confidence, evidence_overlap = [], [], []
+        expected_sd, confidence_sd = [], []
         case_count = 0
         run_count = 0
         for runs in repeated.values():
             values = [_stability_value(job, group) for job in runs]
             case_count += 1
             run_count += len(values)
-            actions.extend(values)
-            expected.extend(value["expected_return_pct"] for value in values)
-            confidence.extend(value["confidence"] for value in values)
+            within = _pairwise_agreement(values, "action")
+            pairs += within["pairs"]
+            agreeing += round((within["agreement"] or 0) * within["pairs"])
+            case_expected = _numeric([value["expected_return_pct"] for value in values])
+            case_confidence = _numeric([value["confidence"] for value in values])
+            expected.extend(case_expected)
+            confidence.extend(case_confidence)
+            if len(case_expected) > 1:
+                expected_sd.append(statistics.stdev(case_expected))
+            if len(case_confidence) > 1:
+                confidence_sd.append(statistics.stdev(case_confidence))
             for left_index, left in enumerate(values):
                 evidence_overlap.extend(_evidence_jaccard(left, right)
                                         for right in values[left_index + 1:])
         groups[group] = {"cases": case_count, "runs": run_count,
-                         "action": _pairwise_agreement(actions, "action"),
-                         "expected_return_pct": _mean_sd(expected),
-                         "confidence": _mean_sd(confidence),
+                         "action": {"agreement": agreeing / pairs if pairs else None, "pairs": pairs,
+                                    "basis": "within_case_pairs"},
+                         "expected_return_pct": {**_mean_sd(expected), "within_case_sd": _mean_sd(expected_sd)},
+                         "confidence": {**_mean_sd(confidence), "within_case_sd": _mean_sd(confidence_sd)},
                          "evidence_jaccard": _mean_sd(evidence_overlap)}
     return {"status": "descriptive_ready" if repeated else "no_repeated_complete_cases",
             "protocol_hash": hashes[0] if hashes else None,
@@ -343,7 +356,9 @@ def stability_report(jobs):
             "repeated_cases": len(repeated),
             "case_run_counts": {f"{key[0]}:{key[1]}:{key[2]}": len(value) for key, value in repeated.items()},
             "groups": groups,
-            "note": "重複性指標是 full-protocol test-retest 的描述統計；未做正式顯著性檢定，也不取代主分析。"}
+            "note": "重複性指標是 full-protocol test-retest 的描述統計；一致率只比較同一案例的重跑配對。"
+                    "expected_return_pct／confidence 的 sd 含案例間差異，within_case_sd 才是案例內的重跑離散程度。"
+                    "未做正式顯著性檢定，也不取代主分析。"}
 
 
 def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dataset_ids=None, frozen_at=None):

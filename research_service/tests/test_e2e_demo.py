@@ -55,6 +55,10 @@ class DemoExperimentE2E(unittest.TestCase):
         except PlaywrightError as error:
             cls.playwright.stop()
             cls.tearDownServer()
+            # Skip only when the browser is genuinely missing; any other launch
+            # failure (e.g. "spawn UNKNOWN") is a real error and must surface.
+            if "Executable doesn't exist" not in str(error) and "playwright install" not in str(error):
+                raise
             raise unittest.SkipTest(f"Chromium for Playwright is not installed: {error}")
 
     @classmethod

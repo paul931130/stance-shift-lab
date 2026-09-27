@@ -41,6 +41,7 @@ class Store:
                     ON case_results(protocol_hash, ticker, "group", maturity_date);
                 CREATE INDEX IF NOT EXISTS idx_jobs_protocol
                     ON jobs(json_extract(config, '$.protocol_hash'));
+                CREATE TABLE IF NOT EXISTS services(id TEXT PRIMARY KEY, heartbeat_at TEXT);
                 CREATE TABLE IF NOT EXISTS preregistrations(
                     protocol_hash TEXT PRIMARY KEY, dataset_ids TEXT, frozen_at TEXT);
             """)
@@ -80,9 +81,28 @@ class Store:
         finally:
             db.close()
 
-    def recover(self):
+    def heartbeat(self, service_id):
+        """Record that a web service instance (and its worker) is alive."""
         with self.connect() as db:
-            db.execute("UPDATE jobs SET status='paused', wants_run=0, owner='', error='研究服務曾重新啟動；已完成的步驟都保留，請按「繼續執行」' WHERE status='running'")
+            db.execute("INSERT INTO services(id, heartbeat_at) VALUES(?, ?) "
+                       "ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at", (service_id, now()))
+
+    def recover(self, dead_before, idle_before):
+        """Pause worker jobs whose service stopped; never touch a live service's or a CLI's job.
+
+        A job claimed by ``worker:<id>`` is orphaned once that service's
+        heartbeat is older than ``dead_before``. Jobs claimed before owners were
+        recorded (owner '' or 'worker') are orphaned once not updated since
+        ``idle_before``. CLI leases expire on their own (see acquire).
+        """
+        with self.connect() as db:
+            return db.execute("""UPDATE jobs SET status='paused', wants_run=0, owner='',
+                error='研究服務曾重新啟動；已完成的步驟都保留，請按「繼續執行」'
+                WHERE status='running' AND owner NOT LIKE 'cli:%' AND (
+                    (owner LIKE 'worker:%' AND substr(owner, 8) NOT IN
+                        (SELECT id FROM services WHERE heartbeat_at >= ?))
+                    OR (owner IN ('', 'worker') AND updated_at < ?))""",
+                (dead_before, idle_before)).rowcount
 
     def backup_bytes(self):
         """Return a WAL-safe SQLite snapshot without stopping the research worker."""
@@ -245,7 +265,7 @@ class Store:
             db.execute("UPDATE jobs SET status='paused', owner='', updated_at=? WHERE id=? AND owner=? AND status='running'",
                        (now(), key, owner))
 
-    def claim(self):
+    def claim(self, owner="worker"):
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
             # Run cases in analysis-date order, not submission order. A case's
@@ -256,7 +276,7 @@ class Store:
                 ORDER BY json_extract(config, '$.analysis_date'), created_at LIMIT 1""").fetchone()
             if not row:
                 return None
-            db.execute("UPDATE jobs SET status='running',owner='worker',updated_at=? WHERE id=?", (now(), row["id"]))
+            db.execute("UPDATE jobs SET status='running',owner=?,updated_at=? WHERE id=?", (owner, now(), row["id"]))
             job = self.unpack(row)
             from .protocol import StudyProtocol
             if job["config"]["protocol"].get("version") != StudyProtocol().version:

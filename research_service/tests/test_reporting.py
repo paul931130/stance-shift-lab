@@ -44,6 +44,17 @@ class StabilityReportTests(unittest.TestCase):
         self.assertEqual(result["status"], "mixed_protocols")
         self.assertEqual(result["repeated_cases"], 0)
 
+    def test_repeatability_compares_runs_of_the_same_case_only(self):
+        jobs = []
+        for ticker, action in (("NVDA", "Buy"), ("AAPL", "Sell")):
+            for repeat in range(2):
+                job = completed_run(f"{ticker}-{repeat}", dict.fromkeys("ABCD", action), {})
+                job["config"]["ticker"] = ticker
+                jobs.append(job)
+        result = stability_report(jobs)
+        self.assertEqual(result["repeated_cases"], 2)
+        self.assertEqual(result["groups"]["A"]["action"], {"agreement": 1.0, "pairs": 2, "basis": "within_case_pairs"})
+
     def test_stability_requires_the_same_dataset_and_resolved_model(self):
         first = completed_run("2024-01-01T00:00:00+00:00",
                               {group: "Buy" for group in "ABCD"}, {})

@@ -5,9 +5,11 @@ only assembles the service: shared context, the background research worker,
 request protection and error mapping. Routes live in ``research_service.web``.
 """
 from contextlib import asynccontextmanager
+from datetime import datetime, timedelta, timezone
 import asyncio
 import os
 import threading
+from uuid import uuid4
 from urllib.parse import urlsplit
 
 from fastapi import FastAPI
@@ -83,6 +85,26 @@ def create_app(store=None, model_call=None, start_worker=True):
     public_origin = os.getenv("RESEARCH_PUBLIC_ORIGIN", "").rstrip("/")
     allowed_hosts = _env_list("RESEARCH_ALLOWED_HOSTS", "localhost,127.0.0.1,::1,testserver")
     stop = threading.Event()
+    # Several services may share one database (a second container, a CLI
+    # `serve`). Each proves it is alive with a heartbeat, and only jobs of a
+    # service that stopped are released; a restart used to pause every
+    # running job, including ones another live service was still running.
+    service_id = uuid4().hex
+    worker_owner = f"worker:{service_id}"
+
+    def recover_orphans():
+        at = datetime.now(timezone.utc)
+        released = store.recover((at - timedelta(seconds=90)).isoformat(), (at - timedelta(minutes=30)).isoformat())
+        if released:
+            logger.warning("released %s job(s) left running by a stopped service", released)
+
+    def beat():
+        while not stop.wait(15):
+            try:
+                store.heartbeat(service_id)
+                recover_orphans()
+            except Exception:
+                logger.exception("service heartbeat failed; retrying")
 
     def work():
         # One worker advances one checkpointed step at a time; see Store.claim for ordering.
@@ -91,7 +113,7 @@ def create_app(store=None, model_call=None, start_worker=True):
         # locked database) are logged and retried after a short back-off.
         while not stop.is_set():
             try:
-                job = store.claim()
+                job = store.claim(worker_owner)
             except Exception:
                 logger.exception("worker could not claim a job; retrying")
                 stop.wait(5)
@@ -119,7 +141,10 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @asynccontextmanager
     async def lifespan(app):
-        store.recover()
+        store.heartbeat(service_id)
+        recover_orphans()
+        heart = threading.Thread(target=beat, daemon=True, name="service-heartbeat")
+        heart.start()
         thread = threading.Thread(target=work, daemon=True, name="research-worker")
         if start_worker:
             thread.start()
