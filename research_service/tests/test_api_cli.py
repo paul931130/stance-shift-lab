@@ -46,6 +46,29 @@ class ApiTests(unittest.TestCase):
         self.assertIsNone(research.store.claim())
         self.assertEqual(research.resume(job_id)["status"], "complete")
 
+    def test_start_creates_the_job_already_paused(self):
+        research = DemoResearch(self.tmp.name)
+        job = research.store.get(research.start("NVDA", "2024-12-31"))
+        self.assertEqual((job["status"], job["wants_run"]), ("paused", 0))
+
+    def test_resume_refuses_cancelled_and_worker_owned_jobs(self):
+        research = DemoResearch(self.tmp.name)
+        cancelled = research.start("NVDA", "2024-12-31")
+        research.store.control(cancelled, "cancel")
+        with self.assertRaisesRegex(ValueError, "取消"):
+            research.resume(cancelled)
+        running = research.start("NVDA", "2024-12-31", voting_samples=5)
+        research.store.control(running, "resume")
+        self.assertEqual(research.store.claim()["id"], running)  # the web worker owns it now
+        with self.assertRaisesRegex(ValueError, "worker"):
+            research.resume(running)
+
+    def test_resume_takes_a_queued_job_away_from_the_worker(self):
+        research = DemoResearch(self.tmp.name)
+        job_id = research.start("NVDA", "2024-12-31")
+        research.store.control(job_id, "resume")  # e.g. 繼續 pressed in the web UI
+        self.assertEqual(research.resume(job_id)["status"], "complete")
+
     def test_failed_step_is_saved_and_resumable(self):
         down = {"on": True}
 
