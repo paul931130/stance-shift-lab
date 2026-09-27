@@ -547,12 +547,19 @@ def _financial_facts(data, tag, analysis_date):
     return result
 
 
+# Quarter, six-month and nine-month year-to-date, and annual periods. Many
+# 10-Qs report cash flow only year-to-date; accepting just 3- and 12-month
+# periods silently fell back to the first quarter's filing.
+PERIOD_DAYS = ((70, 110), (160, 200), (250, 290), (330, 380))
+
+
 def _comparable_pair(facts):
-    """Select the latest quarter/annual fact with a same-period prior-year fact."""
+    """Select the latest period with a same-length prior-year period (shortest period on ties)."""
     durations = [fact for fact in facts
                  if fact["_duration"] is not None
-                 and (70 <= fact["_duration"] <= 110 or 330 <= fact["_duration"] <= 380)]
-    for current in sorted(durations, key=lambda item: (item["_end"], item.get("filed", "")), reverse=True):
+                 and any(low <= fact["_duration"] <= high for low, high in PERIOD_DAYS)]
+    for current in sorted(durations, key=lambda item: (item["_end"], item.get("filed", ""), -item["_duration"]),
+                          reverse=True):
         candidates = [prior for prior in durations
                       if 300 <= (current["_end"] - prior["_end"]).days <= 430
                       and abs(current["_duration"] - prior["_duration"]) <= 25]
@@ -584,7 +591,9 @@ def fetch_fundamental(ticker, analysis_date, requester=get_json):
                      {"User-Agent": agent, "Accept-Encoding": "identity"})
     items = []
     metric_tags = (
-        ("Revenue", ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues")),
+        # Banks such as JPM report revenue net of interest expense.
+        ("Revenue", ("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues",
+                     "RevenuesNetOfInterestExpense")),
         ("NetIncomeLoss", ("NetIncomeLoss",)),
         ("OperatingCashFlow", ("NetCashProvidedByUsedInOperatingActivities",)),
     )
@@ -596,11 +605,15 @@ def fetch_fundamental(ticker, analysis_date, requester=get_json):
         selected_tag, selected, _ = max(choices, key=lambda choice: (
             choice[1][0]["_end"], choice[1][0].get("filed", ""), -choice[2]))
         current, prior = selected
-        change = (current["_value"] / prior["_value"] - 1) * 100 if prior["_value"] else None
+        # Relative to the prior value's magnitude, so the sign always says
+        # better (+) or worse (-): an operating cash flow going from -111 to
+        # -154 is a -38.58% change, not +38.58%.
+        change = (current["_value"] - prior["_value"]) / abs(prior["_value"]) * 100 if prior["_value"] else None
         if change is None or not change.is_finite():
             continue
         claim = (f"{metric}: current={_decimal_text(current['_value'])} USD; current_period="
-                 f"{current.get('start', '')}–{current['end']}; prior={_decimal_text(prior['_value'])} USD; "
+                 f"{current.get('start', '')}–{current['end']}; period_days={current['_duration']}; "
+                 f"prior={_decimal_text(prior['_value'])} USD; "
                  f"prior_period={prior.get('start', '')}–{prior['end']}; "
                  f"year_over_year_change_pct={change:.6f}; current_form={current['form']}; "
                  f"current_filed={current['filed']}")
@@ -610,7 +623,9 @@ def fetch_fundamental(ticker, analysis_date, requester=get_json):
             "current_value": current["val"], "prior_value": prior["val"],
             "change_pct": round(float(change), 6), "current_period": current["end"],
             "prior_period": prior["end"], "current_accession": current["accn"],
-            "prior_accession": prior["accn"], "selection_rule": "same_concept_similar_duration_prior_year_v1"})
+            "prior_accession": prior["accn"], "period_days": current["_duration"],
+            "change_basis": "relative_to_abs_prior",
+            "selection_rule": "same_concept_same_length_prior_year_v2"})
 
     assets = _financial_facts(data, "Assets", analysis_date)
     liabilities = _financial_facts(data, "Liabilities", analysis_date)
