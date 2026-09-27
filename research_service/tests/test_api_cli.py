@@ -67,6 +67,18 @@ class ApiTests(unittest.TestCase):
         self.assertTrue(cited)
         self.assertLessEqual(cited, real_ids)
 
+    def test_later_rounds_see_whole_earlier_arguments_and_all_citations(self):
+        from research_service.models import _compact_history
+
+        rationale = "x" * 320
+        [shown] = _compact_history([{"key": "d-r1-agent-a", "stance": "BULL", "round": 1, "output": {
+            "action": "Buy", "expected_return_pct": 2.0, "confidence": .6, "rationale": rationale,
+            "evidence_ids": ["a", "b", "c"], "strongest_counterpoint": "y" * 200, "rebutted_claim": "z"}}])
+        self.assertEqual(shown["output"]["rationale"], rationale)
+        self.assertEqual(shown["output"]["evidence_ids"], ["a", "b", "c"])
+        self.assertEqual(shown["output"]["strongest_counterpoint"], "y" * 200)
+        self.assertEqual((shown["output"]["confidence"], shown["output"]["rebutted_claim"]), (.6, "z"))
+
     def test_unknown_alias_is_still_rejected(self):
         from research_service.models import evidence_aliases, unalias_evidence_ids
 

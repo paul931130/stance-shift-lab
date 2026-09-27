@@ -52,7 +52,7 @@ class StudyProtocol:
     allow_small_model: bool = False
     temperature: float = 0.2
     voting_temperature: float = 0.8
-    max_output_tokens: int = 512
+    max_output_tokens: int = 1024
     max_rounds: int = 3
     voting_samples: Literal[5, 7] = 7
     primary_horizon: int = 60

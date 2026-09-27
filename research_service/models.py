@@ -93,17 +93,25 @@ def compact_research_evidence(domain, items):
 
 
 def _compact_history(records):
-    """Expose prior arguments, never their provider audit payloads, to a debate turn."""
+    """Expose prior arguments, never their provider audit payloads, to a debate turn.
+
+    v3-0927.1: earlier turns were cut to 60 characters and one citation, so the
+    switched D round could not see the claim it must rebut and the Adjudicator
+    could not check either side's evidence. Arguments are now shown whole (the
+    schema already bounds them) with every citation.
+    """
     compact = []
     for record in records:
         output = record.get("output", {})
-        compact.append({
-            "key": record.get("key"), "stance": record.get("stance"), "round": record.get("round"),
-            "output": {"action": output.get("action"), "expected_return_pct": output.get("expected_return_pct"),
-                       "rationale": _short_text(output.get("rationale"), 60),
-                       "evidence_ids": output.get("evidence_ids", [])[:1],
-                       "strongest_counterpoint": _short_text(output.get("strongest_counterpoint"), 50)},
-        })
+        shown = {"action": output.get("action"), "expected_return_pct": output.get("expected_return_pct"),
+                 "confidence": output.get("confidence"),
+                 "rationale": _short_text(output.get("rationale"), 320),
+                 "evidence_ids": output.get("evidence_ids", []),
+                 "strongest_counterpoint": _short_text(output.get("strongest_counterpoint"), 240)}
+        if output.get("rebutted_claim"):
+            shown["rebutted_claim"] = _short_text(output.get("rebutted_claim"), 240)
+        compact.append({"key": record.get("key"), "stance": record.get("stance"), "round": record.get("round"),
+                        "output": {key: value for key, value in shown.items() if value is not None}})
     return compact
 
 
@@ -336,7 +344,7 @@ def messages_for(call, report, records, memory, protocol):
         f"Give one expected_return_pct forecast for those {protocol.primary_horizon} sessions. "
         f"Choose Hold only when that point forecast is inside the {band_text} neutral band; otherwise choose Buy or Sell even when uncertain. "
         "Hold is not a way to avoid committing; uncertainty lowers confidence, never substitutes for a forecast. Read decision_calibration before research summaries. "
-        "Target evidence is direct company evidence; context news cannot decide direction by itself. Use supplied comparative SEC metrics only as stated: copy their numbers exactly and never invent a growth rate, benchmark, valuation, or financial-quality label. Legacy SEC point facts without a comparable period are excluded from this decision payload. "
+        "Target evidence is direct company evidence; context news cannot decide direction by itself. Use supplied comparative SEC metrics only as stated: copy their numbers exactly and never invent a growth rate, benchmark, valuation, or financial-quality label; words such as growth, decline, strong, weak, profit, loss or losses need a supplied comparison that states them. Legacy SEC point facts without a comparable period are excluded from this decision payload. "
         "Every number you write in rationale, risks or strongest_counterpoint must be copied exactly as it appears in the supplied report or in your own forecast fields: do not round it, convert units, or compute a new figure such as a growth rate or percentage change. If you cannot copy a number exactly, describe it in words instead. "
         "Use only supplied evidence IDs exactly; URLs and invented IDs are forbidden. Keep rationale under 320 characters and give at most 4 concise risks. "
         "Return one compact JSON object with action (Buy, Hold, Sell), expected_return_pct (-60..60), confidence (0..1), rationale (string), evidence_ids (array of supplied IDs), risks (array of strings).")
@@ -362,7 +370,10 @@ def messages_for(call, report, records, memory, protocol):
                        "do not default to 0 without justifying it in the rationale.")
     elif call.kind == "adjudication":
         common += (" You are the neutral Adjudicator. Weigh the complete debate without favoring speaker order. "
-            "Assigned Bull/Bear counts are not evidence. Compare their support and forecast magnitude against the direct evidence and calibration. Maturity memory is prior-experiment calibration, not current-case evidence; a tie is not abstention.")
+            "Assigned Bull/Bear counts are not evidence. For each side, check its cited evidence IDs against the evidence list in the report: "
+            "an argument counts only as far as the cited evidence actually supports it, and a claim with no supporting evidence counts for nothing. "
+            "Decide from the original evidence and calibration, using the debate to find which evidence matters, not from how forcefully or how often a side argued. "
+            "Compare forecast magnitudes against that evidence. Maturity memory is prior-experiment calibration, not current-case evidence; a tie is not abstention.")
     # A and every B sample deliberately receive byte-identical prompts and no memory.
     payload = {"report": _compact_report(report),
                "history": _compact_history(visible_history(call, records, protocol))}
