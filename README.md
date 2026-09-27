@@ -3,42 +3,79 @@
 [![CI](https://github.com/paul931130/stance-shift-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/paul931130/stance-shift-lab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-可實際執行的多代理人立場交換回測研究台。正式入口是 Docker 化的 FastAPI 服務：四個資料 Agent 建立具時間邊界的不可變資料快照，A/B/C/D 使用同一份快照比較單次判斷、獨立投票、固定立場辯論與立場交換辯論。
+這是一個用 AI 模型做股票回測的研究台：先蒐集某檔股票在某個日期之前能取得的技術面、基本面、新聞、總經資料，再讓模型用四種方式做買賣判斷，比較哪一種比較準：
+
+- **A 單次判斷**：問一次。
+- **B 獨立投票**：同樣問題問 7 次再投票。
+- **C 固定立場辯論**：看多、看空各自辯論 3 輪後裁決。
+- **D 立場交換辯論**：辯論中途讓雙方交換立場。
+
+四組用的是同一份資料，差別只在決策方式。整個研究台是一個網頁，在瀏覽器操作。
 
 ## 快速開始
 
-### 不用安裝：直接在 GitHub 開（Codespaces）
+有兩種跑法，擇一即可：
+
+| | 在 GitHub 上開（Codespaces） | 在自己電腦跑（Docker） |
+| --- | --- | --- |
+| 要安裝什麼 | 什麼都不用，只要瀏覽器 | Docker Desktop |
+| 研究台網址 | `https://<codespace 名稱>-8000.app.github.dev` | <http://127.0.0.1:8000/> |
+| 可用的模型 | 雲端模型 API、GPUtw 租 GPU | 雲端模型 API、GPUtw 租 GPU、自己電腦的 Ollama |
+| 資料存哪裡 | 那一台 Codespace（開新的一台就沒了） | 自己電腦 |
+| 費用 | 用自己 GitHub 帳號的 Codespaces 額度 | 免費 |
+
+不論哪種跑法，都要先準備下面的金鑰。
+
+### 事前準備：金鑰
+
+**資料來源（建立資料集要用，都免費）**
+
+| 名稱 | 用途 | 去哪裡拿 |
+| --- | --- | --- |
+| `SEC_USER_AGENT` | 下載美國上市公司財報 | 不用申請，填 `你的名字 你的email` |
+| `FRED_API_KEY` | 下載總經資料 | [FRED 申請頁](https://fred.stlouisfed.org/docs/api/api_key.html) |
+| `ALPHA_VANTAGE_API_KEY` | 下載新聞 | [Alpha Vantage 申請頁](https://www.alphavantage.co/support/#api-key) |
+
+**模型（三選一）**
+
+| 模型來源 | 要準備什麼 | 適合誰 |
+| --- | --- | --- |
+| 雲端模型 API（最簡單） | 一把 API key：[Gemini](https://aistudio.google.com/apikey)、[OpenRouter](https://openrouter.ai/) 或 OpenAI；模型名稱例如 `gemini/gemini-2.5-flash` | 大多數人；依用量付費 |
+| 雲端租 GPU（GPUtw） | 依 [GPUtw 整合指南](docs/gputw-integration.md) 開好 Ollama 執行個體並下載 `qwen3:14b`，記下位址與存取 key | 想用正式協議的 `qwen3:14b`、又沒有顯示卡 |
+| 自己電腦的 Ollama | 裝 [Ollama](https://ollama.com/)，執行 `ollama pull qwen3:14b`；建議 16 GB 以上顯示卡記憶體 | 有好顯示卡；只能在本機 Docker 跑法使用 |
+
+詳細比較見 [選擇模型來源](docs/model-sources.md)。
+
+> **金鑰只填在研究台的設定區、`.env.research` 或 Codespaces Secrets，不要貼到聊天、issue 或 commit 裡。** 不小心外流了，就到申請的網站把那把作廢、重新產生。
+
+### 跑法一：在 GitHub 上開（Codespaces）
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/paul931130/stance-shift-lab)
 
-Codespace 是 GitHub 借你的一台雲端電腦，研究台會在上面用同一個 Docker 映像執行，你只需要瀏覽器。
+Codespace 是 GitHub 借你的一台雲端電腦，研究台在上面用同一個 Docker 映像執行。Codespace 沒有顯示卡，模型只能用雲端模型 API 或 GPUtw。
 
 #### 第一次：建立 Codespace（只做一次）
 
-1. **準備金鑰（建議先做）**：到 GitHub 右上角頭像 → Settings → Codespaces → Secrets → New secret，逐一新增下列項目，Repository access 勾選 `stance-shift-lab`：
-   - 模型：`GEMINI_API_KEY`（或 `OPENROUTER_API_KEY`／`OPENAI_API_KEY`）與 `RESEARCH_MODEL`，例如 `gemini/gemini-2.5-flash`
-   - 資料來源：`SEC_USER_AGENT`（格式 `你的名字 你的email`）、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`
+1. **把金鑰存成 Codespaces Secrets（建議）**：GitHub 右上角頭像 → Settings → Codespaces → Secrets → New secret，逐一新增，Repository access 勾選 `stance-shift-lab`：
+   - 資料來源：`SEC_USER_AGENT`、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`
+   - 雲端模型 API：`GEMINI_API_KEY`（或 `OPENROUTER_API_KEY`／`OPENAI_API_KEY`）與 `RESEARCH_MODEL`
+   - 或 GPUtw：`GPUTW_OLLAMA_BASE_URL`、`GPUTW_OLLAMA_API_KEY`
    - `RESEARCH_DEMO_MODE`，值填 `false`
 
-   跳過也可以，開好後在網頁的「設定模型與金鑰」填，效果一樣。
+   跳過也可以，開好後在研究台的「設定模型與金鑰」填，效果一樣。
 2. **建立**：按上面的「Open in GitHub Codespaces」按鈕 → Create codespace。
-3. **等它啟動**：第一次要下載約 2 GB 套件，大約 5–10 分鐘。畫面是瀏覽器版的 VS Code，下方終端機會跑啟動訊息，完成後會自動開新分頁 `https://<codespace 名稱>-8000.app.github.dev`，這就是研究台。
+3. **等它啟動**：第一次要下載約 2 GB，大約 5–10 分鐘。畫面是瀏覽器版的 VS Code，完成後會自動開新分頁，那就是研究台。
    - 沒有自動開：點 VS Code 下方的「連接埠（Ports）」分頁，在 8000 那一列按地球圖示。
    - 瀏覽器擋了彈出視窗：允許後再按一次地球圖示。
-4. **確認模型**：研究台右上角的模型狀態要顯示你的模型，不是「離線」。還沒填金鑰的話，按「資料準備」頁標題下方的「設定模型與金鑰」填入並儲存。
-5. **（選用）放 FNSPID 新聞檔**：把已授權的 `Stock_news.csv` 從電腦拖進 VS Code 左側檔案樹的 `research-inputs/` 資料夾。沒有這個檔也能只用 Alpha Vantage 新聞。
-6. **開始研究**：
-   1. 「資料準備」：選股票與分析日，按「啟動資料 Agent」建立資料集。
-   2. 「建立實驗」：選剛建好的資料集，按「開始研究實驗」。
-   3. 「Agent 執行」看進度，完成後到「統計結果」比較四組。
+4. 接著照下方「[確認模型並開始研究](#確認模型並開始研究)」。
 
 #### 之後每次：打開「原本那台」
 
-> **不要再按上面的按鈕或 Create codespace。** 那會開一台全新的 Codespace，裡面沒有你的資料集、上傳的 CSV、網頁設定與實驗結果，全部要重來，還會多吃一份額度。
+> **不要再按上面的按鈕或 Create codespace。** 那會開一台全新的 Codespace，裡面沒有你的資料集、上傳的 CSV、設定與實驗結果，全部要重來，還會多吃一份額度。
 
 1. 到 <https://github.com/codespaces>，點你已經建立的那一台（名稱是隨機的兩三個英文字）。
-2. 啟動後研究台會自動重新啟動並開啟，資料都還在。沒自動開的話，照上面第 3 步從「連接埠」開。
-3. 用完直接關分頁即可，閒置約 30 分鐘會自動停機，資料保留；想立刻停機省額度，在 codespaces 頁面該台的「⋯」→ Stop codespace。
+2. 研究台會自動啟動，資料都還在。沒自動開的話，從「連接埠」分頁開。
+3. 用完直接關分頁，閒置約 30 分鐘會自動停機，資料保留；想立刻停機省額度，在 codespaces 頁面該台的「⋯」→ Stop codespace。
 
 | 開啟方式 | `research-inputs/` 上傳的 CSV | 資料集、設定、實驗結果 |
 | --- | --- | --- |
@@ -46,53 +83,32 @@ Codespace 是 GitHub 借你的一台雲端電腦，研究台會在上面用同�
 | 在 Codespace 內執行 Rebuild Container | 保留 | **消失** |
 | 按上方按鈕或 Create codespace 開新的 | **消失** | **消失** |
 
-#### 注意事項
+#### Codespace 注意事項
 
-- **備份**：要重建或刪除 Codespace 前，在瀏覽器開 `https://<codespace 名稱>-8000.app.github.dev/api/backup` 下載整個研究資料庫 ZIP；每個實驗也可在「Agent 執行」按「下載研究產物 ZIP」。上傳過的 CSV 請自己保留原檔。
-- **拿到新程式**：在 VS Code 終端機執行 `git pull`，再執行 `./research.sh start`，資料不受影響。
-- **模型**：Codespace 沒有 GPU，只能接雲端模型 API 或自己的 GPUtw 遠端 Ollama，見下方「怎麼連模型」。只想看介面，把 `RESEARCH_DEMO_MODE` 設為 `true`。
+- **改了 Secrets**：到 <https://github.com/codespaces> 把這台 Stop 再打開就會套用。不要用 Rebuild Container，會清掉資料集。
+- **備份**：要刪除 Codespace 前，瀏覽器開 `https://<codespace 名稱>-8000.app.github.dev/api/backup` 下載整個研究資料庫 ZIP。上傳過的 CSV 請自己保留原檔。
+- **更新程式**：在 VS Code 終端機執行 `git pull`，再執行 `./research.sh start`，資料不受影響。
 - **存取**：8000 連接埠預設為私人，只有你的 GitHub 帳號登入後看得到；不要改成公開。
-- **費用**：使用各自 GitHub 帳號的 Codespaces 額度，用不到的舊 Codespace 可在 codespaces 頁面刪除（資料會一併刪除）。
 
-### 怎麼連模型
+### 跑法二：在自己電腦跑（Docker）
 
-三種方式擇一，以雲端模型 API（以 Gemini 為例）最簡單：
-
-1. **在網頁設定（最快）**：開啟研究台，按「資料準備」頁標題下方（或「建立實驗」頁模型欄位下方）的「設定模型與金鑰」按鈕，在「回測模型」與「雲端模型金鑰」填入 `GEMINI_API_KEY` 與 `RESEARCH_MODEL`（例如 `gemini/gemini-3.1-pro-preview`，想省錢可用 `gemini/gemini-2.5-flash`），按「儲存設定」立即生效。右上角模型狀態顯示該模型、不是「離線」就代表連上了。
-2. **在終端機設定**：`./research.sh setup`（Windows：`.\research.ps1 setup`）選 `3` 雲端模型 API → 選供應商 → 貼上金鑰，再用 `doctor` 確認「模型來源」一行顯示連線正常，最後 `start`。
-3. **用 Codespaces Secrets（每次開 Codespace 自動套用）**：到 GitHub → Settings → Codespaces → Secrets 新增 `GEMINI_API_KEY`、`RESEARCH_MODEL`，並把 `RESEARCH_DEMO_MODE` 設為 `false`，授權給這個 repo。每次啟動 Codespace 都會套用；改完 secrets 後，到 <https://github.com/codespaces> 把這台停止（Stop codespace）再打開即可。不要用 Rebuild Container，會清掉資料集。
-
-常被限流（429）時，把 `RESEARCH_PARALLEL_WORKERS` 調成 1 或 2。本機 Ollama、GPUtw 租 GPU、OpenRouter／OpenAI 的設定見 [選擇模型來源](docs/model-sources.md)。**金鑰只填在設定區、`.env.research` 或 Secrets，不要貼到聊天、issue 或 commit 裡。**
-
-### 在自己電腦上用 Docker 執行
-
-Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像，電腦上不需要安裝 Python。資料存在自己電腦的 Docker volume，關機、重開都還在，不會有 Codespace「開新的就不見」的問題。模型一樣三選一：自己電腦的 Ollama、雲端租 GPU（GPUtw），或雲端模型 API。
+Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像，電腦上不需要安裝 Python。資料存在自己電腦，關機重開都還在。
 
 #### 第一次（只做一次）
 
 1. **安裝 Docker 並打開**：Windows／macOS 裝 [Docker Desktop](https://www.docker.com/products/docker-desktop/) 並啟動它（工具列看到鯨魚圖示）；Linux 裝 Docker Engine 加 Compose plugin。
-2. **下載程式**：裝 [Git](https://git-scm.com/) 後在終端機執行下面指令；不想裝 Git，也可在 GitHub 頁面 Code → Download ZIP 後解壓縮。
+2. **下載程式**：裝 [Git](https://git-scm.com/) 後執行下面指令；不想裝 Git，也可在 GitHub 頁面 Code → Download ZIP 後解壓縮。
 
    ```bash
    git clone https://github.com/paul931130/stance-shift-lab.git
    cd stance-shift-lab
    ```
 
-3. **準備模型（三選一）**：
-
-   | 模型來源 | 事前準備 | setup 選 | 要填的東西 |
-   | --- | --- | --- | --- |
-   | 雲端模型 API（最簡單） | 申請 Gemini／OpenRouter／OpenAI 的 API key | `3` | 供應商、金鑰、模型名稱（例如 `gemini/gemini-2.5-flash`） |
-   | 雲端租 GPU（GPUtw） | 依 [GPUtw 整合指南](docs/gputw-integration.md) 開好 Ollama 執行個體並下載 `qwen3:14b`；瀏覽器開 `你的位址/api/tags` 看得到模型才算成功 | `2` | 遠端 Ollama 位址、存取 key |
-   | 自己電腦的 Ollama | 裝 [Ollama](https://ollama.com/)，執行 `ollama pull qwen3:14b`（建議 16 GB 以上 VRAM） | `1` | 不用填，模型保留 `ollama/qwen3:14b` |
-
-   Linux 用本機 Ollama 時，要讓 Ollama 監聽 `0.0.0.0`，做法見 [Clone 後首次啟動](docs/getting-started.md)；Windows／macOS 不需要。
-
-4. **設定、檢查、啟動**（Windows 在專案資料夾開 PowerShell；macOS／Linux 開終端機）：
+3. **設定、檢查、啟動**（Windows 在專案資料夾開 PowerShell；macOS／Linux 開終端機）：
 
    ```powershell
-   .\research.ps1 setup     # 問「模型要在哪裡執行？」選 1／2／3，再填資料來源金鑰
-   .\research.ps1 doctor    # 「模型來源」一行顯示連線正常才算接上
+   .\research.ps1 setup     # 依序填資料來源金鑰，再選模型來源 1／2／3
+   .\research.ps1 doctor    # 檢查 Docker 與模型；「模型來源」一行是 [OK] 才算接上
    .\research.ps1 start     # 第一次會下載約 2 GB，需要幾分鐘
    ```
 
@@ -102,47 +118,61 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
    ./research.sh start
    ```
 
-   PowerShell 若出現「無法載入，因為這個系統上已停用指令碼執行」，先執行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` 再重試；或直接雙擊 `start-research.cmd` 啟動。
-
-5. **打開研究台**：瀏覽器開 <http://127.0.0.1:8000/>，右上角模型狀態要顯示你的模型，不是「離線」。金鑰也可以之後按「設定模型與金鑰」在網頁填。
-6. **（選用）放 FNSPID 新聞檔**：把已授權的 `Stock_news.csv` 放進專案的 `research-inputs/` 資料夾。沒有也能只用 Alpha Vantage 新聞。
-7. **開始研究**：「資料準備」建立資料集 →「建立實驗」按「開始研究實驗」→「Agent 執行」看進度 →「統計結果」比較四組。
+   `setup` 的模型選項：`1` 自己電腦的 Ollama、`2` GPUtw（填遠端位址與存取 key）、`3` 雲端模型 API（選供應商、貼金鑰、填模型名稱）。每一題直接按 Enter 會保留原值。
+   - PowerShell 出現「已停用指令碼執行」：先執行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` 再重試，或直接雙擊 `start-research.cmd` 啟動。
+   - Linux 用本機 Ollama：要讓 Ollama 監聽 `0.0.0.0`，做法見 [Clone 後首次啟動](docs/getting-started.md)；Windows／macOS 不需要。
+4. **打開研究台**：瀏覽器開 <http://127.0.0.1:8000/>，接著照下方「[確認模型並開始研究](#確認模型並開始研究)」。
 
 #### 之後每次
 
 1. 打開 Docker Desktop。
 2. 在專案資料夾執行 `.\research.ps1 start`（macOS／Linux：`./research.sh start`），開 <http://127.0.0.1:8000/>。
-3. 用完執行 `stop`；資料會留著。
+3. 用完執行 `.\research.ps1 stop`（macOS／Linux：`./research.sh stop`），資料會留著。
 
-- **換模型來源**：重新執行 `setup` 選另一個，再執行 `start`；或在網頁「設定模型與金鑰」改。
-- **拿到新程式**：`git pull` 後再 `start`，資料不受影響。
-- **備份**：Windows 執行 `.\research.ps1 backup`（存到 `backups\`）；macOS／Linux 在瀏覽器開 <http://127.0.0.1:8000/api/backup> 下載 ZIP。不要執行 `docker compose down -v`，那會刪掉所有資料。
-- **GPUtw 用完記得到控制台停止執行個體**，不然會持續計費。
+#### 本機注意事項
 
-CI 會在每次推送時於 x86-64 與 ARM64 兩種架構實際啟動這個 Docker 服務並驗證可用。
+- **更新程式**：`git pull` 後再 `start`，資料不受影響。
+- **備份**：Windows 執行 `.\research.ps1 backup`（存到 `backups\`）；macOS／Linux 瀏覽器開 <http://127.0.0.1:8000/api/backup> 下載 ZIP。
+- **不要執行 `docker compose down -v`**，那會刪掉所有研究資料。
 
-若只要展示介面與完整工作流、不使用 API key 或模型，可在 `.env.research` 暫時設定
-`RESEARCH_DEMO_MODE=true` 後啟動服務。展示模式會自動放入一筆固定的合成 NVDA
-資料集，所有回應都由內建確定性 provider 產生；它不會呼叫外部服務，也不算正式研究結果。
-展示完畢後改回 `false`，避免把合成案例誤當成正式資料。
+### 確認模型並開始研究
 
-網頁負責互動式研究操作與結果檢視；終端負責安裝設定、啟停、檢查、日誌與批次工作：
+兩種跑法打開研究台後都一樣：
+
+1. **確認模型**：看頁面上方的模型狀態。
+   - 顯示「雲端模型 · … · 已設定」或「Ollama 已連線」：可以開始。
+   - 顯示「模型未連線」或「缺少 … key」：按「資料準備」頁標題下方的「設定模型與金鑰」，在「回測模型」填模型名稱（例如 `gemini/gemini-2.5-flash`、`ollama/qwen3:14b`），在「雲端模型金鑰」或「GPUtw／遠端 Ollama」填金鑰，按「儲存設定」，立即生效、不用重啟。
+2. **（選用）加入 FNSPID 新聞**：把已授權、[篩選過](docs/quickstart-v3.md)的 `Stock_news.csv` 放進專案的 `research-inputs/` 資料夾（Codespace 可直接拖進 VS Code 左側檔案樹）。沒有也能只用 Alpha Vantage 新聞。
+3. **建立資料集**：「資料準備」頁選股票與研究分析日，按「啟動資料 Agent」。
+4. **跑實驗**：「建立實驗」頁選剛建好的資料集，按「開始研究實驗」。
+5. **看結果**：「Agent 執行」頁看進度，每個實驗可按「下載研究產物 ZIP」；完成後到「統計結果」比較 A/B/C/D。
+
+**換模型**：隨時在「設定模型與金鑰」改，或重新執行 `setup`。只影響之後新建立的實驗，已建立的實驗不會變。
+
+**常見問題**
+
+- **一直出現 429（被限流）**：雲端 API 每分鐘次數有限，把 `RESEARCH_PARALLEL_WORKERS` 調成 1 或 2。研究台遇到 429 也會自動等待後重試。
+- **GPUtw 會一直計費**：研究結束後到 GPUtw 控制台停止執行個體。
+- **只想看介面、不接模型**：把 `RESEARCH_DEMO_MODE` 設為 `true` 後重新 `start`。展示模式會放入一筆固定的合成 NVDA 資料集，回應由內建程式產生，不呼叫任何外部服務，也不算正式研究結果；看完改回 `false`。
+
+### 正式研究用的模型
+
+正式協議使用 `ollama/qwen3:14b`（本機 Ollama 或 GPUtw）；OpenRouter 的 `openrouter/qwen/qwen3-14b` 是同一個模型。`ollama/qwen3:8b` 已通過本專案的相容性測試（canary），也可用於正式研究；其他 14B 以下的模型只算測試。改用 Gemini 等其他雲端模型時，需在研究紀錄中註明。
+
+### 進階：終端機指令
+
+網頁負責研究操作與看結果；終端機負責安裝設定、啟停、檢查、日誌與批次工作。Windows 的 `research.ps1` 指令最完整：
 
 ```powershell
-.\research.ps1 doctor
-.\research.ps1 collect NVDA 2024-12-31
-.\research.ps1 run NVDA 2024-12-31
+.\research.ps1 help                      # 全部指令
+.\research.ps1 collect NVDA 2024-12-31   # 建立資料集；加 -Refresh 強制重新下載
+.\research.ps1 run NVDA 2024-12-31       # 跑實驗
 .\research.ps1 jobs
 .\research.ps1 logs
 ```
 
-研究預設使用 `ollama/qwen3:14b`；也可以改用 GPUtw 或雲端模型 API，見 [選擇模型來源](docs/model-sources.md)。`ollama/qwen3:8b` 已通過本專案的相容性測試（canary），可用於正式研究；其他 14B 以下的模型需加上 `-AllowSmallModel`，只算測試。
-
-`power-plan`、`model-canary` 等 CLI 工具同樣在容器內執行，例如
-`docker compose -f compose.research.yaml run --rm --no-deps research python -m research_service.cli model-canary`；
-它們只做設計模擬或合成格式檢查，不會建立正式案例。不走 Docker 的本機 Python 安裝只供開發者使用，不在支援範圍。
-
-執行 `.\research.ps1 help` 可查看完整命令。`start` 會先檢查 Docker Linux engine，未啟動時嘗試開啟 Docker Desktop 並給出可操作的錯誤訊息。`collect` 會重用同股票、同分析日且四域完整的既有快照；加上 `-Refresh` 才會重新呼叫資料來源。
+macOS／Linux 的 `research.sh` 提供 `setup`、`start`、`stop`、`status`、`logs`、`test`、`doctor`。`power-plan`、`model-canary` 等工具在容器內執行，例如
+`docker compose -f compose.research.yaml run --rm --no-deps research python -m research_service.cli model-canary`；它們只做設計模擬或合成格式檢查，不會建立正式案例。不走 Docker 的本機 Python 安裝只供開發者使用，不在支援範圍。
 
 ## 回測資料
 
@@ -182,7 +212,7 @@ CI 會在每次推送時於 x86-64 與 ARM64 兩種架構實際啟動這個 Dock
 
 **Repo 大小**：git 歷史約 7 MB、追蹤的程式碼約 1.5 MB（`research_service/`、`scripts/`、`docs/`）；`research-inputs/`、下載的行情快照、備份 zip 等大型檔案都被 `.gitignore` 排除，不會進 repo，clone 下來很小。**Docker image 約 2.3 GB**——主要是 PyTorch（CPU 版）＋ transformers，用來跑本機 FinBERT 離線評分；這是刻意的取捨（不需要外部 GPU 或付費 API 就能評分新聞情緒），不是意外堆出來的體積，但 build 時第一次要下載這些套件，網路慢的話會花一點時間。
 
-第一次 clone 這個 repo，先照 [Clone 後首次啟動](docs/getting-started.md) 走一遍。只想驗證回測流程，可照 [本機回測 Demo](docs/demo-backtest.md) 操作；這份流程會固定在歷史資料模式，並說明如何辨認完整資料集 ID、暫停續跑與匯出研究產物。
+更細的首次啟動說明見 [Clone 後首次啟動](docs/getting-started.md)。只想驗證回測流程，可照 [本機回測 Demo](docs/demo-backtest.md) 操作；這份流程會固定在歷史資料模式，並說明如何辨認完整資料集 ID、暫停續跑與匯出研究產物。
 
 若要把模型推論移到 GPUtw，請參考 [GPUtw 整合指南](docs/gputw-integration.md)。研究台可讀取 GPUtw 執行個體狀態並使用受保護的遠端 Ollama；部署或停止 GPU 執行個體仍在 GPUtw 控制台手動完成。
 
