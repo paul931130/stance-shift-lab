@@ -15,9 +15,10 @@ from __future__ import annotations
 import os
 from types import SimpleNamespace
 
+from .app import _redact
 from .collect import collect_dataset
 from .engine import Engine, protocol_from
-from .protocol import DEFAULT_RESEARCH_MODEL, decision_plan
+from .protocol import DEFAULT_RESEARCH_MODEL, StudyProtocol, decision_plan
 from .settings import Settings
 from .storage import Store, now
 
@@ -84,10 +85,9 @@ class StanceShiftResearch:
             dataset_id = self.collect(ticker, analysis_date, refresh=refresh, use_finbert=use_finbert,
                                       progress=progress)["id"]
         payload = JobInput(dataset_id=dataset_id, analysis_date=analysis_date, model=model or self.model, **options)
-        job = self.store.create(prepare(self._ctx, payload))
-        # Keep a running web worker sharing this store from claiming the job.
-        self.store.control(job["id"], "pause")
-        return job["id"]
+        # Created paused in one statement: a web worker sharing this store
+        # must never claim the job between creation and this process running it.
+        return self.store.create(prepare(self._ctx, payload), queued=False)["id"]
 
     def run(self, ticker, analysis_date, *, progress=None, **kwargs):
         """Run one case to completion and return :func:`summarize` of the job."""
@@ -96,7 +96,7 @@ class StanceShiftResearch:
     def resume(self, job_id, progress=None):
         """Continue a stored job from its last checkpoint until it finishes."""
         report = _forward(progress, "run")
-        job = self.store.get(job_id)
+        job = self._take_over(job_id)
         protocol = protocol_from(job["config"]["protocol"])
         total = len(decision_plan(protocol))
         while not job["state"].get("finished"):
@@ -105,7 +105,7 @@ class StanceShiftResearch:
                 state = self.engine.advance(job)
             except Exception as error:
                 state = getattr(error, "state", job["state"])
-                message = f"{type(error).__name__}: {str(error)[:700]}"
+                message = f"{type(error).__name__}: {_redact(str(error), os.getenv('RESEARCH_ACCESS_KEY', ''))[:700]}"
                 state.setdefault("attempts", []).append({"at": now(), "status": "error", "message": message})
                 self.store.save_step(job_id, state, message)
                 raise ResearchRunError(message, job_id) from error
@@ -116,6 +116,21 @@ class StanceShiftResearch:
                    decisions=state.get("decisions"))
             job = self.store.get(job_id)
         return summarize(job)
+
+    def _take_over(self, job_id):
+        """Check a stored job may be advanced here, and keep a web worker off it."""
+        job = self.store.get(job_id)
+        if job["state"].get("finished") or job["status"] == "complete":
+            return job
+        if job["status"] == "cancelled":
+            raise ValueError("此實驗已取消，不能繼續；請建立新實驗")
+        if job["status"] == "running":
+            raise ValueError("此實驗正由網頁服務的背景 worker 執行；請在網頁暫停後再從這裡繼續")
+        if job["config"]["protocol"].get("version") != StudyProtocol().version:
+            raise ValueError("舊版協議的實驗不能用新版引擎繼續；請在網頁用「複製至新版重新執行」")
+        if job["status"] == "queued" and not self.store.hold(job_id):
+            raise ValueError("此實驗剛被網頁服務的背景 worker 領取；請在網頁暫停後再繼續")
+        return self.store.get(job_id)
 
 
 def summarize(job):

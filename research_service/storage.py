@@ -150,11 +150,12 @@ class Store:
             })
         return list(reversed(summaries))
 
-    def create(self, config):
+    def create(self, config, queued=True):
+        """Store a new job; ``queued=False`` creates it paused so no worker claims it."""
         key, stamp = str(uuid4()), now()
         with self.connect() as db:
             db.execute("""INSERT INTO jobs(id,status,wants_run,config,state,error,created_at,updated_at,steps)
-                VALUES(?,?,?,?,?,?,?,?,0)""", (key, "queued", 1, json.dumps(config),
+                VALUES(?,?,?,?,?,?,?,?,0)""", (key, "queued" if queued else "paused", int(queued), json.dumps(config),
                 json.dumps({"records": [], "research": {}, "trace": [], "attempts": []}), "", stamp, stamp))
         return self.get(key)
 
@@ -212,6 +213,13 @@ class Store:
             # while the worker is already progressing again.
             db.execute("UPDATE jobs SET wants_run=?,status=?,error=?,updated_at=? WHERE id=?",
                        (wanted, status, "" if command == "resume" else job.get("error", ""), now(), key))
+
+    def hold(self, key):
+        """Pause a queued job unless a worker has already claimed it; True when held."""
+        with self.connect() as db:
+            changed = db.execute("UPDATE jobs SET status='paused', wants_run=0, updated_at=? "
+                                 "WHERE id=? AND status='queued'", (now(), key)).rowcount
+        return changed == 1
 
     def claim(self):
         with self.connect() as db:
