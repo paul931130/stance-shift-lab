@@ -12,7 +12,7 @@ license = {file = "LICENSE"}
 dependencies = [
   "fastapi==0.141.1",
   "uvicorn==0.52.4",
-  "langgraph==1.2.11",
+  "langgraph==1.2.12",
   "litellm==1.99.0",
   "yfinance==1.7.0",
   "pandas==3.0.1",
