@@ -42,7 +42,7 @@
 | --- | --- | --- |
 | 雲端模型 API（最簡單） | 一把 API key：[Gemini](https://aistudio.google.com/apikey)、[OpenRouter](https://openrouter.ai/) 或 OpenAI；模型名稱例如 `gemini/gemini-2.5-flash` | 大多數人；依用量付費 |
 | 雲端租 GPU（GPUtw） | 依 [GPUtw 整合指南](docs/gputw-integration.md) 開好 Ollama 執行個體並下載 `qwen3:14b`，記下位址與存取 key | 想用正式協議的 `qwen3:14b`、又沒有顯示卡 |
-| 自己電腦的 Ollama | 裝 [Ollama](https://ollama.com/)，執行 `ollama pull qwen3:14b`；建議 16 GB 以上顯示卡記憶體 | 有好顯示卡；只能在本機 Docker 跑法使用 |
+| 自己電腦的 Ollama | 裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`，或讓 Docker 一起跑 Ollama（見跑法二）；建議 16 GB 以上顯示卡記憶體 | 有好顯示卡；只能在本機 Docker 跑法使用 |
 
 詳細比較見 [選擇模型來源](docs/model-sources.md)。
 
@@ -121,6 +121,25 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
    `setup` 的模型選項：`1` 自己電腦的 Ollama、`2` GPUtw（填遠端位址與存取 key）、`3` 雲端模型 API（選供應商、貼金鑰、填模型名稱）。每一題直接按 Enter 會保留原值。
    - PowerShell 出現「已停用指令碼執行」：先執行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` 再重試，或直接雙擊 `start-research.cmd` 啟動。
    - Linux 用本機 Ollama：要讓 Ollama 監聽 `0.0.0.0`，做法見 [Clone 後首次啟動](docs/getting-started.md)；Windows／macOS 不需要。
+   **不想用腳本？只用 docker compose 也可以**（任何作業系統都一樣）：
+
+   ```bash
+   cp research.env.example .env.research      # Windows：copy research.env.example .env.research
+   # 用文字編輯器打開 .env.research，填入金鑰與 RESEARCH_MODEL
+   docker compose -f compose.research.yaml up -d --build
+   ```
+
+   更新程式後用同一行指令重新建置；停止用 `docker compose -f compose.research.yaml stop`。
+
+   **不想在電腦裝 Ollama？讓 Docker 一起跑 Ollama**：
+
+   ```bash
+   docker compose -f compose.research.yaml -f compose.ollama.yaml up -d --build
+   docker compose -f compose.research.yaml -f compose.ollama.yaml exec ollama ollama pull qwen3:14b
+   ```
+
+   預設只用 CPU，14B 模型會很慢。有 NVIDIA 顯示卡（Linux，或 Windows 的 Docker Desktop 使用 WSL2）時，在兩行指令的 `-f compose.ollama.yaml` 後面再加 `-f compose.ollama-gpu.yaml`。macOS 的 Docker 用不到 Apple 晶片的 GPU，請直接在 Mac 安裝 Ollama。
+
 4. **打開研究台**：瀏覽器開 <http://127.0.0.1:8000/>，接著照下方「[確認模型並開始研究](#確認模型並開始研究)」。
 
 #### 之後每次
@@ -206,6 +225,7 @@ macOS／Linux 的 `research.sh` 提供 `setup`、`start`、`stop`、`status`、`
 - `scripts/`：FNSPID 整理、CLI 與驗證工具
 - `docs/`：研究口徑、操作、部署與審查文件
 - `compose.research.yaml`、`Dockerfile.research`：正式執行封裝
+- `compose.ollama.yaml`、`compose.ollama-gpu.yaml`：選用，讓 Ollama 以容器一起執行（CPU／NVIDIA GPU）
 - `CHANGELOG.md`：各協議版本的行為變更紀錄
 
 更完整的整理原則見 [專案結構](docs/project-layout.md)，目前驗證結果、正式研究缺口與公開發布優先序見 [v3-0912.1 最終審查](docs/final-review-2026-09-12.md)。
