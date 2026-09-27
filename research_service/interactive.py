@@ -116,8 +116,9 @@ def choose_model(settings, remembered, prompter):
             values[key] = secret
         model = pick_model(prompter, MODEL_CHOICES[provider],
                            previous if previous.startswith(provider + "/") else suggested)
-        # A leftover GPUtw address would otherwise take over ollama/ models later.
-        settings.save(values, clear=["GPUTW_OLLAMA_BASE_URL"])
+        # A cloud model never goes through Ollama, so the GPUtw address (shared
+        # with the web service's settings) is left as it is.
+        settings.save(values)
         remembered.save(source=source, provider=number)
     else:
         if source == "2":

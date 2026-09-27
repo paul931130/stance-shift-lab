@@ -158,6 +158,34 @@ class DemoModeTests(unittest.TestCase):
 
 
 class EnvFileTests(unittest.TestCase):
+    def test_choosing_a_cloud_model_keeps_the_shared_gputw_setting(self):
+        from research_service.interactive import Remembered, choose_model
+        from research_service.settings import Settings
+
+        class Answers:
+            fancy = False
+
+            def __init__(self, *values):
+                self.values = list(values)
+
+            def header(self, *_):
+                pass
+
+            def select(self, _question, _choices, _default):
+                return self.values.pop(0)
+
+            def secret(self, _question, current):
+                return current
+
+        with tempfile.TemporaryDirectory() as directory, \
+             patch.dict(os.environ, {"GEMINI_API_KEY": "k", "STANCE_SHIFT_MODEL": ""}):
+            settings = Settings(directory)
+            settings.save({"GPUTW_OLLAMA_BASE_URL": "https://gpu.example/ollama"})
+            model = choose_model(settings, Remembered(directory), Answers("1", "1", "gemini/gemini-2.5-flash"))
+            self.assertEqual(model, "gemini/gemini-2.5-flash")
+            self.assertEqual(os.environ["GPUTW_OLLAMA_BASE_URL"], "https://gpu.example/ollama")
+            self.assertEqual(Settings(directory)._read().get("GPUTW_OLLAMA_BASE_URL"), "https://gpu.example/ollama")
+
     def test_env_file_fills_missing_values_only_and_skips_docker_ollama_host(self):
         from research_service.interactive import load_env_files
 
