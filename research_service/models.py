@@ -8,7 +8,9 @@ import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import SWITCH_ROUND, visible_history
+from .protocol import SWITCH_ROUND, StudyProtocol, visible_history
+
+BACKTEST_HORIZONS = StudyProtocol().horizons
 
 
 DEFAULT_MODEL_TIMEOUT_SECONDS = 240
@@ -105,8 +107,8 @@ def _compact_history(records):
     return compact
 
 
-def validate_financial_numbers(result, evidence):
-    """Reject financial prose that introduces a number absent from its citations."""
+def validate_financial_numbers(result, evidence, context=None):
+    """Reject financial prose that introduces a number absent from the evidence it may use."""
     def numbers(text):
         if not isinstance(text, str):
             return set()
@@ -120,9 +122,30 @@ def validate_financial_numbers(result, evidence):
     text = " ".join([str(result.get("summary", "")), str(result.get("rationale", "")),
                      str(result.get("strongest_counterpoint", "")),
                      *(str(value) for value in result.get("risks", []))])
-    unsupported = numbers(text) - numbers(source)
+    # v3-0926.4: a number may come from any evidence the caller passed in
+    # (the decision's allowed list), not only the cited items; at least one
+    # real citation is still required above. v3-0926.3: a window length
+    # inside an indicator name (return20 -> "20-day") and the protocol's own
+    # backtest horizons are not invented numbers. Rounded or converted values
+    # are still rejected.
+    available = ' '.join(e['claim'] for e in evidence if isinstance(e.get('claim'), str))
+    # v3-0926.7: context is everything the model was shown (the full prompt:
+    # report, calibration, base rates, earlier rounds, memory). Numbers it
+    # repeats from there, or from its own forecast fields, are not invented.
+    if context is not None:
+        available += ' ' + (context if isinstance(context, str) else json.dumps(context, ensure_ascii=False))
+    supported = numbers(available)
+    supported |= {Decimal(str(result[key])) for key in ("expected_return_pct", "confidence", "confidence_shift")
+                  if isinstance(result.get(key), (int, float)) and not isinstance(result.get(key), bool)}
+    supported |= {Decimal(value) for value in re.findall(r'(?<=[A-Za-z_])\d+(?![\d.])', available)}
+    supported |= {Decimal(value) for value in BACKTEST_HORIZONS}
+    # v3-0926.6: an exact fraction <-> percent conversion keeps the value
+    # (0.500153 -> 50.0153%); any additional rounding is still rejected.
+    supported |= {value * 100 for value in supported} | {value / 100 for value in supported}
+    unsupported = numbers(text) - supported
     if unsupported:
-        raise ValueError('財務摘要包含來源未支持的數字；必須原樣保留數值、單位與期間')
+        shown = ', '.join(sorted(format(value, 'f') for value in unsupported)[:5])
+        raise ValueError(f'財務摘要包含來源未支持的數字（{shown}）；必須原樣保留數值、單位與期間')
 
 
 def validate_financial_interpretation(result, evidence=None):
@@ -162,6 +185,17 @@ def _compact_base_rates(base_rates):
     return {key: base_rates.get(key) for key in
             ("horizon_sessions", "hold_band_pct", "horizon_sigma_pct", "basis", "positive_rate", "median_return_pct")
             if base_rates.get(key) is not None}
+
+
+def prompt_text(messages):
+    """All text a prompt showed the model, for checking which numbers it was given."""
+    return " ".join(str(message.get("content", "")) for message in messages)
+
+
+def decision_prompt_context(report):
+    """The non-evidence numeric sections the decision prompt shows the model."""
+    return {"decision_calibration": _compact_calibration(report.get("decision_calibration", {})),
+            "base_rates": _compact_base_rates(report.get("base_rates", {}))}
 
 
 def _decision_evidence(report):
@@ -229,8 +263,7 @@ def _compact_report(report):
                       "evidence_ids": value.get("evidence_ids", [])[:2]})
             for domain, value in report.get("research", {}).items()
         },
-        "decision_calibration": _compact_calibration(report.get("decision_calibration", {})),
-        "base_rates": _compact_base_rates(report.get("base_rates", {})),
+        **decision_prompt_context(report),
         "degraded_research_domains": report.get("degraded_research_domains", []),
         "evidence": _decision_evidence(report),
     }
@@ -270,6 +303,7 @@ def messages_for(call, report, records, memory, protocol):
         f"Choose Hold only when that point forecast is inside the {band_text} neutral band; otherwise choose Buy or Sell even when uncertain. "
         "Hold is not a way to avoid committing; uncertainty lowers confidence, never substitutes for a forecast. Read decision_calibration before research summaries. "
         "Target evidence is direct company evidence; context news cannot decide direction by itself. Use supplied comparative SEC metrics only as stated: copy their numbers exactly and never invent a growth rate, benchmark, valuation, or financial-quality label. Legacy SEC point facts without a comparable period are excluded from this decision payload. "
+        "Every number you write in rationale, risks or strongest_counterpoint must be copied exactly as it appears in the supplied report or in your own forecast fields: do not round it, convert units, or compute a new figure such as a growth rate or percentage change. If you cannot copy a number exactly, describe it in words instead. "
         "Use only supplied evidence IDs exactly; URLs and invented IDs are forbidden. Keep rationale under 320 characters and give at most 4 concise risks. "
         "Return one compact JSON object with action (Buy, Hold, Sell), expected_return_pct (-60..60), confidence (0..1), rationale (string), evidence_ids (array of supplied IDs), risks (array of strings).")
     if call.kind == "debate":
@@ -324,6 +358,44 @@ def output_schema_for(messages):
     return schema
 
 
+GEMINI_THINKING_ALLOWANCE = 2048
+RATE_LIMIT_WAITS = 6
+RATE_LIMIT_MAX_WAIT_SECONDS = 90
+
+
+def _completion_with_rate_limit_wait(litellm, kwargs, usage):
+    """Wait out provider rate limits (HTTP 429) instead of failing the step.
+
+    Free and low-tier quotas (e.g. 25 requests/minute) are hit quickly by
+    parallel decision waves; the provider says how long to wait. Waits are
+    recorded in the usage audit and never consume a protocol retry.
+    """
+    for wait in range(RATE_LIMIT_WAITS + 1):
+        try:
+            return litellm.completion(**kwargs)
+        except litellm.RateLimitError as error:
+            if wait >= RATE_LIMIT_WAITS:
+                raise
+            match = re.search(r'retry in ([\d.]+)s', str(error))
+            delay = min(float(match.group(1)) + 1 if match else 15 * (wait + 1), RATE_LIMIT_MAX_WAIT_SECONDS)
+            usage.setdefault("rate_limit_waits", []).append(round(delay, 1))
+            time.sleep(delay)
+
+
+def _gemini_thinking_required(model):
+    """Gemini Pro models reject disabling thinking; Flash/Flash-Lite accept it."""
+    return "-pro" in model
+
+
+def _plain_json(value):
+    """JSON fallback for provider objects (pydantic models or plain attribute bags)."""
+    if hasattr(value, "model_dump"):
+        return value.model_dump()
+    if hasattr(value, "__dict__"):
+        return {key: item for key, item in vars(value).items() if not key.startswith("_")}
+    return str(value)
+
+
 def generate(protocol, messages, seed=None, temperature=None):
     output_schema = output_schema_for(messages)
     effective_temperature = protocol.temperature if temperature is None else temperature
@@ -374,13 +446,35 @@ def generate(protocol, messages, seed=None, temperature=None):
                     "max_tokens": protocol.max_output_tokens,
                     "response_format": {"type": "json_schema", "json_schema": {"name": "research_output", "strict": True, "schema": output_schema}},
                     "timeout": timeout_seconds, "num_retries": 0}
-                if seed is not None:
+                # Some providers (e.g. Gemini) reject `seed`; send it only where
+                # supported and record in the audit whether it was applied.
+                seed_supported = "seed" in (litellm.get_supported_openai_params(model=protocol.model) or [])
+                if seed is not None and seed_supported:
                     kwargs["seed"] = int(seed)
-                provider_result = litellm.completion(**kwargs)
+                # Gemini 2.5 "thinks" by default and those tokens count against
+                # max_tokens, truncating the JSON answer. Match the Ollama path
+                # (think=False) by disabling it.
+                if protocol.model.startswith("gemini/"):
+                    if _gemini_thinking_required(protocol.model):
+                        # Pro models cannot disable thinking: keep it low and add
+                        # room for it so the visible answer keeps its full budget.
+                        kwargs["reasoning_effort"] = "low"
+                        kwargs["max_tokens"] = protocol.max_output_tokens + GEMINI_THINKING_ALLOWANCE
+                    else:
+                        kwargs["reasoning_effort"] = "disable"
+                provider_result = _completion_with_rate_limit_wait(litellm, kwargs, usage)
                 content = provider_result.choices[0].message.content
-                usage = dict(provider_result.usage)
+                # LiteLLM usage nests provider objects (e.g. token-detail wrappers);
+                # flatten to plain JSON so the job state can be persisted.
+                waits = usage.get("rate_limit_waits")
+                usage = json.loads(json.dumps(dict(provider_result.usage), default=_plain_json))
+                if waits:
+                    usage["rate_limit_waits"] = waits
                 usage["provider_model"] = getattr(provider_result, "model", None)
                 usage["system_fingerprint"] = getattr(provider_result, "system_fingerprint", None)
+                usage["seed_applied"] = seed is not None and seed_supported
+                usage["max_tokens_sent"] = kwargs["max_tokens"]
+                usage["reasoning_effort"] = kwargs.get("reasoning_effort")
             content = content.strip()
             if content.startswith("```"):
                 content = content.split("\n", 1)[1].rsplit("```", 1)[0]
@@ -405,7 +499,7 @@ def generate(protocol, messages, seed=None, temperature=None):
             time.sleep(.5 * attempt)
 
 
-def validate_decision(result, evidence, call=None):
+def validate_decision(result, evidence, call=None, context=None):
     allowed_actions = ("Buy", "Hold", "Sell")
     if call is not None and call.kind == "debate":
         allowed_actions = ("Buy",) if call.stance == "BULL" else ("Sell",)
@@ -437,7 +531,7 @@ def validate_decision(result, evidence, call=None):
                 raise ValueError("角色交換輪 confidence_shift 須介於 -1 與 1")
     cited = set(result["evidence_ids"])
     if any(item.get("domain") == "fundamental" and item.get("evidence_id") in cited for item in evidence):
-        validate_financial_numbers(result, evidence)
+        validate_financial_numbers(result, evidence, context)
     validate_financial_interpretation(result, evidence)
     # Every citation must exist. Allowing one invented ID to pass an 80% ratio
     # made otherwise well-formed outputs impossible to audit reliably.

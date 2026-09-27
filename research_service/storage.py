@@ -70,7 +70,7 @@ class Store:
 
     def recover(self):
         with self.connect() as db:
-            db.execute("UPDATE jobs SET status='paused', wants_run=0, error='服務重啟；已完成步驟保留，請按繼續' WHERE status='running'")
+            db.execute("UPDATE jobs SET status='paused', wants_run=0, error='研究服務曾重新啟動；已完成的步驟都保留，請按「繼續執行」' WHERE status='running'")
 
     def backup_bytes(self):
         """Return a WAL-safe SQLite snapshot without stopping the research worker."""
@@ -316,7 +316,7 @@ class Store:
                                    (protocol_hash,)).fetchone()
             if existing:
                 if json.loads(existing["dataset_ids"]) != dataset_ids:
-                    raise ValueError("此協議已於 " + existing["frozen_at"] + " 凍結；不能改變已分析的資料集清單")
+                    raise ValueError("研究樣本已於 " + existing["frozen_at"] + " 鎖定，不能再變更")
                 return {"protocol_hash": protocol_hash, "dataset_ids": dataset_ids, "frozen_at": existing["frozen_at"]}
             stamp = now()
             db.execute("INSERT INTO preregistrations VALUES(?,?,?)",

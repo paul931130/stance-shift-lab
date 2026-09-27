@@ -154,6 +154,84 @@ class ModelReliabilityTests(unittest.TestCase):
         self.assertEqual(request.full_url, "https://gpu.example/ollama/api/chat")
         self.assertEqual(request.get_header("Authorization"), "Bearer gpu-model-key")
 
+    def test_cloud_seed_is_sent_only_to_providers_that_support_it(self):
+        from types import SimpleNamespace
+        seen = {}
+        content = json.dumps({"action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
+                              "rationale": "brief", "evidence_ids": ["e1"], "risks": []})
+
+        def completion(**kwargs):
+            seen[kwargs["model"]] = kwargs
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+                                   usage={"prompt_tokens": 1,
+                                          "completion_tokens_details": SimpleNamespace(reasoning_tokens=5)},
+                                   model=kwargs["model"])
+
+        messages = [{"role": "system", "content": "decision"}, {"role": "user", "content": "{}"}]
+        audits = {}
+        with patch("litellm.completion", side_effect=completion):
+            for model in ("gemini/gemini-2.5-flash", "openai/gpt-4.1-mini"):
+                protocol = StudyProtocol(model=model, dataset_kind="synthetic", bootstrap_replicates=199)
+                audit = generate(protocol, messages, seed=7)[1]
+                # Provider objects nested in usage must not break job persistence.
+                json.dumps(audit, allow_nan=False)
+                self.assertEqual(audit["usage"]["completion_tokens_details"], {"reasoning_tokens": 5})
+                audits[model] = audit["usage"]["seed_applied"]
+        self.assertNotIn("seed", seen["gemini/gemini-2.5-flash"])
+        # Thinking tokens would eat max_tokens; the Ollama path also sends think=False.
+        self.assertEqual(seen["gemini/gemini-2.5-flash"]["reasoning_effort"], "disable")
+        self.assertNotIn("reasoning_effort", seen["openai/gpt-4.1-mini"])
+        self.assertEqual(seen["openai/gpt-4.1-mini"]["seed"], 7)
+        self.assertEqual(audits, {"gemini/gemini-2.5-flash": False, "openai/gpt-4.1-mini": True})
+
+    def test_gemini_pro_keeps_thinking_but_gets_extra_token_room(self):
+        from types import SimpleNamespace
+        from research_service.models import GEMINI_THINKING_ALLOWANCE
+        seen = {}
+        content = json.dumps({"action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
+                              "rationale": "brief", "evidence_ids": ["e1"], "risks": []})
+
+        def completion(**kwargs):
+            seen.update(kwargs)
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+                                   usage={"prompt_tokens": 1}, model=kwargs["model"])
+
+        protocol = StudyProtocol(model="gemini/gemini-3.1-pro-preview", dataset_kind="synthetic",
+                                 bootstrap_replicates=199)
+        with patch("litellm.completion", side_effect=completion):
+            usage = generate(protocol, [{"role": "system", "content": "decision"},
+                                        {"role": "user", "content": "{}"}])[1]["usage"]
+        # Pro cannot disable thinking; it must not eat the answer's token budget.
+        self.assertEqual(seen["reasoning_effort"], "low")
+        self.assertEqual(seen["max_tokens"], protocol.max_output_tokens + GEMINI_THINKING_ALLOWANCE)
+        self.assertEqual(usage["max_tokens_sent"], seen["max_tokens"])
+
+    def test_cloud_rate_limit_waits_the_provider_delay_instead_of_failing(self):
+        import litellm
+        from types import SimpleNamespace
+        content = json.dumps({"action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
+                              "rationale": "brief", "evidence_ids": ["e1"], "risks": []})
+        calls = []
+
+        def completion(**kwargs):
+            calls.append(1)
+            if len(calls) < 3:
+                raise litellm.RateLimitError("Quota exceeded. Please retry in 26.8s.",
+                                             llm_provider="gemini", model=kwargs["model"])
+            return SimpleNamespace(choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+                                   usage={"prompt_tokens": 1}, model=kwargs["model"])
+
+        protocol = StudyProtocol(model="gemini/gemini-3.1-pro-preview", dataset_kind="synthetic",
+                                 bootstrap_replicates=199)
+        with patch("litellm.completion", side_effect=completion), \
+             patch("research_service.models.time.sleep") as sleep:
+            audit = generate(protocol, [{"role": "system", "content": "decision"},
+                                        {"role": "user", "content": "{}"}])[1]
+        self.assertEqual(len(calls), 3)
+        self.assertEqual([c.args[0] for c in sleep.call_args_list], [27.8, 27.8])
+        self.assertEqual(audit["usage"]["rate_limit_waits"], [27.8, 27.8])
+        self.assertEqual(audit["provider_attempts"], 1)  # waits do not consume a protocol retry
+
     def test_timeout_and_context_are_explicitly_configurable(self):
         seen = {}
 

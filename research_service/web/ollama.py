@@ -23,15 +23,49 @@ def _unavailable(message, **extra):
             "formal_ready": False, "default_available": False, **extra, "message": message}
 
 
+CLOUD_KEYS = {"openrouter": "OPENROUTER_API_KEY", "openai": "OPENAI_API_KEY", "gemini": "GEMINI_API_KEY"}
+
+
+def _cloud_default():
+    """The configured cloud model (non-ollama RESEARCH_MODEL) and whether its key is set."""
+    model = os.getenv("RESEARCH_MODEL", DEFAULT_RESEARCH_MODEL).strip()
+    if not model or model.startswith("ollama/"):
+        return None
+    key = CLOUD_KEYS.get(model.split("/", 1)[0])
+    return {"model": model, "key_name": key, "ready": bool(key and os.getenv(key, "").strip())}
+
+
+def _with_cloud(result, cloud):
+    """Report a keyed cloud model as available next to (or instead of) Ollama.
+
+    Cloud jobs never depend on Ollama; without this the status chip read
+    'MODEL OFFLINE' whenever no Ollama was running (e.g. in a Codespace).
+    """
+    if not cloud:
+        return result
+    result = {**result, "cloud": cloud}
+    if cloud["ready"]:
+        result["ready"] = True
+        result["models"] = [*result.get("models", []), cloud["model"]]
+        result["details"] = [*result.get("details", []), {"id": cloud["model"], "name": cloud["model"],
+                                                           "parameter_size": None, "provider": "cloud"}]
+        result["default_available"] = True
+    return result
+
+
 def probe_models(ctx):
     """List installed models from the configured (local or GPUtw) Ollama endpoint."""
+    return _with_cloud(_probe_ollama(ctx), None if ctx.demo_mode else _cloud_default())
+
+
+def _probe_ollama(ctx):
     if ctx.demo_mode:
         return {"ready": True, "models": [ctx.demo_model_id],
                 "details": [{"id": ctx.demo_model_id, "name": "Deterministic demo provider",
                              "parameter_size": "synthetic", "context_length": 8192}],
                 "configured_default": ctx.demo_model_id, "default_available": True,
                 "formal_ready": False, "formal_models": [],
-                "message": "目前使用內建合成 demo；不會呼叫外部模型或建立正式資料。"}
+                "message": "目前是展示模式，使用內建合成回應；不會呼叫外部模型，也不會產生正式資料。"}
     configured_remote_ollama = bool(gputw_ollama_base_url())
     endpoint_label = "遠端 Ollama（GPUtw）" if configured_remote_ollama else "本機 Ollama"
     try:
@@ -56,14 +90,14 @@ def probe_models(ctx):
     except HTTPError as error:
         if error.code in (401, 403):
             message = (f"{endpoint_label} 拒絕連線（HTTP {error.code}）。"
-                       f"請確認 {endpoint_label} 可從本機存取，或填入端點存取 key；這不是 NoTrade。")
+                       f"請確認 {endpoint_label} 可從本機存取，或填入端點存取 key。這是連線問題，不會被記成 NoTrade 決策。")
         elif error.code == 429:
-            message = "遠端 Ollama 暫時限流（HTTP 429），請稍後重試；這不是 NoTrade。"
+            message = "遠端 Ollama 暫時限流（HTTP 429），請稍後重試。這是連線問題，不會被記成 NoTrade 決策。"
         else:
-            message = f"模型服務回應 HTTP {error.code}；請稍後重試。這不是 NoTrade。"
+            message = f"模型服務回應 HTTP {error.code}；請稍後重試。這是連線問題，不會被記成 NoTrade 決策。"
         return _unavailable(message, error_code="model_endpoint_http_error", http_status=error.code)
     except (URLError, TimeoutError, OSError):
-        return _unavailable(f"模型服務目前無法連線；請確認 {endpoint_label} 仍在執行。這不是 NoTrade。",
+        return _unavailable(f"模型服務目前無法連線；請確認 {endpoint_label} 仍在執行。這是連線問題，不會被記成 NoTrade 決策。",
                             error_code="model_endpoint_unreachable")
     except Exception:
         return _unavailable("Ollama 尚未連線；請開啟 Ollama，或設定可用的雲端模型金鑰")

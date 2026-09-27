@@ -39,7 +39,7 @@
     </div>
     <dl class="flow-metrics">
       <div><dt>資料集</dt><dd id="flow-metric-datasets">—</dd></div>
-      <div><dt>選定快照證據</dt><dd id="flow-metric-evidence">—</dd></div>
+      <div><dt>本案例證據數</dt><dd id="flow-metric-evidence">—</dd></div>
       <div><dt>模型輸出</dt><dd id="flow-metric-outputs">—</dd></div>
       <div><dt>已完成案例</dt><dd id="flow-metric-cases">—</dd></div>
     </dl>
@@ -76,11 +76,11 @@
     </div>
     <div class="section-label">01 / 資料</div>
     <h2>準備研究資料</h2>
-    <p class="step-intro">選擇股票與分析日，系統會蒐集並檢查四個研究面向。</p>
+    <p class="step-intro">選擇股票與分析日，系統會蒐集並檢查技術、基本面、情緒、總經四個面向的資料。</p>
 
     <h3 class="substep">1.1　確認資料可用性</h3>
     <div id="study-readiness" class="readiness">正在計算 180 個回測案例的資料完整度…</div>
-    <details id="gap-inventory" class="gap-inventory"><summary>查看資料缺口與補資料指令</summary><p class="hint">每列只顯示尚未達正式主實驗門檻的案例；重新蒐集會建立新版快照，不會改寫舊實驗。</p><div id="gap-inventory-body"></div></details>
+    <details id="gap-inventory" class="gap-inventory"><summary>查看資料缺口與補資料指令</summary><p class="hint">只列出尚未達正式實驗門檻的案例；重新蒐集會建立新版資料集，不會改動已跑完的實驗。</p><div id="gap-inventory-body"></div></details>
 
     <h3 class="substep">1.2　選擇案例並建立資料集</h3>
     <p id="data-readiness" class="readiness">選擇股票與研究分析日後，讓四個 Agent 開始蒐集與驗證資料。</p>
@@ -89,9 +89,9 @@
         <label>股票<select id="ticker"></select></label>
         <label>研究分析日（季末或今天）<select id="download-date"></select></label>
       </div>
-      <label class="check"><input id="refresh-data" type="checkbox">強制重新呼叫來源 API 並建立新版資料快照</label>
+      <label class="check"><input id="refresh-data" type="checkbox">強制重新向資料來源下載，建立新版資料集</label>
       <label class="check"><input id="download-finbert" type="checkbox">下載完成後，以 FinBERT 分析新聞標題</label>
-      <p class="hint">預設會重用同股票、同分析日且四域完整的既有快照，避免重複消耗 API 額度。</p>
+      <p class="hint">預設會重用同股票、同分析日且四個面向都齊全的既有資料集，避免重複消耗 API 額度。</p>
       <button id="download-button">啟動資料 Agent</button>
     </form>
 
@@ -99,16 +99,16 @@
     <div id="source-state" class="source-chips" aria-label="資料來源狀態"></div>
     <details class="source-settings">
       <summary>設定資料來源與模型</summary>
-      <p class="hint">Web 和終端共用伺服器設定。金鑰不回傳瀏覽器；留白保留原值，勾選清除才刪除。</p>
+      <p class="hint">網頁和終端機共用同一份伺服器設定。金鑰不會傳回瀏覽器；欄位留白表示維持原值，勾選「清除」才會刪除。</p>
       <form id="settings-form"><div id="settings-fields"></div><button type="submit">儲存設定</button></form>
       <div class="gputw-block">
         <p class="hint">GPUtw 只負責 GPU 執行個體管理；本服務提供唯讀狀態與資源檢查，不會從網頁自動建立、停止或重啟付費執行個體。若使用 GPUtw Ollama 範本，將遠端位址填入設定後即可沿用同一個模型欄位。</p>
         <button id="gputw-check-button" class="quiet" type="button">檢查 GPUtw 狀態</button>
         <p id="gputw-state" class="hint">尚未檢查 GPUtw。</p>
       </div>
-      <button id="source-check-button" class="quiet" type="button">實機檢查新聞來源</button>
+      <button id="source-check-button" class="quiet" type="button">測試新聞來源連線</button>
       <div class="av-archive-block">
-        <p class="hint">Alpha Vantage 新聞快取：先查本機檔案再打即時 API，可省下每日額度。按下方按鈕會在伺服器背景抓取，額度用完會自動停止，之後再按一次會從中斷處繼續。</p>
+        <p class="hint">Alpha Vantage 新聞快取：先讀已存的新聞，不足時才呼叫即時 API，可省下每日額度。按下方按鈕會在伺服器背景抓取，額度用完會自動停止，之後再按一次會從中斷處繼續。</p>
         <button id="av-archive-button" class="quiet" type="button">更新 Alpha Vantage 新聞快取</button>
         <p id="av-archive-progress" class="hint"></p>
       </div>
@@ -127,19 +127,19 @@
   <section id="panel-experiment" class="panel step-panel" data-panel="experiment" role="tabpanel" hidden>
     <div class="section-label">02 / 實驗</div>
     <h2>設定比較實驗</h2>
-    <p class="step-intro">確認資料集與模型後，系統會用 A/B/C/D 四種方法進行同一案例比較。差異只在決策機制：</p>
+    <p class="step-intro">選好資料集與模型後，系統會用 A/B/C/D 四種方法分析同一個案例，四組只有決策方式不同：</p>
     <div class="methods" aria-label="四種決策機制">
       <article class="m-a"><b>A</b><div><h3>單次判斷</h3><p>1 次獨立決策</p></div></article>
       <article class="m-b"><b>B</b><div><h3>獨立投票</h3><p>7 次相同提示</p></div></article>
       <article class="m-c"><b>C</b><div><h3>固定立場</h3><p>3 輪辯論＋裁決</p></div></article>
       <article class="m-d treatment"><b>D</b><div><h3>立場交換</h3><p>第 2 輪交換，第 3 輪換回</p></div></article>
     </div>
-    <p class="hint">主要指標：60 交易日方向準確率與 Sharpe。30 / 90 日作穩健性檢查；提供零成本與 Corwin–Schultz 價差估計結果。</p>
+    <p class="hint">主要指標：60 個交易日的方向準確率與 Sharpe。30／90 日作為穩健性檢查；報酬同時提供不計成本與扣除 Corwin–Schultz 估計價差兩種版本。</p>
 
     <form id="job-form">
       <h3 class="substep">2.1　選擇要比較的資料集</h3>
-      <label>搜尋資料集<input id="dataset-picker-search" type="search" placeholder="只有要改選其他股票或舊版本時才需輸入" autocomplete="off"></label>
-      <p id="dataset-picker-help" class="hint">先輸入股票代號，或從最近建立的資料集中選擇。</p>
+      <label>搜尋資料集<input id="dataset-picker-search" type="search" placeholder="要改選其他股票或舊版本時再輸入" autocomplete="off"></label>
+      <p id="dataset-picker-help" class="hint">輸入股票代號，或從最近建立的資料集中選擇。</p>
       <label>資料集<select id="dataset" required><option value="">請先取得或匯入資料</option></select></label>
       <div id="dataset-detail" class="selected-dataset" hidden></div>
       <button id="score-finbert-button" class="quiet" type="button" disabled>為選定資料集建立 FinBERT 標題評分版本</button>
@@ -147,47 +147,47 @@
       <details id="news-detail"><summary>新聞標題與情緒分數</summary><button id="news-view" type="button" class="quiet">查看選定版本</button><div id="news-scores"></div></details>
 
       <h3 class="substep">2.2　確認模型與研究條件</h3>
-      <label>研究分析日（計劃書季末或今天）<select id="analysis-date"></select></label>
+      <label>研究分析日（季末或今天）<select id="analysis-date"></select></label>
       <p id="analysis-date-help" class="hint">分析日可用 2021–2025 的季末切點（正式研究），或今天（當下單次分析，不計入正式回測統計）；資料集的行情終點只供分析日後回測。</p>
       <div class="pair">
         <label>本機 Ollama 模型<select id="model" required><option value="ollama/qwen3:14b">ollama/qwen3:14b</option></select></label>
         <label>雲端模型（選填，會覆蓋左側選擇）<input id="cloud-model" maxlength="200" placeholder="例如 openrouter/openai/gpt-4.1-mini"></label>
       </div>
       <p id="cloud-model-state" class="hint">可直接輸入 LiteLLM 模型名稱；金鑰可在資料步驟的「設定資料來源與模型」填入。</p>
-      <p class="hint">研究預設使用 14B 以上模型；通過 canary 的 qwen3:8b 是唯一正式小模型例外。模型只影響新建立的實驗，並會鎖定於設定中。</p>
+      <p class="hint">正式研究預設使用 14B 以上的模型；qwen3:8b 已通過相容性測試，是唯一可正式使用的小模型。模型設定只影響新建立的實驗，建立後就固定不變。</p>
       <details class="experiment-advanced">
         <summary>進階實驗選項（通常使用預設值）</summary>
         <div class="pair">
           <label>研究階段<select id="study"><option value="study1">Study 1 · 主實驗</option><option value="study2">Study 2 · 換模型驗證</option></select></label>
-          <label>B 組採樣<select id="voting"><option value="7">7 次 · 呼叫數對齊</option><option value="5">5 次 · 原表格配置</option></select></label>
+          <label>B 組採樣<select id="voting"><option value="7">7 次 · 與 C／D 呼叫次數相同</option><option value="5">5 次 · 原始設計</option></select></label>
         </div>
         <label>資料缺口策略<select id="missing-policy"><option value="allow_decision">實驗對照 · 保留模型決策</option><option value="force_no_trade">保守門檻 · 強制 NoTrade</option></select></label>
-        <p class="hint">缺資料對照仍記錄缺少領域與引用率，但不改寫模型決策；兩種策略使用不同協議雜湊並分開統計。</p>
+        <p class="hint">選「保留模型決策」時仍會記錄缺了哪些面向與引用率，但不改動模型決策；兩種策略會分開統計，不會混在一起。</p>
         <label class="check"><input id="anonymize" type="checkbox">匿名化：以 ASSET 替換股票代號、公司名稱與執行長姓名</label>
         <p class="hint">A/B/C/D 使用同一模型。匿名化用來檢查訓練記憶污染：模型若不知道分析的是哪家公司仍表現相近，代表它是在讀證據而非回想股價。產品與品牌名稱（例如 iPhone、Azure）不會替換，報告時請一併說明。</p>
       </details>
       <details id="quality-overrides">
         <summary>資料品質例外（進階，通常不用勾）</summary>
         <p class="hint">只有在下方啟動檢查明確要求時才需要打勾；提示會告訴你該勾哪一個。</p>
-        <div id="override-model" class="check-wrap"><label class="check"><input id="allow-small-model" type="checkbox">其他 14B 以下模型僅作冒煙測試，不作研究比較（qwen3:8b canary 通過後可正式使用）</label></div>
+        <div id="override-model" class="check-wrap"><label class="check"><input id="allow-small-model" type="checkbox">允許 14B 以下的模型（只算測試，不納入研究比較；qwen3:8b 不需勾選）</label></div>
         <div id="override-sentiment" class="check-wrap"><label class="check"><input id="allow-low-quality-sentiment" type="checkbox">覆寫新聞目標相關性或 FinBERT 完整性檢查（僅用於資料品質敏感性測試）</label></div>
         <div id="override-fundamental" class="check-wrap"><label class="check"><input id="allow-point-fundamental" type="checkbox">覆寫舊版 SEC 點時基本面檢查（僅用於資料品質敏感性測試）</label></div>
       </details>
 
       <h3 class="substep">2.3　啟動實驗</h3>
       <p id="experiment-guard" class="readiness guard">尚未選擇資料集，因此不能啟動實驗。</p>
-      <p class="hint">本機 Ollama 模型每次呼叫可能需要數十秒到數分鐘；一次完整實驗約 22 次模型呼叫，實際時間依模型大小與硬體而定。開始執行後，詳情頁會依目前平均耗時預估剩餘時間。</p>
+      <p class="hint">本機模型每次呼叫可能需要數十秒到數分鐘；一次完整實驗約 22 次模型呼叫（B 組 5 次時為 20 次），實際時間依模型大小與硬體而定。開始後，詳情頁會依平均耗時預估剩餘時間。</p>
       <button id="run-button" disabled>開始研究實驗 <span aria-hidden="true">→</span></button>
     </form>
-    <details><summary>批次研究 · 目前 9 檔 × 20 日＝180 個案例</summary><p>匯入含 cases 陣列的批次 JSON，每筆使用上述資料集 ID、分析日、模型與 missing_data_policy 設定。先檢查所有資料，再排入佇列。</p><input id="batch-file" type="file" accept=".json,application/json" aria-label="匯入批次設定"></details>
-    <details class="protocol-details"><summary>查看研究規則與資料缺口處理</summary><p class="hint">資料缺口可以標記為實驗對照並保留模型決策，也可另選保守模式強制 NoTrade。模型呼叫數對齊不代表 token 成本完全相同；每次呼叫均保留使用量與提示雜湊。</p></details>
+    <details><summary>批次研究 · 9 檔股票 × 20 個季末＝180 個案例</summary><p>匯入批次 JSON（含 cases 陣列），每一筆指定資料集 ID、分析日、模型與資料缺口策略。系統會先檢查全部案例，再一起排入佇列。</p><input id="batch-file" type="file" accept=".json,application/json" aria-label="匯入批次設定"></details>
+    <details class="protocol-details"><summary>查看研究規則與資料缺口處理</summary><p class="hint">資料有缺口時，可以保留模型決策並標記為對照，也可以選保守模式一律 NoTrade。各組呼叫次數相同不代表 token 用量相同；每次呼叫都會記錄用量與提示詞雜湊。</p></details>
   </section>
 
   <section id="panel-runs" class="panel step-panel" data-panel="runs" role="tabpanel" hidden>
     <div id="run-empty" class="empty-state">
       <div class="section-label">03 / AGENT 執行</div>
       <h2>尚未選擇研究</h2>
-      <p>從右側「研究佇列」選一筆研究，或到第 2 步建立新實驗。執行中的研究會即時更新上方資料流。</p>
+      <p>從右側「研究佇列」選一筆研究，或到第 2 步建立新實驗。執行中的研究會即時更新上方的資料流向圖。</p>
       <button type="button" class="quiet" data-goto="experiment">前往建立實驗 →</button>
     </div>
     <div id="run-detail" hidden></div>
@@ -211,7 +211,7 @@
       <span class="terminal-live"><i></i> LIVE</span>
     </div>
     <div class="terminal-chrome"><span></span><span></span><span></span><small>coordinator@stance-shift</small></div>
-    <div id="agent-terminal-output" class="terminal-screen" role="log" aria-live="polite" aria-label="資料代理人執行紀錄"><div class="terminal-line"><time>--:--:--</time><b>[SYSTEM]</b><span>正在啟動 Agent Shell…</span></div></div>
+    <div id="agent-terminal-output" class="terminal-screen" role="log" aria-live="polite" aria-label="資料 Agent 執行紀錄"><div class="terminal-line"><time>--:--:--</time><b>[SYSTEM]</b><span>正在啟動 Agent Shell…</span></div></div>
   </section>
   <section class="panel queue-panel" aria-labelledby="queue-title">
     <div class="panel-heading">

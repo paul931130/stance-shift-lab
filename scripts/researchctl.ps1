@@ -226,34 +226,34 @@ function Wait-ResearchHealth([int]$TimeoutSec = 90) {
 function Show-Help {
     Write-Host 'Stance Shift Research · Agent CLI'
     Write-Host ''
-    Write-Host '.\research.ps1 setup                       第一次設定來源與模型'
+    Write-Host '.\research.ps1 setup                       第一次設定：資料來源金鑰與模型來源（本機／GPUtw／雲端 API）'
     Write-Host '.\research.ps1 start                       建置並啟動網站'
     Write-Host '.\research.ps1 status                      查看服務狀態'
-    Write-Host '.\research.ps1 doctor                      檢查 Docker、Ollama、來源設定與資料檔'
-    Write-Host '.\research.ps1 repair-docker               保留資料並修復 Docker Desktop stale socket'
-    Write-Host '.\research.ps1 collect NVDA 2024-12-31     取得或重用四域資料快照'
-    Write-Host '.\research.ps1 collect NVDA 2024-12-31 -UseFinbert  對新聞標題套用 FinBERT'
-    Write-Host '.\research.ps1 collect NVDA 2024-12-31 -Refresh  強制建立新版快照'
-    Write-Host '.\research.ps1 readiness                  查看 180 個回測案例的資料完整度'
-    Write-Host '.\research.ps1 splits                     查看 Training／Validation／Test 時間切分'
+    Write-Host '.\research.ps1 doctor                      檢查 Docker、模型來源、資料來源設定與資料檔'
+    Write-Host '.\research.ps1 repair-docker               Docker Desktop 卡住時修復連線（資料保留）'
+    Write-Host '.\research.ps1 collect NVDA 2024-12-31     建立資料集（已有齊全的會直接重用）'
+    Write-Host '.\research.ps1 collect NVDA 2024-12-31 -UseFinbert  建立資料集並用 FinBERT 評分新聞標題'
+    Write-Host '.\research.ps1 collect NVDA 2024-12-31 -Refresh  強制重新下載，建立新版資料集'
+    Write-Host '.\research.ps1 readiness                  查看 180 個研究案例（9 檔 × 20 季）的資料完整度'
+    Write-Host '.\research.ps1 splits                     查看訓練／驗證／測試期的時間切分'
     Write-Host '.\scripts\create-temporal-split-plan.ps1  建立可審查的時間切分批次計畫'
-    Write-Host '.\research.ps1 gaps                       列出每個未達正式門檻案例與補資料指令'
+    Write-Host '.\research.ps1 gaps                       列出尚未達正式門檻的案例與補資料指令'
     Write-Host '.\research.ps1 datasets                   列出資料集版本與完整 ID'
-    Write-Host '.\research.ps1 finbert -DatasetId ID      使用本機 FinBERT 建立新聞已評分的新版本'
+    Write-Host '.\research.ps1 finbert -DatasetId ID      用本機 FinBERT 評分新聞，建立新版資料集'
     Write-Host '.\research.ps1 models                     列出可用模型'
-    Write-Host '.\research.ps1 gputw-status               唯讀檢查 GPUtw 執行個體或 active 清單'
-    Write-Host '.\research.ps1 gputw-resources            唯讀檢查指定 GPUtw 執行個體 GPU/CPU 用量'
-    Write-Host '.\research.ps1 gputw-active               列出目前 active GPUtw 執行個體'
-    Write-Host '.\research.ps1 sources NVDA 2024-12-31    實機檢查資料來源'
-    Write-Host '.\research.ps1 run NVDA 2024-12-31         使用最新相符資料集與 14B 以上模型啟動實驗'
-    Write-Host '.\research.ps1 run NVDA 2024-12-31 -Model ollama/qwen3:8b       canary 通過後可作正式模型'
-    Write-Host '.\research.ps1 run NVDA 2024-12-31 -AllowPointFundamental  明確覆寫舊版點時基本面品質門檻'
+    Write-Host '.\research.ps1 gputw-status               查詢 GPUtw 執行個體狀態（不會變更任何東西）'
+    Write-Host '.\research.ps1 gputw-resources            查詢指定 GPUtw 執行個體的 GPU／CPU 用量'
+    Write-Host '.\research.ps1 gputw-active               列出目前執行中的 GPUtw 執行個體'
+    Write-Host '.\research.ps1 sources NVDA 2024-12-31    測試各資料來源能否連線'
+    Write-Host '.\research.ps1 run NVDA 2024-12-31         用最新的相符資料集與設定的模型啟動實驗'
+    Write-Host '.\research.ps1 run NVDA 2024-12-31 -Model ollama/qwen3:8b       指定模型（qwen3:8b 可用於正式研究）'
+    Write-Host '.\research.ps1 run NVDA 2024-12-31 -AllowPointFundamental  允許舊版 SEC 基本面（只算敏感性測試）'
     Write-Host '.\research.ps1 job -JobId ID               檢視單一實驗'
     Write-Host '.\research.ps1 pause|resume|cancel -JobId ID  控制實驗'
-    Write-Host '.\research.ps1 export -JobId ID            下載研究 ZIP'
-    Write-Host '.\research.ps1 verify-export -File ZIP     驗證研究產物或資料備份 ZIP 雜湊'
-    Write-Host '.\research.ps1 backup [-File ZIP]         建立一致性的本機研究資料備份（預設存到 backups\）'
-    Write-Host '.\research.ps1 statistics -ProtocolHash HASH  查看同協議統計'
+    Write-Host '.\research.ps1 export -JobId ID            下載這筆實驗的完整結果 ZIP'
+    Write-Host '.\research.ps1 verify-export -File ZIP     檢查匯出或備份 ZIP 是否完整、未被改動'
+    Write-Host '.\research.ps1 backup [-File ZIP]         備份所有研究資料（預設存到 backups\）'
+    Write-Host '.\research.ps1 statistics -ProtocolHash HASH  查看同一協議版本的統計結果'
     Write-Host '.\research.ps1 jobs                        查看實驗佇列'
     Write-Host '.\research.ps1 logs                        持續查看服務日誌'
     Write-Host '.\research.ps1 stop                        停止服務但保留資料'
@@ -294,21 +294,44 @@ function Setup-Research {
     $values['SEC_USER_AGENT'] = Read-PlainSetting 'SEC 研究名稱與聯絡信箱' $values['SEC_USER_AGENT']
     $values['FRED_API_KEY'] = Read-SecretSetting 'FRED API key' $values['FRED_API_KEY']
     $values['ALPHA_VANTAGE_API_KEY'] = Read-SecretSetting 'Alpha Vantage API key' $values['ALPHA_VANTAGE_API_KEY']
-    $values['RESEARCH_MODEL'] = Read-PlainSetting '預設模型（例如 ollama/qwen3:14b）' $values['RESEARCH_MODEL']
-    $values['GPUTW_API_URL'] = Read-PlainSetting 'GPUtw API 位址（可略過）' $values['GPUTW_API_URL']
-    $values['GPUTW_API_KEY'] = Read-SecretSetting 'GPUtw API key（只讀狀態，可略過）' $values['GPUTW_API_KEY']
-    $values['GPUTW_INSTANCE_ID'] = Read-PlainSetting 'GPUtw 執行個體 ID（可略過）' $values['GPUTW_INSTANCE_ID']
-    $values['GPUTW_OLLAMA_BASE_URL'] = Read-PlainSetting 'GPUtw 遠端 Ollama 位址（可略過）' $values['GPUTW_OLLAMA_BASE_URL']
-    $values['GPUTW_OLLAMA_API_KEY'] = Read-SecretSetting '遠端 Ollama 存取 key（可略過）' $values['GPUTW_OLLAMA_API_KEY']
     $localNews = Join-Path $projectRoot 'research-inputs\Stock_news.csv'
     if (Test-Path -LiteralPath $localNews) { $values['FNSPID_NEWS_PATH'] = '/app/research-inputs/Stock_news.csv' }
     $localAlphaCache = Join-Path $projectRoot 'research-inputs\alphavantage_news.csv'
     if (Test-Path -LiteralPath $localAlphaCache) { $values['ALPHA_VANTAGE_NEWS_PATH'] = '/app/research-inputs/alphavantage_news.csv' }
 
-    $cloud = (Read-Host '雲端模型金鑰要設定哪一個？openrouter / openai / gemini / skip [skip]').Trim().ToLowerInvariant()
-    if ($cloud -eq 'openrouter') { $values['OPENROUTER_API_KEY'] = Read-SecretSetting 'OpenRouter API key' $values['OPENROUTER_API_KEY'] }
-    elseif ($cloud -eq 'openai') { $values['OPENAI_API_KEY'] = Read-SecretSetting 'OpenAI API key' $values['OPENAI_API_KEY'] }
-    elseif ($cloud -eq 'gemini') { $values['GEMINI_API_KEY'] = Read-SecretSetting 'Gemini API key' $values['GEMINI_API_KEY'] }
+    # One model source at a time; see docs/model-sources.md.
+    Write-Host ''
+    Write-Host '模型要在哪裡執行？'
+    Write-Host '  1  自己電腦（本機 Ollama，需要夠力的顯示卡或耐心）'
+    Write-Host '  2  雲端租 GPU（GPUtw 遠端 Ollama）'
+    Write-Host '  3  雲端模型 API（OpenRouter／OpenAI／Gemini，只要一把金鑰）'
+    $source = (Read-Host '選擇 1 / 2 / 3 [1]').Trim()
+    if ($source -eq '2') {
+        $values['GPUTW_OLLAMA_BASE_URL'] = Read-PlainSetting 'GPUtw 遠端 Ollama 位址（例如 https://…）' $values['GPUTW_OLLAMA_BASE_URL']
+        if (-not $values['GPUTW_OLLAMA_BASE_URL']) { throw '選擇 GPUtw 時必須填入遠端 Ollama 位址。' }
+        $values['GPUTW_OLLAMA_API_KEY'] = Read-SecretSetting '遠端 Ollama 存取 key（端點沒有保護可略過）' $values['GPUTW_OLLAMA_API_KEY']
+        $values['GPUTW_API_KEY'] = Read-SecretSetting 'GPUtw API key（只讀狀態，可略過）' $values['GPUTW_API_KEY']
+        $values['GPUTW_INSTANCE_ID'] = Read-PlainSetting 'GPUtw 執行個體 ID（可略過）' $values['GPUTW_INSTANCE_ID']
+        if (-not $values['RESEARCH_MODEL'].StartsWith('ollama/')) { $values['RESEARCH_MODEL'] = 'ollama/qwen3:14b' }
+        $values['RESEARCH_MODEL'] = Read-PlainSetting '模型' $values['RESEARCH_MODEL']
+    } elseif ($source -eq '3') {
+        $cloud = (Read-Host '哪一家？openrouter / openai / gemini [openrouter]').Trim().ToLowerInvariant()
+        if (-not $cloud) { $cloud = 'openrouter' }
+        $keyName = @{ openrouter = 'OPENROUTER_API_KEY'; openai = 'OPENAI_API_KEY'; gemini = 'GEMINI_API_KEY' }[$cloud]
+        if (-not $keyName) { throw "不支援的雲端模型：$cloud" }
+        $values[$keyName] = Read-SecretSetting "$cloud API key" $values[$keyName]
+        $suggested = @{ openrouter = 'openrouter/qwen/qwen3-14b'; openai = 'openai/gpt-4.1-mini'; gemini = 'gemini/gemini-2.5-flash' }[$cloud]
+        if (-not $values['RESEARCH_MODEL'].StartsWith("$cloud/")) { $values['RESEARCH_MODEL'] = $suggested }
+        $values['RESEARCH_MODEL'] = Read-PlainSetting '模型（LiteLLM 名稱）' $values['RESEARCH_MODEL']
+        # A leftover GPUtw address would otherwise still take over any ollama/ model.
+        $values['GPUTW_OLLAMA_BASE_URL'] = ''
+    } else {
+        # Local Ollama: clear the GPUtw address, which otherwise takes precedence.
+        $values['GPUTW_OLLAMA_BASE_URL'] = ''
+        if (-not $values['RESEARCH_MODEL'].StartsWith('ollama/')) { $values['RESEARCH_MODEL'] = 'ollama/qwen3:14b' }
+        $values['RESEARCH_MODEL'] = Read-PlainSetting '模型' $values['RESEARCH_MODEL']
+        Write-Host '記得先安裝 Ollama 並執行：ollama pull' $values['RESEARCH_MODEL'].Substring(7)
+    }
 
     $mode = (Read-Host '執行模式 local / server [local]').Trim().ToLowerInvariant()
     if ($mode -eq 'server') {
@@ -351,10 +374,28 @@ function Test-Research {
     if (Test-Path -LiteralPath $news) { Write-Host '[OK] FNSPID 篩選檔存在' } else { Write-Host '[INFO] 未安裝 FNSPID；可由 Alpha Vantage 提供情緒資料' }
     $alphaCache = Join-Path $projectRoot 'research-inputs\alphavantage_news.csv'
     if (Test-Path -LiteralPath $alphaCache) { Write-Host '[OK] Alpha Vantage 新聞快取檔存在（不消耗即時 API 額度）' } else { Write-Host '[INFO] 未安裝 Alpha Vantage 新聞快取；缺口由即時 API 補齊' }
-    try {
-        $tags = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
-        Write-Host "[OK] Ollama 已連線，共 $($tags.models.Count) 個模型"
-    } catch { Write-Host '[WARN] Ollama 未連線；可改用已設定金鑰的雲端模型' }
+    $model = $settings['RESEARCH_MODEL']
+    if ($settings['RESEARCH_DEMO_MODE'] -eq 'true') {
+        Write-Host '[INFO] 模型來源：展示模式（內建合成 provider，不呼叫任何模型）'
+    } elseif ($model -and -not $model.StartsWith('ollama/')) {
+        $provider = $model.Split('/')[0]
+        $keyName = @{ openrouter = 'OPENROUTER_API_KEY'; openai = 'OPENAI_API_KEY'; gemini = 'GEMINI_API_KEY' }[$provider]
+        if ($keyName -and $settings[$keyName]) { Write-Host "[OK] 模型來源：雲端 API · $model · $keyName 已設定" }
+        elseif ($keyName) { Write-Host "[FAIL] 模型來源：雲端 API · $model · 缺少 $keyName" }
+        else { Write-Host "[WARN] 模型來源：雲端 API · $model · 無法判斷需要哪把金鑰" }
+    } elseif ($settings['GPUTW_OLLAMA_BASE_URL']) {
+        $headers = @{}
+        if ($settings['GPUTW_OLLAMA_API_KEY']) { $headers.Authorization = "Bearer $($settings['GPUTW_OLLAMA_API_KEY'])" }
+        try {
+            $tags = Invoke-RestMethod -Uri ($settings['GPUTW_OLLAMA_BASE_URL'].TrimEnd('/') + '/api/tags') -Headers $headers -TimeoutSec 10
+            Write-Host "[OK] 模型來源：GPUtw 遠端 Ollama 已連線，共 $($tags.models.Count) 個模型 · $model"
+        } catch { Write-Host '[FAIL] 模型來源：GPUtw 遠端 Ollama 連不上；確認執行個體已啟動、位址與存取 key 正確' }
+    } else {
+        try {
+            $tags = Invoke-RestMethod -Uri 'http://127.0.0.1:11434/api/tags' -TimeoutSec 5
+            Write-Host "[OK] 模型來源：本機 Ollama 已連線，共 $($tags.models.Count) 個模型 · $model"
+        } catch { Write-Host '[FAIL] 模型來源：本機 Ollama 未連線；請安裝並啟動 Ollama，或執行 setup 改選 GPUtw／雲端 API' }
+    }
     try {
         $health = Invoke-RestMethod -Uri 'http://127.0.0.1:8000/health' -TimeoutSec 5
         Write-Host "[OK] 網站服務 healthy · $($health.version)"
@@ -386,12 +427,12 @@ switch ($Command) {
     'logs' { Invoke-DockerCompose @('logs','-f','--tail','100','research') }
     'collect' {
         $result = Invoke-ResearchApi 'POST' '/api/datasets/download' @{ ticker=$Ticker; analysis_date=$AnalysisDate; refresh=[bool]$Refresh; use_finbert=[bool]$UseFinbert }
-        if ($result.reused) { Write-Host "[CACHE] 重用 dataset v$($result.version) · $($result.id)" } else { Write-Host "[STORE] 新資料快照 · $($result.id)" }
+        if ($result.reused) { Write-Host "[CACHE] 重用既有資料集 v$($result.version) · $($result.id)" } else { Write-Host "[STORE] 已建立新資料集 · $($result.id)" }
         $result.agents.PSObject.Properties | ForEach-Object { Write-Host "[$($_.Name.ToUpperInvariant())] $($_.Value.status) · $($_.Value.records) records · $($_.Value.message)" }
     }
     'readiness' {
         $result = Invoke-ResearchApi 'GET' '/api/readiness'
-        Write-Host "正式主實驗可跑 $($result.formal_experiment_ready_cases)/$($result.target_cases) · 四域完整 $($result.evidence_complete_cases) · 部分 $($result.partial_cases) · 尚缺 $($result.missing_cases)"
+        Write-Host "可跑正式實驗 $($result.formal_experiment_ready_cases)/$($result.target_cases) · 四個面向齊全 $($result.evidence_complete_cases) · 部分齊全 $($result.partial_cases) · 還沒有資料 $($result.missing_cases)"
         Write-Host "SEC 可比較 $($result.comparable_fundamental_cases) · FinBERT 完整 $($result.finbert_ready_cases) · 60 日行情 $($result.backtest_ready_cases) · 90 日行情 $($result.all_horizons_ready_cases)"
         $result.tickers | Format-Table ticker,formal_ready,complete,partial,missing -AutoSize
         Write-Host $result.note
@@ -400,9 +441,9 @@ switch ($Command) {
         $result = Invoke-ResearchApi 'GET' '/api/readiness/splits'
         foreach ($name in @('training','validation','test')) {
             $item = $result.splits.$name
-            Write-Host ("{0}: {1}/{2} 正式可用 · 四域 {3} · FinBERT {4} · 60 日行情 {5} · 缺少 {6}" -f $item.label,$item.formal_ready_cases,$item.target_cases,$item.evidence_complete_cases,$item.finbert_ready_cases,$item.backtest_ready_cases,$item.missing_cases)
+            Write-Host ("{0}: {1}/{2} 正式可用 · 四個面向齊全 {3} · FinBERT {4} · 60 日行情 {5} · 缺少 {6}" -f $item.label,$item.formal_ready_cases,$item.target_cases,$item.evidence_complete_cases,$item.finbert_ready_cases,$item.backtest_ready_cases,$item.missing_cases)
         }
-        Write-Host 'Test 已標記為凍結；執行 scripts\create-temporal-split-plan.ps1 建立批次清單。'
+        Write-Host '測試期（Test）要等模型與設定定案後才執行；用 scripts\create-temporal-split-plan.ps1 建立批次清單。'
     }
     'datasets' {
         $rows = Invoke-ResearchApi 'GET' '/api/datasets'

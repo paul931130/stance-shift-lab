@@ -103,16 +103,16 @@ function researchAgentPanel(s, jobStatus) {
   const cards = COLLECTION_DOMAINS.map(domain => {
     const item = (s.research || {})[domain];
     const status = item?.status === 'complete' ? 'complete' : item?.status === 'degraded' ? 'degraded' : item?.status === 'missing' ? 'missing' : s.inputs && jobStatus === 'running' ? 'running' : 'idle';
-    const label = {complete: '分析完成', degraded: '來源摘錄完成', missing: '資料缺口', running: '分析中', idle: '等待資料'}[status];
-    return `<article class="agent-card ${status}"><b>${DOMAIN_LABELS[domain]}研究 Agent</b><small>${escape(domain)}</small><span>${label}</span><p>${escape(item?.summary || '等待 Coordinator 分派同一資料快照')}</p></article>`;
+    const label = {complete: '分析完成', degraded: '改用原始摘錄', missing: '資料缺口', running: '分析中', idle: '等待資料'}[status];
+    return `<article class="agent-card ${status}"><b>${DOMAIN_LABELS[domain]}研究 Agent</b><small>${escape(domain)}</small><span>${label}</span><p>${escape(item?.summary || '等待 Coordinator 分派資料集')}</p></article>`;
   }).join('');
-  return `<section class="execution-block"><div class="subheading"><h3>四個研究 Agent</h3><small>同一資料快照 · ${state.parallelWorkers} workers</small></div><div class="agent-grid">${cards}</div></section>`;
+  return `<section class="execution-block"><div class="subheading"><h3>四個研究 Agent</h3><small>共用同一份資料集 · 並行數 ${state.parallelWorkers}</small></div><div class="agent-grid">${cards}</div></section>`;
 }
 
 function traceTerminal(job, s) {
   const lines = (s.trace || []).map(item => `<div class="terminal-line ok"><time>${escape(terminalStamp(new Date(item.at)))}</time><b>[TRACE]</b><span>${escape(traceMessage(item.node))}</span></div>`).join('');
-  const waiting = !['complete', 'cancelled', 'paused'].includes(job.status) ? '<div class="terminal-line active"><time>NOW</time><b>[WORKER]</b><span>等待下一個持久化檢查點…</span></div>' : '';
-  return `<section class="execution-block"><div class="subheading"><h3>研究 Agent 終端</h3><small>真實持久化事件 · 執行時每 3 秒、閒置每 30 秒更新；背景分頁暫停更新</small></div><div class="terminal-screen run-terminal"><div class="terminal-line command"><time>CASE</time><b>[SESSION]</b><span>${escape(job.id.slice(0, 8))} · ${escape(job.config.protocol.model)} · ${escape(job.config.protocol.version)}</span></div>${lines || '<div class="terminal-line"><time>--:--:--</time><b>[QUEUE]</b><span>等待 Coordinator 領取工作…</span></div>'}${waiting}</div></section>`;
+  const waiting = !['complete', 'cancelled', 'paused'].includes(job.status) ? '<div class="terminal-line active"><time>NOW</time><b>[WORKER]</b><span>等待下一個進度存檔點…</span></div>' : '';
+  return `<section class="execution-block"><div class="subheading"><h3>研究 Agent 終端</h3><small>實際執行紀錄 · 執行中每 3 秒、閒置時每 30 秒更新；分頁在背景時暫停更新</small></div><div class="terminal-screen run-terminal"><div class="terminal-line command"><time>CASE</time><b>[SESSION]</b><span>${escape(job.id.slice(0, 8))} · ${escape(job.config.protocol.model)} · ${escape(job.config.protocol.version)}</span></div>${lines || '<div class="terminal-line"><time>--:--:--</time><b>[QUEUE]</b><span>等待 Coordinator 領取工作…</span></div>'}${waiting}</div></section>`;
 }
 
 function groupPhase(group, count, total) {
@@ -129,7 +129,7 @@ function groupProgressPanel(s, protocol, jobStatus) {
   const totals = groupTotals(protocol);
   const executionNote = String(protocol.model || '').startsWith('ollama/')
     ? '本機 Ollama 決策依序排程，避免模型佇列互相卡住'
-    : `${state.parallelWorkers} workers · 依輪次相依關係並行`;
+    : `並行數 ${state.parallelWorkers} · 依輪次先後同時執行`;
   const cards = Object.keys(GROUP_LABELS).map(group => {
     const count = (s.records || []).filter(record => record.group === group).length, total = totals[group];
     const status = count >= total ? 'complete' : s.report && jobStatus === 'running' ? 'running' : jobStatus === 'paused' && count ? 'paused' : 'idle';
@@ -164,7 +164,7 @@ function estimateRemaining(s, total, jobStatus) {
 
 function decisionCards(s) {
   if (!s.decisions) return '<p class="hint">四組完成後由 Gatekeeper 同步鎖定決策。</p>';
-  return `<div class="decisions">${Object.entries(s.decisions).map(([g, d]) => `<div><small>${g} 組 · 信心 ${percentage(d.confidence)} · 預測 ${number(d.expected_return_pct)}%</small><strong>${escape(d.action)}</strong><small>模型：${escape(d.model_action || d.candidate_action)} · 推導：${escape(d.derived_action || d.candidate_action)} · 候選：${escape(d.candidate_action)}<br>中性帶 ±${number(d.hold_band_pct)}% · 資料覆蓋 ${percentage(d.gate.domain_coverage)}<br>${d.gate.missing_data_control ? '缺資料對照：未覆寫模型決策<br>' : ''}${escape(d.gate.reasons.join(' / ') || '通過門檻')}</small></div>`).join('')}</div>`;
+  return `<div class="decisions">${Object.entries(s.decisions).map(([g, d]) => `<div><small>${g} 組 · 信心 ${percentage(d.confidence)} · 預測 ${number(d.expected_return_pct)}%</small><strong>${escape(d.action)}</strong><small>模型：${escape(d.model_action || d.candidate_action)} · 推導：${escape(d.derived_action || d.candidate_action)} · 候選：${escape(d.candidate_action)}<br>Hold 門檻 ±${number(d.hold_band_pct)}%（預測報酬在此範圍內視為 Hold） · 資料覆蓋 ${percentage(d.gate.domain_coverage)}<br>${d.gate.missing_data_control ? '缺資料對照：未覆寫模型決策<br>' : ''}${escape(d.gate.reasons.join(' / ') || '通過門檻')}</small></div>`).join('')}</div>`;
 }
 
 // Downstream half of the map: research agents → report → A/B/C/D →
@@ -178,7 +178,7 @@ function renderJobFlow(job, s, total) {
     const item = (s.research || {})[domain];
     const status = item?.status === 'complete' ? 'done' : item?.status === 'degraded' || item?.status === 'missing' ? 'warn' : s.inputs && live ? 'active' : 'idle';
     if (item) researchDone++;
-    update[`ra-${domain}`] = {status, sub: item?.status === 'complete' ? '分析完成' : item?.status === 'missing' ? '資料缺口' : item?.status === 'degraded' ? '來源摘錄' : status === 'active' ? '分析中…' : 'research'};
+    update[`ra-${domain}`] = {status, sub: item?.status === 'complete' ? '分析完成' : item?.status === 'missing' ? '資料缺口' : item?.status === 'degraded' ? '改用原始摘錄' : status === 'active' ? '分析中…' : '等待分析'};
   }
   update.report = s.report ? {status: 'done', sub: '已鎖定'} : {status: researchDone === 4 ? moving : 'idle', sub: '鎖定後分派'};
   const totals = groupTotals(job.config.protocol);
@@ -226,7 +226,7 @@ export async function showJob(id, loadedJob = null) {
   const openDetails = [...output.querySelectorAll('details')].map(d => d.open);
   output.innerHTML = `<div class="run-head"><div><div class="section-label">CASE / ${escape(id.slice(0, 8))}</div><h2>${escape(job.config.ticker)} · ${escape(job.config.analysis_date)} <span class="status ${escape(job.status)}">${escape(statuses[job.status])}</span></h2></div><div class="run-progress"><strong>${s.records.length}<small>/${total}</small></strong><span>決策輸出</span></div></div>
     <p class="${oldProtocol ? 'protocol-warning' : 'hint'}">${escape(protocolNotice)}</p>${memoryNotice}
-    <p class="hint">目前：${escape(trace)} · ${s.attempts.length} 次持久化波次${eta ? ` · 依目前平均耗時預估剩餘 ${escape(eta)}` : ''}</p>
+    <p class="hint">目前：${escape(trace)} · 已存檔 ${s.attempts.length} 次${eta ? ` · 依目前平均耗時預估剩餘 ${escape(eta)}` : ''}</p>
     <progress class="progress" max="${total}" value="${s.records.length}" aria-label="決策推論進度"></progress>
     ${job.error ? `<p class="error-text">${escape(friendlyJobError(job.error))}</p>` : ''}
     <div class="actions">${oldProtocol ? `<button class="quiet" type="button" data-clone="${escape(id)}">複製至新版重新執行</button>` : ''}${!isFinal && !oldProtocol ? `<button class="quiet" type="button" data-control="${job.wants_run ? 'pause' : 'resume'}">${job.wants_run ? '暫停' : '繼續執行'}</button><button class="quiet" type="button" data-control="cancel">取消實驗</button>` : ''}<a href="/api/jobs/${id}/export">下載研究產物 ZIP</a>${job.status === 'complete' ? '<button type="button" data-statistics="true">檢視同協議統計 →</button>' : ''}</div>

@@ -31,7 +31,7 @@ def build_router(ctx):
     def freeze_study(protocol_hash: str):
         dataset_ids = {j["config"]["dataset_id"] for j in protocol_jobs(protocol_hash) if j["config"].get("dataset_id")}
         if not dataset_ids:
-            raise ValueError("此協議尚無任何實驗，無法凍結 preregistration")
+            raise ValueError("這個協議版本還沒有任何實驗，無法鎖定研究樣本")
         return store.freeze(protocol_hash, dataset_ids)
 
     @router.get("/api/studies/{protocol_hash}/pilot")
