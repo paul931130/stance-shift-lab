@@ -1,5 +1,5 @@
 // Step 4 · statistics for the selected run's protocol.
-import { $, escape, percentage, number, formatStamp } from './ui.js';
+import { $, escape, percentage, number, formatStamp, copyablePre } from './ui.js';
 import { state, on } from './store.js';
 import { api, task } from './api.js';
 import { flow } from './flow.js';
@@ -40,7 +40,7 @@ export async function showStatistics() {
     <div class="chart-pair">${comparisonBars(primary, 'selective_accuracy', '條件準確率', percentage)}${comparisonBars(primary, 'sharpe', 'Sharpe', number)}</div>
     <div class="table-wrap"><table><thead><tr><th>方法</th><th>覆蓋率</th><th>條件準確率</th><th>Hold</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div></section>
     <section class="stats-substep"><div class="section-label">4.2 / 品質與匯出</div><p class="hint">Pilot：${escape(pilot.verdict || '—')} · ${escape((pilot.blocking_reasons || []).join(' / ') || '無阻擋原因')}。中性帶敏感性已用既有預測重算，不重新呼叫模型。</p><div class="actions"><a href="/api/studies/${protocol}/summary.csv">下載 summary.csv</a><a href="/api/studies/${protocol}" download="statistics.json">下載 statistics.json</a></div></section>
-    <section class="stats-substep"><div class="section-label">4.3 / 詳細稽核</div><details><summary>Pilot、hold band 與完整性診斷</summary><pre>${escape(JSON.stringify({pilot, hold_band: band, completeness: report.completeness}, null, 2))}</pre></details><details><summary>統計檢定與口徑</summary><pre>${escape(JSON.stringify({comparisons: report.comparisons, conventions: report.conventions}, null, 2))}</pre></details></section>`;
+    <section class="stats-substep"><div class="section-label">4.3 / 詳細稽核</div><details><summary>Pilot、hold band 與完整性診斷</summary>${copyablePre(JSON.stringify({pilot, hold_band: band, completeness: report.completeness}, null, 2))}</details><details><summary>統計檢定與口徑</summary>${copyablePre(JSON.stringify({comparisons: report.comparisons, conventions: report.conventions}, null, 2))}</details></section>`;
   requestAnimationFrame(() => { for (const bar of element.querySelectorAll('.bar-track i')) bar.style.width = `${bar.dataset.width}%`; });
 }
 

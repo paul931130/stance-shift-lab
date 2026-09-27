@@ -79,9 +79,11 @@ $('login-form').addEventListener('submit', e => {
   });
 });
 $('refresh').addEventListener('click', e => task(e.currentTarget, async () => {
-  await refreshDatasets();
-  await refreshReadiness();
-  await refreshJobs();
+  // Independent reads: run together so one slow scan does not delay the rest.
+  const results = await Promise.allSettled([refreshDatasets(), refreshReadiness(), refreshJobs()]);
+  const failed = results.find(r => r.status === 'rejected');
+  if (failed) throw failed.reason;
+  notify('狀態已更新');
 }));
 $('dismiss-first-time-guide').addEventListener('click', () => {
   $('first-time-guide').hidden = true;

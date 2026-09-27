@@ -205,7 +205,7 @@ def build_router(ctx):
     def export(key: str):
         job = store.get(key)
         protocol_hash = job["config"]["protocol_hash"]
-        same_protocol = [item for item in store.jobs() if item["config"]["protocol_hash"] == protocol_hash]
+        same_protocol = store.jobs(protocol_hash)
         preregistration = store.preregistration(protocol_hash)
         eligible_dataset_ids = preregistration["dataset_ids"] if preregistration else None
         return Response(export_job(job, study_report(same_protocol, eligible_dataset_ids=eligible_dataset_ids)),

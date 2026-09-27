@@ -35,6 +35,8 @@ class Store:
                     PRIMARY KEY(job_id, "group", horizon, cost_model, decision_layer));
                 CREATE INDEX IF NOT EXISTS idx_case_results_lookup
                     ON case_results(protocol_hash, ticker, "group", maturity_date);
+                CREATE INDEX IF NOT EXISTS idx_jobs_protocol
+                    ON jobs(json_extract(config, '$.protocol_hash'));
                 CREATE TABLE IF NOT EXISTS preregistrations(
                     protocol_hash TEXT PRIMARY KEY, dataset_ids TEXT, frozen_at TEXT);
             """)
@@ -105,8 +107,12 @@ class Store:
         with self.connect() as db:
             rows = db.execute("SELECT id, ticker, created_at FROM datasets ORDER BY created_at ASC, rowid ASC").fetchall()
             uncached = [row["id"] for row in rows if row["id"] not in self._dataset_summary_cache]
-            contents = {key: db.execute("SELECT content FROM datasets WHERE id=?", (key,)).fetchone()["content"]
-                        for key in uncached}
+            contents = {}
+            # One query per chunk instead of one per dataset on a cold cache.
+            for start in range(0, len(uncached), 500):
+                chunk = uncached[start:start + 500]
+                marks = ",".join("?" * len(chunk))
+                contents.update(db.execute(f"SELECT id, content FROM datasets WHERE id IN ({marks})", chunk).fetchall())
             jobs = db.execute("SELECT config FROM jobs").fetchall()
         uses = {}
         for job in jobs:
@@ -165,9 +171,15 @@ class Store:
         with self.connect() as db:
             return self.unpack(db.execute("SELECT * FROM jobs WHERE id=?", (key,)).fetchone())
 
-    def jobs(self):
+    def jobs(self, protocol_hash=None):
+        """Full jobs, optionally only one protocol's; study pages never need other protocols' state JSON."""
         with self.connect() as db:
-            return [self.unpack(row) for row in db.execute("SELECT * FROM jobs ORDER BY created_at DESC")]
+            if protocol_hash is None:
+                rows = db.execute("SELECT * FROM jobs ORDER BY created_at DESC")
+            else:
+                rows = db.execute("""SELECT * FROM jobs WHERE json_extract(config, '$.protocol_hash')=?
+                    ORDER BY created_at DESC""", (protocol_hash,))
+            return [self.unpack(row) for row in rows]
 
     def job_summaries(self):
         """Job list without the state JSON, for the frequently polled dashboard."""
@@ -228,7 +240,8 @@ class Store:
             db.execute("UPDATE jobs SET state=?,status=?,wants_run=?,error=?,updated_at=?,steps=? WHERE id=?",
                 (json.dumps(state, ensure_ascii=False, allow_nan=False), status, 0 if error else row["wants_run"], error, now(),
                  len(state.get("records", [])), key))
-            if state.get("finished"):
+            # A job cancelled during its final step must not feed memory or statistics.
+            if state.get("finished") and status == "complete":
                 self._upsert_case_results(db, key, json.loads(row["config"]), state, row["created_at"])
 
     @staticmethod

@@ -30,6 +30,7 @@ def build_router(ctx):
     store = ctx.store
     finbert_tasks = TaskRegistry()
     collection_tasks = TaskRegistry()
+    start_lock = threading.Lock()  # guards check-then-start of background tasks
     av_archive_task = {"stage": "idle", "message": "尚未開始"}
     av_archive_lock = threading.RLock()
 
@@ -100,9 +101,10 @@ def build_router(ctx):
 
     def begin_finbert(key):
         store.dataset(key)
-        if (finbert_tasks.get(key) or {}).get("stage") in RUNNING_FINBERT:
-            raise HTTPException(409, "此資料集正在評分，請查看進度")
-        finbert_tasks.put(key, {"stage": "queued", "completed": 0, "total": 0})
+        with start_lock:
+            if (finbert_tasks.get(key) or {}).get("stage") in RUNNING_FINBERT:
+                raise HTTPException(409, "此資料集正在評分，請查看進度")
+            finbert_tasks.put(key, {"stage": "queued", "completed": 0, "total": 0})
 
     @router.get("/api/datasets/{key}/finbert")
     def finbert_progress(key: str):
@@ -214,12 +216,15 @@ def build_router(ctx):
     def start_collection(payload: DownloadInput):
         validate_case(payload.ticker, payload.analysis_date)
         case = f"{payload.ticker}:{payload.analysis_date}"
-        running = collection_tasks.find(lambda task: task["case"] == case and task["stage"] in RUNNING_COLLECTION)
-        if running:
-            return running  # A double click joins the running collection.
-        task_id = uuid4().hex
-        task = collection_tasks.put(task_id, {"id": task_id, "case": case, "stage": "queued",
-                                              "agents": {}, "created_at": now()})
+        # Sync routes run on a thread pool: check and register atomically so two
+        # simultaneous clicks cannot start two collections for the same case.
+        with start_lock:
+            running = collection_tasks.find(lambda task: task["case"] == case and task["stage"] in RUNNING_COLLECTION)
+            if running:
+                return running  # A double click joins the running collection.
+            task_id = uuid4().hex
+            task = collection_tasks.put(task_id, {"id": task_id, "case": case, "stage": "queued",
+                                                  "agents": {}, "created_at": now()})
 
         def progress(**values):
             collection_tasks.update(task_id, **values)

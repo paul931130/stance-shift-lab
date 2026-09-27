@@ -18,7 +18,8 @@
   </a>
   <span id="model-state" class="model-status" role="status">正在檢查模型連線…</span>
   <span id="protocol-tag" class="tag">v3 研究協議</span>
-  <button id="refresh" class="quiet" type="button"><span aria-hidden="true">↻</span> 更新狀態</button>
+  <button id="theme-toggle" class="quiet icon-button" type="button" aria-label="切換深淺色主題" title="切換深淺色主題"><span aria-hidden="true">◐</span></button>
+  <button id="refresh" class="quiet" type="button" title="重新讀取資料集、完整度與佇列（快捷鍵 R）"><span aria-hidden="true">↻</span> 更新狀態</button>
 </header>
 
 <main class="shell">
@@ -193,7 +194,12 @@
   </section>
 
   <section id="panel-stats" class="panel step-panel" data-panel="stats" role="tabpanel" hidden>
-    <div id="statistics"></div>
+    <div id="statistics"><div class="empty-state">
+      <div class="section-label">04 / 統計結果</div>
+      <h2>尚未選擇已完成的研究</h2>
+      <p>統計會依選定研究的協議彙整所有同協議案例。從右側佇列選一筆「已完成」的研究即可載入。</p>
+      <button type="button" class="quiet" data-goto="runs">前往 Agent 執行 →</button>
+    </div></div>
   </section>
 </section>
 
@@ -213,7 +219,7 @@
       <span class="muted">背景執行 · 自動保存</span>
     </div>
     <div class="queue-filters">
-      <label><span class="sr-only">搜尋佇列</span><input id="job-search" type="search" placeholder="股票代號或分析日" autocomplete="off"></label>
+      <label><span class="sr-only">搜尋佇列</span><input id="job-search" type="search" placeholder="股票代號或分析日（按 / 聚焦）" autocomplete="off"></label>
       <label><span class="sr-only">狀態</span><select id="job-status-filter"><option value="">全部狀態</option><option value="queued">等待執行</option><option value="running">執行中</option><option value="paused">已暫停</option><option value="complete">已完成</option><option value="cancelled">已取消</option></select></label>
     </div>
     <div id="jobs" class="empty">尚無實驗。先準備資料，再建立第一筆研究。</div>

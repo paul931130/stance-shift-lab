@@ -10,7 +10,7 @@ def build_router(ctx):
     store = ctx.store
 
     def protocol_jobs(protocol_hash):
-        return [j for j in store.jobs() if j["config"]["protocol_hash"] == protocol_hash]
+        return store.jobs(protocol_hash)
 
     @router.get("/api/studies/{protocol_hash}")
     def report(protocol_hash: str):

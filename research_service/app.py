@@ -85,8 +85,16 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     def work():
         # One worker advances one checkpointed step at a time; see Store.claim for ordering.
+        # An exception escaping this loop would silently kill the only worker
+        # thread and leave every queued job stuck, so storage errors (e.g. a
+        # locked database) are logged and retried after a short back-off.
         while not stop.is_set():
-            job = store.claim()
+            try:
+                job = store.claim()
+            except Exception:
+                logger.exception("worker could not claim a job; retrying")
+                stop.wait(5)
+                continue
             if not job:
                 stop.wait(.7)
                 continue
@@ -101,7 +109,12 @@ def create_app(store=None, model_call=None, start_worker=True):
                 message = f"{type(error).__name__}: {_redact(str(error), access_key)[:700]}"
                 logger.error("job %s failed: %s", job["id"], message)
                 state["attempts"].append({"at": now(), "status": "error", "message": message})
-                store.save_step(job["id"], state, message)
+                try:
+                    store.save_step(job["id"], state, message)
+                except Exception:
+                    # The job stays 'running'; recover() pauses it on the next restart.
+                    logger.exception("job %s: could not persist failure state", job["id"])
+                    stop.wait(5)
 
     @asynccontextmanager
     async def lifespan(app):
@@ -121,6 +134,12 @@ def create_app(store=None, model_call=None, start_worker=True):
 
     @app.middleware("http")
     async def protect(request, call_next):
+        # Rejections below get the same security headers as normal responses.
+        response = await guard(request, call_next)
+        response.headers.update(SECURITY_HEADERS)
+        return response
+
+    async def guard(request, call_next):
         if request.url.hostname not in allowed_hosts:
             return JSONResponse({"detail": "Host not allowed"}, status_code=403)
         if not remote and not container_local and request.client and request.client.host not in ("127.0.0.1", "::1", "testclient"):
@@ -137,9 +156,7 @@ def create_app(store=None, model_call=None, start_worker=True):
             cookie = request.cookies.get("research_session", "")
             if not ctx.auth.bearer_ok(bearer) and not ctx.auth.valid_session(cookie):
                 return JSONResponse({"detail": "請先輸入研究室存取金鑰"}, status_code=401)
-        response = await call_next(request)
-        response.headers.update(SECURITY_HEADERS)
-        return response
+        return await call_next(request)
 
     # ValueError is the codebase-wide convention for rejected research input.
     @app.exception_handler(ValueError)
