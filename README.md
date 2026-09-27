@@ -14,7 +14,7 @@
 
 ## 快速開始
 
-有兩種跑法，擇一即可：
+有三種跑法，擇一即可。下表比較前兩種；已經有 Python、只接 GPUtw 或本機 Ollama 的人，也可以用[跑法三：直接 pip 安裝](#跑法三不用-docker直接-pip-安裝)。
 
 | | 在 GitHub 上開（Codespaces） | 在自己電腦跑（Docker） |
 | --- | --- | --- |
@@ -154,6 +154,45 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
 - **備份**：Windows 執行 `.\research.ps1 backup`（存到 `backups\`）；macOS／Linux 瀏覽器開 <http://127.0.0.1:8000/api/backup> 下載 ZIP。
 - **不要執行 `docker compose down -v`**，那會刪掉所有研究資料。
 
+### 跑法三：不用 Docker，直接 pip 安裝
+
+適合已經有 Python、只打算接**雲端租 GPU（GPUtw）或自己電腦的 Ollama**（也可接雲端模型 API）的人。少了 Docker，本機 Ollama 直接用 `127.0.0.1:11434` 連，不用任何網路設定。
+
+1. **安裝 Python 3.12 以上**（[python.org](https://www.python.org/downloads/)；Windows 安裝時勾選「Add python.exe to PATH」）。
+2. **下載程式並安裝**：
+
+   ```bash
+   git clone https://github.com/paul931130/stance-shift-lab.git
+   cd stance-shift-lab
+   python -m venv .venv
+   # 啟用虛擬環境：Windows 用 .venv\Scripts\activate；macOS／Linux 用 source .venv/bin/activate
+   pip install .
+   ```
+
+   要用 FinBERT 分析新聞情緒（正式實驗需要），改成 `pip install ".[finbert]"`，會多下載約 1–2 GB。
+3. **準備模型（二選一）**：
+   - 自己電腦的 Ollama：安裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`，保持 Ollama 開著。
+   - GPUtw 雲端 GPU：照 [GPUtw 整合指南](docs/gputw-integration.md) 開好執行個體，記下遠端 Ollama 位址與存取 key。
+4. **啟動研究台**（在專案資料夾、虛擬環境已啟用）：
+
+   ```bash
+   stance-shift serve
+   ```
+
+   瀏覽器開 <http://127.0.0.1:8000/>。這個視窗要保持開著，按 Ctrl+C 停止。
+5. **填設定**：按「資料準備」頁的「設定模型與金鑰」：
+   - 資料來源金鑰：`SEC_USER_AGENT`、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`。
+   - 用 GPUtw：在「GPUtw／遠端 Ollama」填 `GPUTW_OLLAMA_BASE_URL` 與 `GPUTW_OLLAMA_API_KEY`。
+   - 用本機 Ollama：不用填，預設就是 `ollama/qwen3:14b`。
+   - FNSPID 新聞檔：放在 `research-inputs/Stock_news.csv`，並把 `FNSPID_NEWS_PATH` 填成 `research-inputs/Stock_news.csv`。
+
+   按「儲存設定」立即生效，設定存在專案的 `research-data/` 資料夾，下次啟動還在。
+6. 接著照下方「[確認模型並開始研究](#確認模型並開始研究)」。
+
+**之後每次**：進專案資料夾 → 啟用虛擬環境 → `stance-shift serve`。**更新程式**：`git pull` 後再執行一次 `pip install .`。**備份**：研究資料全部在 `research-data/`，複製這個資料夾即可。
+
+pip 跑法與 Docker 用的是同一份程式，但 CI 的完整啟動檢查以 Docker 為準；遇到安裝問題，改用跑法二最省事。
+
 ### 確認模型並開始研究
 
 兩種跑法打開研究台後都一樣：
@@ -191,7 +230,7 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
 ```
 
 macOS／Linux 的 `research.sh` 提供 `setup`、`start`、`stop`、`status`、`logs`、`test`、`doctor`。`power-plan`、`model-canary` 等工具在容器內執行，例如
-`docker compose -f compose.research.yaml run --rm --no-deps research python -m research_service.cli model-canary`；它們只做設計模擬或合成格式檢查，不會建立正式案例。不走 Docker 的本機 Python 安裝只供開發者使用，不在支援範圍。
+`docker compose -f compose.research.yaml run --rm --no-deps research python -m research_service.cli model-canary`；它們只做設計模擬或合成格式檢查，不會建立正式案例。pip 安裝後也可以直接執行 `stance-shift power-plan`、`stance-shift model-canary`。
 
 ## 回測資料
 

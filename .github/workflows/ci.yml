@@ -42,6 +42,15 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: stance-shift version
 
+      - name: pip install serves the web app (README 跑法三)
+        working-directory: ${{ runner.temp }}
+        run: |
+          RESEARCH_DATA_DIR=pip-serve-data stance-shift serve --port 8011 > serve.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8011/health && break; sleep 1; done
+          curl -fsS -o /dev/null http://127.0.0.1:8011/ || { cat serve.log; exit 1; }
+          curl -fsS -o /dev/null http://127.0.0.1:8011/assets/js/settings-panel.js || { cat serve.log; exit 1; }
+          kill %1
+
       - name: Run unittest suite
         run: python -m unittest discover -s research_service/tests -p "test_*.py" -v
 
