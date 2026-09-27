@@ -22,7 +22,7 @@
 
 三種方式擇一，以雲端模型 API（以 Gemini 為例）最簡單：
 
-1. **在網頁設定（最快）**：開啟研究台 →「01/資料」面板 → 展開「設定資料來源與模型」，填入 `GEMINI_API_KEY` 與 `RESEARCH_MODEL`（例如 `gemini/gemini-3.1-pro-preview`，想省錢可用 `gemini/gemini-2.5-flash`），按「儲存設定」立即生效。右上角模型狀態顯示該模型、不是「離線」就代表連上了。
+1. **在網頁設定（最快）**：開啟研究台，按「資料準備」頁標題下方（或「建立實驗」頁模型欄位下方）的「設定模型與金鑰」按鈕，在「回測模型」與「雲端模型金鑰」填入 `GEMINI_API_KEY` 與 `RESEARCH_MODEL`（例如 `gemini/gemini-3.1-pro-preview`，想省錢可用 `gemini/gemini-2.5-flash`），按「儲存設定」立即生效。右上角模型狀態顯示該模型、不是「離線」就代表連上了。
 2. **在終端機設定**：`./research.sh setup`（Windows：`.\research.ps1 setup`）選 `3` 雲端模型 API → 選供應商 → 貼上金鑰，再用 `doctor` 確認「模型來源」一行顯示連線正常，最後 `start`。
 3. **用 Codespaces Secrets（每次開 Codespace 自動套用）**：到 GitHub → Settings → Codespaces → Secrets 新增 `GEMINI_API_KEY`、`RESEARCH_MODEL`，並把 `RESEARCH_DEMO_MODE` 設為 `false`，授權給這個 repo 後執行「Codespaces: Rebuild Container」。
 
