@@ -8,6 +8,9 @@
 - 新增 `stance-shift run`（給腳本用，可 `--json`）、`stance-shift resume`、`stance-shift jobs`；Docker 使用者用 `./research.sh cli`。
 - 新增 Python API：`from research_service import StanceShiftResearch`，`run()`／`collect()`／`start()`／`resume()`。
 - CLI 與 Python API 走和網頁相同的資料蒐集、實驗檢查（`prepare`）、引擎與資料庫，結果可在網頁研究台檢視；資料蒐集移到 `research_service/collect.py` 供三者共用。
+- `RESEARCH_DEMO_MODE=true` 時 CLI 與 Python API 使用內建合成資料與固定回應，不需要金鑰或網路即可試跑完整流程；CI 依 README 的指令在 Linux、Windows 與 Docker 實際執行。
+- 輸出導向檔案時一律寫成 UTF-8，避免 Windows 舊字碼頁無法寫出中文。
+- 互動式 `stance-shift` 改成 TradingAgents 式的終端介面：用方向鍵選擇（questionary），執行時顯示全畫面即時儀表板與彩色結果表（rich）。非終端機（管線、CI）仍用純文字問答；新增依賴 `rich`、`questionary`。
 - 協議與決策提示詞不變，protocol hash 不變。
 
 ## v3-0926.7（2026-09-26）— 減少「來源未支持的數字」：從源頭預防、比對完整提示詞、重試時明確指出

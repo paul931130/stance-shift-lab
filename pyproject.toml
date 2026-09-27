@@ -18,6 +18,8 @@ dependencies = [
   "pandas==3.0.1",
   "numpy==2.3.5",
   "scipy==1.18.1",
+  "rich==15.0.0",
+  "questionary==2.1.1",
 ]
 
 [project.optional-dependencies]
