@@ -11,7 +11,7 @@ Repo 只包含原始碼、腳本與文件；不含 API key、SQLite 資料、原
 
 ## 第一次啟動
 
-本專案**只支援用 Docker 執行**，所有作業系統跑的是同一個 Linux 映像，電腦上不需要安裝 Python。
+建議用 Docker 執行，所有作業系統跑的是同一個 Linux 映像，電腦上不需要安裝 Python。已經有 Python 3.12 以上、只接 GPUtw 或本機 Ollama 的人，也可以不用 Docker、直接 `pip install .` 後執行 `stance-shift serve`，步驟見 README 的「跑法三」。
 
 1. 安裝並啟動 Docker：Windows／macOS 用 [Docker Desktop](https://www.docker.com/products/docker-desktop/)（Apple Silicon 也支援）；Linux 用 Docker Engine 加 Compose plugin。
 2. 準備模型，三選一：本機 [Ollama](https://ollama.com/)、自己的 GPUtw 遠端 Ollama（見 [GPUtw 整合指南](gputw-integration.md)），或雲端模型金鑰。只想看介面可先跳過，改用展示模式（`.env.research` 設 `RESEARCH_DEMO_MODE=true`）。

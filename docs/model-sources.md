@@ -9,6 +9,7 @@
 | 費用 | 免費（電費） | 依 GPU 使用時間計費，用完要停機 | 依 token 用量計費 |
 | 硬體 | 建議 16 GB 以上 VRAM；CPU 可跑但很慢 | 不需要 | 不需要 |
 | Codespaces 可用 | 否（Codespace 沒有 GPU） | 是 | 是 |
+| 不用 Docker（pip）可用 | 是 | 是 | 是 |
 | 與正式協議一致 | 是（`ollama/qwen3:14b`） | 是（`ollama/qwen3:14b`） | 模型名稱不同，需在研究紀錄中註明 |
 
 最簡單的是**雲端模型 API**：不用裝任何模型或租機器，填一把金鑰即可。
@@ -38,6 +39,7 @@
 1. 安裝 [Ollama](https://ollama.com/)，執行 `ollama pull qwen3:14b`。
 2. setup 選 `1`，模型保留 `ollama/qwen3:14b`。
 3. Linux 需讓 Ollama 監聽 `0.0.0.0`（見 [Clone 後首次啟動](getting-started.md)）；Windows／macOS 不需要。
+4. 不想在電腦安裝 Ollama：macOS／Linux 的 setup 選 `1` 後選「讓 Docker 一起跑」，或在 `.env.research` 設 `RESEARCH_OLLAMA_CONTAINER=true`（有 NVIDIA 顯示卡設 `gpu`），`start` 會自動下載模型。Windows 用 `docker compose -f compose.research.yaml -f compose.ollama.yaml up -d --build`。
 
 ### 2. 雲端租 GPU（GPUtw）
 
@@ -63,4 +65,4 @@ Codespace 不讀 setup 的互動輸入，而是讀 GitHub → Settings → Codes
 | 雲端租 GPU | `GPUTW_OLLAMA_BASE_URL`、`GPUTW_OLLAMA_API_KEY`（端點有保護時） |
 | 雲端模型 API | `OPENROUTER_API_KEY`（或 `OPENAI_API_KEY`／`GEMINI_API_KEY`）與 `RESEARCH_MODEL`，例如 `openrouter/qwen/qwen3-14b` |
 
-另外把 `RESEARCH_DEMO_MODE` 設為 `false`（改值，不要只刪除）。改完 secrets 後執行「Codespaces: Rebuild Container」才會生效。也可以直接在 Codespace 終端機執行 `./research.sh setup`。
+另外把 `RESEARCH_DEMO_MODE` 設為 `false`（改值，不要只刪除）。改完 secrets 後，到 <https://github.com/codespaces> 把這台 Codespace 停止（Stop codespace）再打開，每次啟動都會重新寫入；也可以直接在終端機執行 `./research.sh setup` 或在網頁「設定模型與金鑰」填寫。不要用 Rebuild Container，重建會清掉資料集與實驗結果。

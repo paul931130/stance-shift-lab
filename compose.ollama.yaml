@@ -1,0 +1,24 @@
+# Optional: run Ollama as a container next to the research service, so
+# nothing has to be installed on the host besides Docker.
+#
+#   docker compose -f compose.research.yaml -f compose.ollama.yaml up -d --build
+#   docker compose -f compose.research.yaml -f compose.ollama.yaml exec ollama ollama pull qwen3:14b
+#
+# CPU only by default. With an NVIDIA GPU (Linux, or Windows with WSL2),
+# add -f compose.ollama-gpu.yaml. On macOS, Docker cannot use the Apple GPU;
+# install Ollama on the Mac instead for usable speed.
+services:
+  research:
+    environment:
+      OLLAMA_BASE_URL: http://ollama:11434
+    depends_on:
+      - ollama
+  ollama:
+    image: ollama/ollama:latest
+    restart: unless-stopped
+    environment:
+      OLLAMA_KEEP_ALIVE: "-1"
+    volumes:
+      - ollama-models:/root/.ollama
+volumes:
+  ollama-models:

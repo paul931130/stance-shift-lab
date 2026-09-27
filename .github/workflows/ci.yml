@@ -42,6 +42,15 @@ jobs:
         working-directory: ${{ runner.temp }}
         run: stance-shift version
 
+      - name: pip install serves the web app (README 跑法三)
+        working-directory: ${{ runner.temp }}
+        run: |
+          RESEARCH_DATA_DIR=pip-serve-data stance-shift serve --port 8011 > serve.log 2>&1 &
+          for i in $(seq 1 30); do curl -fsS http://127.0.0.1:8011/health && break; sleep 1; done
+          curl -fsS -o /dev/null http://127.0.0.1:8011/ || { cat serve.log; exit 1; }
+          curl -fsS -o /dev/null http://127.0.0.1:8011/assets/js/settings-panel.js || { cat serve.log; exit 1; }
+          kill %1
+
       - name: Run unittest suite
         run: python -m unittest discover -s research_service/tests -p "test_*.py" -v
 
@@ -127,6 +136,22 @@ jobs:
 
       - name: Unit tests inside the image
         run: ./research.sh test
+
+      - name: Ollama container option reaches the research service
+        run: |
+          compose="docker compose -f compose.research.yaml -f compose.ollama.yaml"
+          $compose config -q
+          docker compose -f compose.research.yaml -f compose.ollama.yaml -f compose.ollama-gpu.yaml config -q
+          $compose up -d
+          for i in $(seq 1 30); do
+            $compose exec -T research python -c "import urllib.request; urllib.request.urlopen('http://ollama:11434/api/tags', timeout=5)" && exit 0
+            sleep 2
+          done
+          $compose logs ollama
+          exit 1
+
+      - name: research.sh picks up the Ollama container setting
+        run: RESEARCH_OLLAMA_CONTAINER=true ./research.sh status | grep -q ollama
 
       - name: Service logs on failure
         if: failure()

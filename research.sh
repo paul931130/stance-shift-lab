@@ -1,10 +1,9 @@
 #!/usr/bin/env sh
-# Mac/Linux launcher. Docker is the only supported way to run the service,
-# so this wraps the same docker compose calls as research.ps1 on Windows.
+# Mac/Linux launcher: wraps the same docker compose calls as research.ps1 on
+# Windows.
 set -eu
 
 cd "$(dirname "$0")"
-COMPOSE="docker compose -f compose.research.yaml"
 URL="http://127.0.0.1:8000"
 
 need_docker() {
@@ -40,6 +39,21 @@ set_value() {
     mv .env.research.tmp .env.research
 }
 
+# RESEARCH_OLLAMA_CONTAINER=true runs Ollama as a container next to the
+# service (compose.ollama.yaml); =gpu also gives it the NVIDIA GPU.
+ollama_container() {
+    printf '%s' "${RESEARCH_OLLAMA_CONTAINER:-$(get_value RESEARCH_OLLAMA_CONTAINER)}"
+}
+
+compose_files() {
+    COMPOSE="docker compose -f compose.research.yaml"
+    case "$(ollama_container)" in
+        true) COMPOSE="$COMPOSE -f compose.ollama.yaml" ;;
+        gpu) COMPOSE="$COMPOSE -f compose.ollama.yaml -f compose.ollama-gpu.yaml" ;;
+    esac
+}
+compose_files
+
 ask() {
     # ask NAME LABEL [secret]: Enter keeps the current value.
     current=$(get_value "$1")
@@ -67,6 +81,7 @@ choose_model_source() {
             ask GPUTW_OLLAMA_BASE_URL "GPUtw 遠端 Ollama 位址（例如 https://…）"
             [ -n "$(get_value GPUTW_OLLAMA_BASE_URL)" ] || { echo "[FAIL] 選擇 GPUtw 時必須填入遠端 Ollama 位址。" >&2; exit 1; }
             ask GPUTW_OLLAMA_API_KEY "遠端 Ollama 存取 key（端點沒有保護可略過）" secret
+            set_value RESEARCH_OLLAMA_CONTAINER ""
             case "$model" in ollama/*) ;; *) set_value RESEARCH_MODEL ollama/qwen3:14b ;; esac
             ask RESEARCH_MODEL "模型"
             ;;
@@ -84,13 +99,27 @@ choose_model_source() {
             ask RESEARCH_MODEL "模型（LiteLLM 名稱）"
             # A leftover GPUtw address would otherwise still take over any ollama/ model.
             set_value GPUTW_OLLAMA_BASE_URL ""
+            set_value RESEARCH_OLLAMA_CONTAINER ""
             ;;
         *)
             # Local Ollama: clear the GPUtw address, which otherwise takes precedence.
             set_value GPUTW_OLLAMA_BASE_URL ""
             case "$model" in ollama/*) ;; *) set_value RESEARCH_MODEL ollama/qwen3:14b ;; esac
             ask RESEARCH_MODEL "模型"
-            echo "記得先安裝 Ollama 並執行：ollama pull $(get_value RESEARCH_MODEL | sed 's#^ollama/##')"
+            echo "Ollama 要怎麼跑？"
+            echo "  a  這台電腦已經安裝 Ollama"
+            echo "  b  讓 Docker 一起跑 Ollama（不用另外安裝）"
+            echo "  c  讓 Docker 一起跑 Ollama，並使用 NVIDIA 顯示卡"
+            printf '選擇 a / b / c [a]: '
+            read -r where || where=""
+            case "${where:-a}" in
+                b) set_value RESEARCH_OLLAMA_CONTAINER true
+                   echo "start 會自動下載模型 $(get_value RESEARCH_MODEL)。" ;;
+                c) set_value RESEARCH_OLLAMA_CONTAINER gpu
+                   echo "start 會自動下載模型 $(get_value RESEARCH_MODEL)。" ;;
+                *) set_value RESEARCH_OLLAMA_CONTAINER ""
+                   echo "記得先安裝 Ollama 並執行：ollama pull $(get_value RESEARCH_MODEL | sed 's#^ollama/##')" ;;
+            esac
             ;;
     esac
 }
@@ -113,6 +142,12 @@ check_model_source() {
             echo "[OK] 模型來源：GPUtw 遠端 Ollama 已連線 · $model"
         else
             echo "[FAIL] 模型來源：GPUtw 遠端 Ollama 連不上；確認執行個體已啟動、位址與存取 key 正確"
+        fi
+    elif [ -n "$(ollama_container)" ]; then
+        if $COMPOSE exec -T ollama ollama list 2>/dev/null | grep -q "${model#ollama/}"; then
+            echo "[OK] 模型來源：Docker 內的 Ollama 已就緒 · $model"
+        else
+            echo "[FAIL] 模型來源：Docker 內的 Ollama 尚未啟動或還沒下載 $model；執行 ./research.sh start"
         fi
     elif curl -fsS -m 5 http://127.0.0.1:11434/api/tags >/dev/null 2>&1; then
         echo "[OK] 模型來源：本機 Ollama 已連線 · $model"
@@ -149,8 +184,16 @@ case "${1:-help}" in
     start)
         need_docker
         ensure_env
+        compose_files
         $COMPOSE up -d --build
         wait_health
+        if [ -n "$(ollama_container)" ] && [ "$(get_value RESEARCH_DEMO_MODE)" != true ]; then
+            model=$(get_value RESEARCH_MODEL)
+            case "$model" in ollama/*)
+                echo "[INFO] 在 Docker 內的 Ollama 下載 ${model#ollama/}（第一次需要幾分鐘，已下載會直接略過）…"
+                $COMPOSE exec -T ollama ollama pull "${model#ollama/}" ;;
+            esac
+        fi
         ;;
     stop)
         need_docker
@@ -191,6 +234,8 @@ case "${1:-help}" in
   status  顯示容器與健康狀態
   logs    追蹤服務日誌
   doctor  檢查 Docker、Ollama 與服務狀態
+
+.env.research 的 RESEARCH_OLLAMA_CONTAINER=true（或 gpu）會讓 Docker 一起跑 Ollama。
   test    在容器內執行單元測試
 研究操作（建立資料集、執行實驗、匯出）請在網頁介面完成。
 EOF

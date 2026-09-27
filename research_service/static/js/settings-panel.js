@@ -3,11 +3,11 @@ import { $, escape, notify } from './ui.js';
 import { api, task } from './api.js';
 
 const GROUPS = [
-  {title: '回測資料來源', names: ['SEC_USER_AGENT', 'FRED_API_KEY', 'ALPHA_VANTAGE_API_KEY']},
   {title: '回測模型', names: ['RESEARCH_MODEL', 'RESEARCH_MODEL_TIMEOUT_SECONDS', 'RESEARCH_MODEL_CONTEXT_LENGTH']},
-  {title: 'GPUtw／遠端 Ollama', names: ['GPUTW_API_URL', 'GPUTW_API_KEY', 'GPUTW_INSTANCE_ID', 'GPUTW_OLLAMA_BASE_URL', 'GPUTW_OLLAMA_API_KEY']},
-  {title: '本機研究資料路徑', names: ['FNSPID_NEWS_PATH', 'ALPHA_VANTAGE_NEWS_PATH']},
-  {title: '雲端模型金鑰（進階）', names: ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY'], collapsed: true},
+  {title: '雲端模型金鑰（OpenRouter／OpenAI／Gemini）', names: ['OPENROUTER_API_KEY', 'OPENAI_API_KEY', 'GEMINI_API_KEY']},
+  {title: '回測資料來源', names: ['SEC_USER_AGENT', 'FRED_API_KEY', 'ALPHA_VANTAGE_API_KEY']},
+  {title: 'GPUtw／遠端 Ollama', names: ['GPUTW_API_URL', 'GPUTW_API_KEY', 'GPUTW_INSTANCE_ID', 'GPUTW_OLLAMA_BASE_URL', 'GPUTW_OLLAMA_API_KEY'], collapsed: true},
+  {title: '本機研究資料路徑', names: ['FNSPID_NEWS_PATH', 'ALPHA_VANTAGE_NEWS_PATH'], collapsed: true},
 ];
 const SOURCE_LABELS = {sec: 'SEC', alfred: 'FRED／ALFRED', alpha_vantage: 'Alpha Vantage', fnspid: 'FNSPID', finbert_local: '本機 FinBERT', gputw: 'GPUtw'};
 
@@ -50,6 +50,13 @@ $('settings-form').addEventListener('submit', e => {
     notify('設定已儲存在伺服器並立即生效。');
     applySourceState(await api('/api/config'));
   });
+});
+// "設定模型與金鑰" shortcuts elsewhere open this form on the data step.
+document.addEventListener('click', e => {
+  if (!e.target.closest('[data-open-settings]')) return;
+  const box = $('source-settings');
+  box.open = true;
+  requestAnimationFrame(() => box.scrollIntoView({behavior: 'smooth', block: 'start'}));
 });
 $('gputw-check-button').addEventListener('click', e => task(e.currentTarget, async () => {
   const [s, resources] = await Promise.all([api('/api/gputw/status'), api('/api/gputw/resources')]);
