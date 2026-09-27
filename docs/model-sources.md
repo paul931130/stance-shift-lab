@@ -8,7 +8,8 @@
 | 需要準備 | 安裝 Ollama、下載模型 | GPUtw 帳號與執行個體 | 一把 API key |
 | 費用 | 免費（電費） | 依 GPU 使用時間計費，用完要停機 | 依 token 用量計費 |
 | 硬體 | 建議 16 GB 以上 VRAM；CPU 可跑但很慢 | 不需要 | 不需要 |
-| Codespaces 可用 | 否（Codespace 沒有 GPU） | 是 | 是 |
+| Codespaces 可用 | 可以，由 Docker 一起跑 Ollama（`RESEARCH_OLLAMA_CONTAINER=true`），但只有 CPU，很慢 | 是 | 是 |
+| 不用 Docker（pip）可用 | 是 | 是 | 是 |
 | 與正式協議一致 | 是（`ollama/qwen3:14b`） | 是（`ollama/qwen3:14b`） | 模型名稱不同，需在研究紀錄中註明 |
 
 最簡單的是**雲端模型 API**：不用裝任何模型或租機器，填一把金鑰即可。
@@ -38,6 +39,7 @@
 1. 安裝 [Ollama](https://ollama.com/)，執行 `ollama pull qwen3:14b`。
 2. setup 選 `1`，模型保留 `ollama/qwen3:14b`。
 3. Linux 需讓 Ollama 監聽 `0.0.0.0`（見 [Clone 後首次啟動](getting-started.md)）；Windows／macOS 不需要。
+4. 不想在電腦安裝 Ollama：macOS／Linux 的 setup 選 `1` 後選「讓 Docker 一起跑」，或在 `.env.research` 設 `RESEARCH_OLLAMA_CONTAINER=true`（有 NVIDIA 顯示卡設 `gpu`），`start` 會自動下載模型。Windows 用 `docker compose -f compose.research.yaml -f compose.ollama.yaml up -d --build`。
 
 ### 2. 雲端租 GPU（GPUtw）
 

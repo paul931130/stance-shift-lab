@@ -150,6 +150,9 @@ jobs:
           $compose logs ollama
           exit 1
 
+      - name: research.sh picks up the Ollama container setting
+        run: RESEARCH_OLLAMA_CONTAINER=true ./research.sh status | grep -q ollama
+
       - name: Service logs on failure
         if: failure()
         run: docker compose -f compose.research.yaml logs research

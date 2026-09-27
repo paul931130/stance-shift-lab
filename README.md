@@ -14,15 +14,17 @@
 
 ## 快速開始
 
-有三種跑法，擇一即可。下表比較前兩種；已經有 Python、只接 GPUtw 或本機 Ollama 的人，也可以用[跑法三：直接 pip 安裝](#跑法三不用-docker直接-pip-安裝)。
+有三種跑法，擇一即可；**每一種都能接三種模型來源**：雲端模型 API、GPUtw 雲端 GPU、Ollama。
 
-| | 在 GitHub 上開（Codespaces） | 在自己電腦跑（Docker） |
-| --- | --- | --- |
-| 要安裝什麼 | 什麼都不用，只要瀏覽器 | Docker Desktop |
-| 研究台網址 | `https://<codespace 名稱>-8000.app.github.dev` | <http://127.0.0.1:8000/> |
-| 可用的模型 | 雲端模型 API、GPUtw 租 GPU | 雲端模型 API、GPUtw 租 GPU、自己電腦的 Ollama |
-| 資料存哪裡 | 那一台 Codespace（開新的一台就沒了） | 自己電腦 |
-| 費用 | 用自己 GitHub 帳號的 Codespaces 額度 | 免費 |
+| | 跑法一：GitHub Codespaces | 跑法二：自己電腦 Docker | 跑法三：自己電腦 pip |
+| --- | --- | --- | --- |
+| 要安裝什麼 | 什麼都不用，只要瀏覽器 | Docker Desktop | Python 3.12 以上 |
+| 研究台網址 | `https://<codespace 名稱>-8000.app.github.dev` | <http://127.0.0.1:8000/> | <http://127.0.0.1:8000/> |
+| 雲端模型 API | ✅ | ✅ | ✅ |
+| GPUtw 雲端 GPU | ✅ | ✅ | ✅ |
+| Ollama | ✅ 由 Docker 一起跑，只有 CPU，很慢，適合小模型試用 | ✅ 電腦上的 Ollama，或由 Docker 一起跑 | ✅ 電腦上的 Ollama |
+| 資料存哪裡 | 那一台 Codespace（開新的一台就沒了） | 自己電腦 | 自己電腦（專案的 `research-data/`） |
+| 費用 | 用自己 GitHub 帳號的 Codespaces 額度 | 免費 | 免費 |
 
 不論哪種跑法，都要先準備下面的金鑰。
 
@@ -42,7 +44,7 @@
 | --- | --- | --- |
 | 雲端模型 API（最簡單） | 一把 API key：[Gemini](https://aistudio.google.com/apikey)、[OpenRouter](https://openrouter.ai/) 或 OpenAI；模型名稱例如 `gemini/gemini-2.5-flash` | 大多數人；依用量付費 |
 | 雲端租 GPU（GPUtw） | 依 [GPUtw 整合指南](docs/gputw-integration.md) 開好 Ollama 執行個體並下載 `qwen3:14b`，記下位址與存取 key | 想用正式協議的 `qwen3:14b`、又沒有顯示卡 |
-| 自己電腦的 Ollama | 裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`，或讓 Docker 一起跑 Ollama（見跑法二）；建議 16 GB 以上顯示卡記憶體 | 有好顯示卡；只能在本機 Docker 跑法使用 |
+| Ollama | 在電腦裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`；或讓 Docker 一起跑 Ollama，連安裝都不用（跑法一、二）。`qwen3:14b` 建議 16 GB 以上顯示卡記憶體 | 有好顯示卡；不想付 API 或租 GPU 的費用 |
 
 詳細比較見 [選擇模型來源](docs/model-sources.md)。
 
@@ -52,7 +54,7 @@
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/paul931130/stance-shift-lab)
 
-Codespace 是 GitHub 借你的一台雲端電腦，研究台在上面用同一個 Docker 映像執行。Codespace 沒有顯示卡，模型只能用雲端模型 API 或 GPUtw。
+Codespace 是 GitHub 借你的一台雲端電腦，研究台在上面用同一個 Docker 映像執行。三種模型來源都能用；Codespace 沒有顯示卡，Ollama 只能用 CPU 跑，速度很慢，正式研究建議用雲端模型 API 或 GPUtw。
 
 #### 第一次：建立 Codespace（只做一次）
 
@@ -60,6 +62,7 @@ Codespace 是 GitHub 借你的一台雲端電腦，研究台在上面用同一�
    - 資料來源：`SEC_USER_AGENT`、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`
    - 雲端模型 API：`GEMINI_API_KEY`（或 `OPENROUTER_API_KEY`／`OPENAI_API_KEY`）與 `RESEARCH_MODEL`
    - 或 GPUtw：`GPUTW_OLLAMA_BASE_URL`、`GPUTW_OLLAMA_API_KEY`
+   - 或 Ollama（Docker 一起跑）：`RESEARCH_OLLAMA_CONTAINER` 填 `true`、`RESEARCH_MODEL` 填 `ollama/qwen3:8b`。啟動時會自動下載模型（約 5 GB）。建立 Codespace 時請在「⋯ → New with options」把機型選 4-core／16 GB 以上，預設的 8 GB 記憶體跑不動 `qwen3:14b`
    - `RESEARCH_DEMO_MODE`，值填 `false`
 
    跳過也可以，開好後在研究台的「設定模型與金鑰」填，效果一樣。
@@ -118,7 +121,7 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
    ./research.sh start
    ```
 
-   `setup` 的模型選項：`1` 自己電腦的 Ollama、`2` GPUtw（填遠端位址與存取 key）、`3` 雲端模型 API（選供應商、貼金鑰、填模型名稱）。每一題直接按 Enter 會保留原值。
+   `setup` 的模型選項：`1` Ollama、`2` GPUtw（填遠端位址與存取 key）、`3` 雲端模型 API（選供應商、貼金鑰、填模型名稱）。每一題直接按 Enter 會保留原值。macOS／Linux 選 `1` 後會再問 Ollama 要用電腦上裝好的，還是讓 Docker 一起跑（可選用 NVIDIA 顯示卡）；選 Docker 一起跑時，`start` 會自動下載模型。Windows 想讓 Docker 一起跑 Ollama，用下方的 docker compose 指令。
    - PowerShell 出現「已停用指令碼執行」：先執行 `Set-ExecutionPolicy -Scope CurrentUser RemoteSigned` 再重試，或直接雙擊 `start-research.cmd` 啟動。
    - Linux 用本機 Ollama：要讓 Ollama 監聽 `0.0.0.0`，做法見 [Clone 後首次啟動](docs/getting-started.md)；Windows／macOS 不需要。
    **不想用腳本？只用 docker compose 也可以**（任何作業系統都一樣）：
@@ -156,7 +159,7 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
 
 ### 跑法三：不用 Docker，直接 pip 安裝
 
-適合已經有 Python、只打算接**雲端租 GPU（GPUtw）或自己電腦的 Ollama**（也可接雲端模型 API）的人。少了 Docker，本機 Ollama 直接用 `127.0.0.1:11434` 連，不用任何網路設定。
+適合已經有 Python、不想裝 Docker 的人，三種模型來源都能接。少了 Docker，電腦上的 Ollama 直接用 `127.0.0.1:11434` 連，不用任何網路設定。
 
 1. **安裝 Python 3.12 以上**（[python.org](https://www.python.org/downloads/)；Windows 安裝時勾選「Add python.exe to PATH」）。
 2. **下載程式並安裝**：
@@ -170,9 +173,10 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
    ```
 
    要用 FinBERT 分析新聞情緒（正式實驗需要），改成 `pip install ".[finbert]"`，會多下載約 1–2 GB。
-3. **準備模型（二選一）**：
-   - 自己電腦的 Ollama：安裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`，保持 Ollama 開著。
+3. **準備模型（三選一）**：
+   - 雲端模型 API：準備一把 Gemini／OpenRouter／OpenAI 的金鑰。
    - GPUtw 雲端 GPU：照 [GPUtw 整合指南](docs/gputw-integration.md) 開好執行個體，記下遠端 Ollama 位址與存取 key。
+   - 自己電腦的 Ollama：安裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`，保持 Ollama 開著。
 4. **啟動研究台**（在專案資料夾、虛擬環境已啟用）：
 
    ```bash
@@ -182,6 +186,7 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
    瀏覽器開 <http://127.0.0.1:8000/>。這個視窗要保持開著，按 Ctrl+C 停止。
 5. **填設定**：按「資料準備」頁的「設定模型與金鑰」：
    - 資料來源金鑰：`SEC_USER_AGENT`、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`。
+   - 用雲端模型 API：在「雲端模型金鑰」填金鑰，「回測模型」填模型名稱（例如 `gemini/gemini-2.5-flash`）。
    - 用 GPUtw：在「GPUtw／遠端 Ollama」填 `GPUTW_OLLAMA_BASE_URL` 與 `GPUTW_OLLAMA_API_KEY`。
    - 用本機 Ollama：不用填，預設就是 `ollama/qwen3:14b`。
    - FNSPID 新聞檔：放在 `research-inputs/Stock_news.csv`，並把 `FNSPID_NEWS_PATH` 填成 `research-inputs/Stock_news.csv`。
