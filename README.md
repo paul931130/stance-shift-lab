@@ -18,6 +18,16 @@
 - **存取**：8000 連接埠預設為私人，只有開 Codespace 的 GitHub 帳號登入後看得到；不要改成公開。
 - **費用與資料**：使用的是各自 GitHub 帳號的 Codespaces 額度。閒置會自動停機、資料保留；刪除 Codespace 時資料一併刪除，研究結果請先匯出。
 
+### 怎麼連模型
+
+三種方式擇一，以雲端模型 API（以 Gemini 為例）最簡單：
+
+1. **在網頁設定（最快）**：開啟研究台 →「01/資料」面板 → 展開「設定資料來源與模型」，填入 `GEMINI_API_KEY` 與 `RESEARCH_MODEL`（例如 `gemini/gemini-3.1-pro-preview`，想省錢可用 `gemini/gemini-2.5-flash`），按「儲存設定」立即生效。右上角模型狀態顯示該模型、不是「離線」就代表連上了。
+2. **在終端機設定**：`./research.sh setup`（Windows：`.\research.ps1 setup`）選 `3` 雲端模型 API → 選供應商 → 貼上金鑰，再用 `doctor` 確認「模型來源」一行顯示連線正常，最後 `start`。
+3. **用 Codespaces Secrets（每次開 Codespace 自動套用）**：到 GitHub → Settings → Codespaces → Secrets 新增 `GEMINI_API_KEY`、`RESEARCH_MODEL`，並把 `RESEARCH_DEMO_MODE` 設為 `false`，授權給這個 repo 後執行「Codespaces: Rebuild Container」。
+
+常被限流（429）時，把 `RESEARCH_PARALLEL_WORKERS` 調成 1 或 2。本機 Ollama、GPUtw 租 GPU、OpenRouter／OpenAI 的設定見 [選擇模型來源](docs/model-sources.md)。**金鑰只填在設定區、`.env.research` 或 Secrets，不要貼到聊天、issue 或 commit 裡。**
+
 ### 在自己電腦上用 Docker 執行
 
 **唯一支援的執行方式是 Docker**，Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個映像。需求只有 Docker Desktop（Linux 可用 Docker Engine + Compose plugin），以及一個模型來源：自己電腦的 Ollama、雲端租 GPU（GPUtw），或雲端模型 API 金鑰，`setup` 會讓你三選一，比較見 [選擇模型來源](docs/model-sources.md)；只想看介面可用下方展示模式，什麼都不用準備。電腦上不需要安裝 Python。
