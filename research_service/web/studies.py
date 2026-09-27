@@ -47,6 +47,11 @@ def build_router(ctx):
 
     @router.post("/api/studies/{protocol_hash}/freeze")
     def freeze_study(protocol_hash: str):
+        # Locking the datasets of jobs that already ran is a retrospective
+        # freeze, not a preregistration; plans are locked before running.
+        if protocol_jobs(protocol_hash):
+            raise ValueError("此協議已有實驗；事後鎖定不算事前登記。請用 POST /api/studies/preregister "
+                             "在執行前鎖定研究計畫，既有結果保留為探索性分析")
         dataset_ids = {j["config"]["dataset_id"] for j in protocol_jobs(protocol_hash) if j["config"].get("dataset_id")}
         if not dataset_ids:
             raise ValueError("這個協議版本還沒有任何實驗，無法鎖定研究樣本")

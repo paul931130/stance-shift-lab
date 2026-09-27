@@ -144,13 +144,27 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(inputs["evidence_selection"]["sentiment"]["available"], 21)
         self.assertTrue(all(len(item["claim"]) <= 1200 for item in inputs["domains"]["sentiment"]))
 
+    def test_recovery_releases_only_jobs_of_stopped_services(self):
+        live, dead = self.create("2024-12-31"), self.create("2025-03-31")
+        self.store.heartbeat("live")
+        self.assertEqual(self.store.claim("worker:live")["id"], live["id"])
+        self.assertEqual(self.store.claim("worker:dead")["id"], dead["id"])
+        from datetime import datetime, timedelta, timezone
+        now = datetime.now(timezone.utc)
+        released = self.store.recover((now - timedelta(seconds=90)).isoformat(), (now - timedelta(minutes=30)).isoformat())
+        self.assertEqual(released, 1)
+        self.assertEqual(self.store.get(live["id"])["status"], "running")
+        self.assertEqual(self.store.get(dead["id"])["status"], "paused")
+        with TestClient(create_app(self.store, fake_model, start_worker=False)):
+            self.assertEqual(self.store.get(live["id"])["status"], "running")  # a second service starts
+
     def test_restart_and_cancel_do_not_duplicate_or_resurrect(self):
         job = self.create()
         claimed = self.store.claim()
         state = Engine(self.store, fake_model).advance(claimed)
         self.store.save_step(job["id"], state)
         self.store.claim()
-        self.store.recover()
+        self.store.recover("9999", "9999")  # its service has stopped
         recovered = self.store.get(job["id"])
         self.assertEqual(recovered["status"], "paused")
         self.assertEqual(len(recovered["state"]["trace"]), 1)
@@ -819,10 +833,11 @@ class WorkflowTests(unittest.TestCase):
             first = self.complete(self.create("2024-12-31"))
             protocol_hash = first["config"]["protocol_hash"]
             self.assertIsNone(client.get(f'/api/studies/{protocol_hash}').json()["preregistration"])
-            frozen = client.post(f'/api/studies/{protocol_hash}/freeze').json()
-            self.assertEqual(frozen["dataset_ids"], [self.dataset_id])
+            # Locking after results exist is retrospective, not a preregistration.
+            self.assertEqual(client.post(f'/api/studies/{protocol_hash}/freeze').status_code, 422)
+            frozen = self.store.freeze(protocol_hash, [self.dataset_id])
             self.assertTrue(frozen["frozen_at"])
-            again = client.post(f'/api/studies/{protocol_hash}/freeze').json()
+            again = self.store.freeze(protocol_hash, [self.dataset_id])
             self.assertEqual(again["frozen_at"], frozen["frozen_at"])
             report = client.get(f'/api/studies/{protocol_hash}').json()
             self.assertEqual(report["preregistration"]["dataset_ids"], [self.dataset_id])
