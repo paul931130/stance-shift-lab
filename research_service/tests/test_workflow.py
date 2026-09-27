@@ -742,6 +742,21 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(result["action"], "Sell")
         self.assertEqual(audit["validation_retries"][0]["error_type"], "ValueError")
 
+    def test_schema_retry_names_the_field_and_limit(self):
+        from research_service.engine import validation_hint
+
+        error = None
+        try:
+            import jsonschema
+            jsonschema.validate({"rebutted_claim": "x" * 300},
+                                {"type": "object", "properties": {"rebutted_claim": {"type": "string", "maxLength": 240}}})
+        except JsonSchemaValidationError as caught:
+            error = caught
+        hint = validation_hint(error)
+        self.assertIn("rebutted_claim", hint)
+        self.assertIn("maxLength=240", hint)
+        self.assertNotIn("xxxx", hint)
+
     def test_comparable_fundamental_citation_is_valid_decision_evidence(self):
         engine = Engine(self.store, fake_model)
         call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")

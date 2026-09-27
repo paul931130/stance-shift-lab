@@ -360,10 +360,12 @@ def messages_for(call, report, records, memory, protocol):
                 " This is the role-switch round: in round 1 you argued the opposite stance, and you must now "
                 "argue against yourself. Read your own round-1 turn below")
             common += (" (shown alone, never your counterpart's, so you cannot copy their wording): name the "
-                       "specific claim you made in rebutted_claim, quote or closely paraphrase it, and explain in "
+                       "specific claim you made in rebutted_claim as one short quoted sentence (at most 200 "
+                       "characters, not the whole earlier argument), and explain in "
                        "the rationale why it no longer holds under the newly assigned stance."
                        if protocol.switch_isolation else
-                       " and your counterpart's: name the specific claim you made in rebutted_claim and explain in "
+                       " and your counterpart's: name the specific claim you made in rebutted_claim as one short "
+                       "sentence (at most 200 characters) and explain in "
                        "the rationale why it no longer holds under the newly assigned stance.")
             common += (" State confidence_shift: your new confidence minus your round-1 confidence, signed toward "
                        "the newly assigned stance, from -1 to 1. A value near 0 means the switch changed little; "

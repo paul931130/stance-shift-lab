@@ -175,6 +175,21 @@ def completeness_diagnostic(records, protocol):
                         "mean_novelty_rate": average(control_pairs)}}
 
 
+def validation_hint(error):
+    """What a retry prompt says about a rejected answer.
+
+    A JSON-schema error's text starts with the offending value, so its first
+    200 characters could be all quoted text and never reach the reason (e.g. a
+    rebutted_claim over maxLength was retried three times unchanged). Name the
+    field and the violated limit instead.
+    """
+    if isinstance(error, JsonSchemaValidationError) and isinstance(error.validator, str):
+        field = ".".join(str(part) for part in error.absolute_path) or "the answer"
+        limit = json.dumps(error.validator_value, ensure_ascii=False, default=str)[:80]
+        return f"field '{field}' violates {error.validator}={limit}; fix that field"
+    return str(error)[:200]
+
+
 class GraphState(TypedDict):
     job: dict
     state: dict
@@ -288,7 +303,7 @@ class Engine:
                     "object. " + number_hint + "Do not cite a legacy SEC point fact without a comparable period. Comparative SEC "
                     "metrics present in the allowed list may be cited only with their exact values. Copy evidence_ids exactly from this allowed list "
                     f"only; do not invent, shorten, or transform any ID: {json.dumps(allowed_ids, ensure_ascii=False)}. "
-                    f"Validation error: {str(error)[:200]}"}]
+                    f"Validation error: {validation_hint(error)}"}]
 
     def validated_research(self, protocol, domain, items, messages, aliases=None):
         """Retry a source-validation rejection before emitting a degraded fallback."""
@@ -319,7 +334,7 @@ class Engine:
                 attempt_messages = [*messages, {"role": "user", "content":
                     "The previous research answer was rejected by source validation. Return a complete replacement JSON. "
                     "Copy evidence_ids exactly from this allowed list only; do not invent or transform any ID: "
-                    f"{json.dumps(allowed_ids, ensure_ascii=False)}. Validation error: {str(error)[:200]}"}]
+                    f"{json.dumps(allowed_ids, ensure_ascii=False)}. Validation error: {validation_hint(error)}"}]
 
     def advance(self, job):
         if job["config"]["protocol"].get("version") != StudyProtocol().version:
