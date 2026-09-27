@@ -45,11 +45,14 @@ document.addEventListener('click', e => {
   const button = e.target.closest('[data-tab-button], [data-goto]');
   if (button) setTab(button.dataset.tabButton || button.dataset.goto);
 });
-// Arrow keys move between steps, as expected for a tablist.
+// Arrow / Home / End keys move between steps, as expected for a tablist.
 document.addEventListener('keydown', e => {
   const button = e.target.closest?.('[data-tab-button]');
-  if (!button || !['ArrowLeft', 'ArrowRight'].includes(e.key)) return;
-  const next = TABS[(TABS.indexOf(button.dataset.tabButton) + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
+  if (!button || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) return;
+  e.preventDefault();
+  const here = TABS.indexOf(button.dataset.tabButton);
+  const next = e.key === 'Home' ? TABS[0] : e.key === 'End' ? TABS.at(-1)
+    : TABS[(here + (e.key === 'ArrowRight' ? 1 : TABS.length - 1)) % TABS.length];
   setTab(next);
   document.querySelector(`[data-tab-button="${next}"]`)?.focus();
 });

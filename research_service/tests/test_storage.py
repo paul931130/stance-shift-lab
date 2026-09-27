@@ -34,6 +34,26 @@ class JobSummaryTests(unittest.TestCase):
             store.save_step(job["id"], {**job["state"], "records": [{}, {}]})
             self.assertEqual(store.job_summaries()[0]["steps"], 2)
 
+    def test_jobs_filter_by_protocol(self):
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            store.create({"ticker": "NVDA", "protocol_hash": "p1", "protocol": {}})
+            store.create({"ticker": "AAPL", "protocol_hash": "p2", "protocol": {}})
+            self.assertEqual([job["config"]["ticker"] for job in store.jobs("p1")], ["NVDA"])
+            self.assertEqual(len(store.jobs()), 2)
+
+    def test_job_cancelled_during_final_step_is_not_indexed(self):
+        case = {"group": "A", "horizon": 60, "cost_model": "corwin_schultz", "decision_layer": "gated",
+                "maturity_date": "2025-03-31", "action": "Buy", "correct": True, "net_return": .1}
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            job = store.create({"ticker": "NVDA", "analysis_date": "2024-12-31", "protocol_hash": "p", "protocol": {}})
+            store.control(job["id"], "cancel")
+            store.save_step(job["id"], {**job["state"], "finished": True, "cases": [case]})
+            self.assertEqual(store.get(job["id"])["status"], "cancelled")
+            with store.connect() as db:
+                self.assertIsNone(db.execute("SELECT 1 FROM case_results").fetchone())
+
 
 if __name__ == "__main__":
     unittest.main()

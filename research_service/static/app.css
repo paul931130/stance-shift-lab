@@ -441,3 +441,12 @@ footer { padding: 24px max(16px, 3vw); border-top: 1px solid var(--line); color:
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- GUI enhancements: theme toggle, copy buttons, record filter ---------- */
+.icon-button { padding: 6px 10px; min-width: 36px; font-size: 15px; line-height: 1; }
+.pre-wrap { position: relative; }
+.pre-wrap > .copy-button { position: absolute; top: 8px; right: 8px; padding: 3px 10px; font-size: 11.5px; background: var(--surface); }
+.record-filter { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 4px; }
+.record-filter button { padding: 4px 12px; font-size: 12px; border-radius: 999px; }
+.record-filter button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
+.record-filter button::after { content: none !important; }

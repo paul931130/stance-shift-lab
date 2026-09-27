@@ -1,6 +1,6 @@
 // Step 3 · agent execution: the research queue, background polling, the
 // selected run's detail and the downstream half of the flow map.
-import { $, escape, percentage, number, notify, statuses, friendlyJobError, missingPolicyLabel, protocolLabel, traceMessage, terminalStamp, COLLECTION_DOMAINS, DOMAIN_LABELS } from './ui.js';
+import { $, escape, percentage, number, notify, statuses, friendlyJobError, missingPolicyLabel, protocolLabel, traceMessage, terminalStamp, copyablePre, COLLECTION_DOMAINS, DOMAIN_LABELS } from './ui.js';
 import { state } from './store.js';
 import { api, task } from './api.js';
 import { flow } from './flow.js';
@@ -10,6 +10,27 @@ import { showStatistics } from './stats-panel.js';
 const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
 const GROUP_LABELS = {A: '單次判斷', B: '獨立投票', C: '固定立場', D: '立場交換'};
 let pollTimer = null, pollFailures = 0;
+let lastStatuses = null, recordFilter = '';
+const BASE_TITLE = document.title;
+
+// Tell the user when a background job finishes or stops, even if they are
+// looking at another step, and mirror live progress in the browser tab title.
+function announceTransitions(jobs) {
+  const previous = lastStatuses;
+  lastStatuses = new Map(jobs.map(job => [job.id, job.status]));
+  if (previous) for (const job of jobs) {
+    const before = previous.get(job.id);
+    if (!before || before === job.status) continue;
+    const name = `${job.config.ticker} · ${job.config.analysis_date}`;
+    if (job.status === 'complete') notify(`${name} 已完成，可到「統計結果」查看。`);
+    else if (job.status === 'paused' && job.error) notify(`${name} 已暫停：${friendlyJobError(job.error)}`, true);
+    else if (job.status === 'cancelled') notify(`${name} 已取消。`);
+  }
+  const running = jobs.filter(job => job.status === 'running');
+  document.title = running.length
+    ? `(${running.map(job => `${job.steps}/${jobTotal(job.config.protocol)}`).join(', ')}) ${BASE_TITLE}`
+    : BASE_TITLE;
+}
 
 const groupTotals = protocol => ({A: 1, B: protocol.voting_samples, C: 7, D: 7});
 const jobTotal = protocol => 15 + protocol.voting_samples;
@@ -27,6 +48,7 @@ export async function refreshJobs() {
     dashboard = await api('/api/dashboard');
   }
   state.allJobs = dashboard.jobs;
+  announceTransitions(state.allJobs);
   state.hasActiveJobs = state.allJobs.some(job => job.status === 'queued' || job.status === 'running');
   flow.metric('cases', state.allJobs.filter(job => job.status === 'complete').length);
   renderJobList();
@@ -209,9 +231,9 @@ export async function showJob(id, loadedJob = null) {
     ${job.error ? `<p class="error-text">${escape(friendlyJobError(job.error))}</p>` : ''}
     <div class="actions">${oldProtocol ? `<button class="quiet" type="button" data-clone="${escape(id)}">複製至新版重新執行</button>` : ''}${!isFinal && !oldProtocol ? `<button class="quiet" type="button" data-control="${job.wants_run ? 'pause' : 'resume'}">${job.wants_run ? '暫停' : '繼續執行'}</button><button class="quiet" type="button" data-control="cancel">取消實驗</button>` : ''}<a href="/api/jobs/${id}/export">下載研究產物 ZIP</a>${job.status === 'complete' ? '<button type="button" data-statistics="true">檢視同協議統計 →</button>' : ''}</div>
     ${groupProgressPanel(s, job.config.protocol, job.status)}${decisionCards(s)}${backtestComparison(s)}${researchAgentPanel(s, job.status)}${traceTerminal(job, s)}
-    <details><summary>中立研究報告與來源</summary><pre>${escape(JSON.stringify(s.report || s.research, null, 2))}</pre></details>
-    <details><summary>逐步論證與三輪立場交換（${s.records.length}）</summary>${s.records.map(r => `<article class="trace"><strong>${escape(r.group)} · ${escape(r.key)} · ${escape(r.stance)}</strong><p>${escape(r.output.rationale)}</p><small>引用：${escape(r.output.evidence_ids.join(', '))}<br>提示雜湊：${escape(r.audit.prompt_hash)}</small></article>`).join('')}</details>
-    <details><summary>回測、門檻與流程紀錄</summary><pre>${escape(JSON.stringify({decisions: s.decisions, cases: s.cases, compute_usage: s.compute_usage, completeness_diagnostic: s.completeness_diagnostic, trace: s.trace}, null, 2))}</pre></details>`;
+    <details><summary>中立研究報告與來源</summary>${copyablePre(JSON.stringify(s.report || s.research, null, 2))}</details>
+    <details><summary>逐步論證與三輪立場交換（${s.records.length}）</summary><div class="record-filter" role="group" aria-label="依組別篩選">${['', ...Object.keys(GROUP_LABELS)].map(g => `<button type="button" class="quiet" data-record-filter="${g}" aria-pressed="${recordFilter === g}">${g ? `${g} · ${GROUP_LABELS[g]}` : '全部'}</button>`).join('')}</div>${s.records.map(r => `<article class="trace" data-group="${escape(r.group)}"${recordFilter && r.group !== recordFilter ? ' hidden' : ''}><strong>${escape(r.group)} · ${escape(r.key)} · ${escape(r.stance)}</strong><p>${escape(r.output.rationale)}</p><small>引用：${escape(r.output.evidence_ids.join(', '))}<br>提示雜湊：${escape(r.audit.prompt_hash)}</small></article>`).join('')}</details>
+    <details><summary>回測、門檻與流程紀錄</summary>${copyablePre(JSON.stringify({decisions: s.decisions, cases: s.cases, compute_usage: s.compute_usage, completeness_diagnostic: s.completeness_diagnostic, trace: s.trace}, null, 2))}</details>`;
   output.querySelectorAll('details').forEach((d, i) => { if (openDetails[i]) d.open = true; });
   renderJobList();
 }
@@ -219,6 +241,14 @@ export async function showJob(id, loadedJob = null) {
 document.addEventListener('click', e => {
   const b = e.target.closest('button');
   if (!b) return;
+  if (b.dataset.recordFilter !== undefined) {
+    // Filter in place so a poll refresh (which re-renders) keeps the same choice.
+    recordFilter = b.dataset.recordFilter;
+    const details = b.closest('details');
+    for (const button of details.querySelectorAll('[data-record-filter]')) button.setAttribute('aria-pressed', String(button === b));
+    for (const article of details.querySelectorAll('article.trace')) article.hidden = Boolean(recordFilter) && article.dataset.group !== recordFilter;
+    return;
+  }
   if (b.dataset.open) task(b, async () => { await showJob(b.dataset.open); setTab('runs', {reveal: window.matchMedia('(max-width: 1080px)').matches}); });
   if (b.dataset.control) task(b, async () => {
     if (b.dataset.control === 'cancel' && !window.confirm('取消此實驗？已完成紀錄會保留，取消後無法續跑。')) return;

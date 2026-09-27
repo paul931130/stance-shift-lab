@@ -79,3 +79,44 @@ document.addEventListener('click', e => {
 });
 
 export const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
+
+// ---------- Theme ----------
+// Follows the OS by default; the toggle pins light/dark for this browser only.
+const THEME_KEY = 'theme';
+function applyTheme(theme) {
+  if (theme === 'light' || theme === 'dark') document.documentElement.dataset.theme = theme;
+  else delete document.documentElement.dataset.theme;
+}
+function currentTheme() {
+  return document.documentElement.dataset.theme
+    || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+}
+try { applyTheme(localStorage.getItem(THEME_KEY)); } catch { /* storage blocked: follow OS */ }
+$('theme-toggle')?.addEventListener('click', () => {
+  const next = currentTheme() === 'dark' ? 'light' : 'dark';
+  applyTheme(next);
+  try { localStorage.setItem(THEME_KEY, next); } catch { /* not persisted */ }
+});
+
+// ---------- Copy buttons for JSON / log blocks ----------
+// Wrap a <pre> so it gets a copy button; used for audit dumps in run and stats views.
+export const copyablePre = text => `<div class="pre-wrap"><button type="button" class="quiet copy-button" data-copy>複製</button><pre>${escape(text)}</pre></div>`;
+document.addEventListener('click', async e => {
+  const button = e.target.closest('[data-copy]');
+  if (!button) return;
+  const text = button.parentElement.querySelector('pre')?.textContent || '';
+  try { await navigator.clipboard.writeText(text); button.textContent = '已複製'; }
+  catch { button.textContent = '無法複製'; }
+  setTimeout(() => { button.textContent = '複製'; }, 1500);
+});
+
+// ---------- Keyboard shortcuts ----------
+// "/" focuses the queue search, "r" refreshes, 1–4 jump to a step. Ignored while typing.
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.isComposing) return;
+  if (e.target.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+  if ($('workspace')?.hidden) return;
+  if (e.key === '/') { e.preventDefault(); $('job-search')?.focus(); }
+  else if (e.key === 'r' || e.key === 'R') $('refresh')?.click();
+  else if (/^[1-4]$/.test(e.key)) document.querySelectorAll('.tabs [data-tab-button]')[Number(e.key) - 1]?.click();
+});
