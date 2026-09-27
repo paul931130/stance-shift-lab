@@ -11,22 +11,48 @@
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/paul931130/stance-shift-lab)
 
-按上面的按鈕（或 repo 頁面的 Code → Codespaces → Create），GitHub 會開一台雲端機器、用同一個 Docker 映像啟動研究台，並自動在瀏覽器開啟 `https://<codespace 名稱>-8000.app.github.dev`。第一次建立要下載約 2 GB 套件，需等幾分鐘；之後重新開啟會快很多。
+Codespace 是 GitHub 借你的一台雲端電腦，研究台會在上面用同一個 Docker 映像執行，你只需要瀏覽器。
 
-- **金鑰**：到 GitHub → Settings → Codespaces → Secrets 新增，名稱與 `research.env.example` 相同（例如 `GPUTW_OLLAMA_BASE_URL`、`GPUTW_OLLAMA_API_KEY`、`FRED_API_KEY`），並授權給這個 repo；每次啟動會自動寫入 `.env.research`。也可以開啟後在網頁設定區填寫。
-- **模型**：Codespace 沒有 GPU，請接自己的 GPUtw 遠端 Ollama 或雲端模型 API 金鑰（需要哪些 secrets 見 [選擇模型來源](docs/model-sources.md)）。只想看介面，新增 secret `RESEARCH_DEMO_MODE=true`。
-- **存取**：8000 連接埠預設為私人，只有開 Codespace 的 GitHub 帳號登入後看得到；不要改成公開。
-- **費用與資料**：使用的是各自 GitHub 帳號的 Codespaces 額度。閒置會自動停機、資料保留；刪除 Codespace 時資料一併刪除，研究結果請先匯出。
+#### 第一次：建立 Codespace（只做一次）
 
-> **第二次以後請打開「原本那台」，不要再按上面的按鈕。** 上面的按鈕與 repo 頁面的 Create codespace 會開一台全新的 Codespace，裡面沒有你之前的資料集、上傳的新聞 CSV、網頁設定與實驗結果，全部要重來，還會多吃一份額度。請到 <https://github.com/codespaces> 點你已經建立的那一台。
->
-> | 開啟方式 | `research-inputs/` 上傳的 CSV | 資料集、設定、實驗結果 |
-> | --- | --- | --- |
-> | 從 github.com/codespaces 點既有的 Codespace（含閒置停機後再開） | 保留 | 保留 |
-> | 在 Codespace 內執行 Rebuild Container | 保留 | **消失** |
-> | 按上方按鈕或 Create codespace 開新的 | **消失** | **消失** |
->
-> 要重建或刪除 Codespace 前，先執行 `./research.sh backup` 並把研究結果匯出下載。
+1. **準備金鑰（建議先做）**：到 GitHub 右上角頭像 → Settings → Codespaces → Secrets → New secret，逐一新增下列項目，Repository access 勾選 `stance-shift-lab`：
+   - 模型：`GEMINI_API_KEY`（或 `OPENROUTER_API_KEY`／`OPENAI_API_KEY`）與 `RESEARCH_MODEL`，例如 `gemini/gemini-2.5-flash`
+   - 資料來源：`SEC_USER_AGENT`（格式 `你的名字 你的email`）、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`
+   - `RESEARCH_DEMO_MODE`，值填 `false`
+
+   跳過也可以，開好後在網頁的「設定模型與金鑰」填，效果一樣。
+2. **建立**：按上面的「Open in GitHub Codespaces」按鈕 → Create codespace。
+3. **等它啟動**：第一次要下載約 2 GB 套件，大約 5–10 分鐘。畫面是瀏覽器版的 VS Code，下方終端機會跑啟動訊息，完成後會自動開新分頁 `https://<codespace 名稱>-8000.app.github.dev`，這就是研究台。
+   - 沒有自動開：點 VS Code 下方的「連接埠（Ports）」分頁，在 8000 那一列按地球圖示。
+   - 瀏覽器擋了彈出視窗：允許後再按一次地球圖示。
+4. **確認模型**：研究台右上角的模型狀態要顯示你的模型，不是「離線」。還沒填金鑰的話，按「資料準備」頁標題下方的「設定模型與金鑰」填入並儲存。
+5. **（選用）放 FNSPID 新聞檔**：把已授權的 `Stock_news.csv` 從電腦拖進 VS Code 左側檔案樹的 `research-inputs/` 資料夾。沒有這個檔也能只用 Alpha Vantage 新聞。
+6. **開始研究**：
+   1. 「資料準備」：選股票與分析日，按「啟動資料 Agent」建立資料集。
+   2. 「建立實驗」：選剛建好的資料集，按「開始研究實驗」。
+   3. 「Agent 執行」看進度，完成後到「統計結果」比較四組。
+
+#### 之後每次：打開「原本那台」
+
+> **不要再按上面的按鈕或 Create codespace。** 那會開一台全新的 Codespace，裡面沒有你的資料集、上傳的 CSV、網頁設定與實驗結果，全部要重來，還會多吃一份額度。
+
+1. 到 <https://github.com/codespaces>，點你已經建立的那一台（名稱是隨機的兩三個英文字）。
+2. 啟動後研究台會自動重新啟動並開啟，資料都還在。沒自動開的話，照上面第 3 步從「連接埠」開。
+3. 用完直接關分頁即可，閒置約 30 分鐘會自動停機，資料保留；想立刻停機省額度，在 codespaces 頁面該台的「⋯」→ Stop codespace。
+
+| 開啟方式 | `research-inputs/` 上傳的 CSV | 資料集、設定、實驗結果 |
+| --- | --- | --- |
+| 從 github.com/codespaces 點既有的 Codespace（含停機後再開） | 保留 | 保留 |
+| 在 Codespace 內執行 Rebuild Container | 保留 | **消失** |
+| 按上方按鈕或 Create codespace 開新的 | **消失** | **消失** |
+
+#### 注意事項
+
+- **備份**：要重建或刪除 Codespace 前，在瀏覽器開 `https://<codespace 名稱>-8000.app.github.dev/api/backup` 下載整個研究資料庫 ZIP；每個實驗也可在「Agent 執行」按「下載研究產物 ZIP」。上傳過的 CSV 請自己保留原檔。
+- **拿到新程式**：在 VS Code 終端機執行 `git pull`，再執行 `./research.sh start`，資料不受影響。
+- **模型**：Codespace 沒有 GPU，只能接雲端模型 API 或自己的 GPUtw 遠端 Ollama，見下方「怎麼連模型」。只想看介面，把 `RESEARCH_DEMO_MODE` 設為 `true`。
+- **存取**：8000 連接埠預設為私人，只有你的 GitHub 帳號登入後看得到；不要改成公開。
+- **費用**：使用各自 GitHub 帳號的 Codespaces 額度，用不到的舊 Codespace 可在 codespaces 頁面刪除（資料會一併刪除）。
 
 ### 怎麼連模型
 
