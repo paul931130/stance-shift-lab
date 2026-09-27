@@ -79,6 +79,31 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(shown["output"]["strongest_counterpoint"], "y" * 200)
         self.assertEqual((shown["output"]["confidence"], shown["output"]["rebutted_claim"]), (.6, "z"))
 
+    def test_research_and_decisions_share_one_saved_alias_numbering(self):
+        import re
+        from research_service.models import evidence_aliases
+
+        research = DemoResearch(self.tmp.name)
+        prompts = []
+
+        def recording(protocol, messages, **kwargs):
+            prompts.append(" ".join(message["content"] for message in messages))
+            return demo_model(protocol, messages, **kwargs)
+
+        research.engine.model_call = recording
+        state = research.store.get(research.run("NVDA", "2024-12-31")["job_id"])["state"]
+        aliases = state["evidence_aliases"]
+        self.assertEqual(aliases, evidence_aliases(state["report"]["evidence"]))
+        for evidence_id, alias in aliases.items():
+            # Wherever an alias appears, it stands for the same evidence.
+            shown = [prompt for prompt in prompts if f'"{alias}"' in prompt]
+            self.assertTrue(shown or evidence_id not in json.dumps(state["research"]))
+        research_prompts = [prompt for prompt in prompts if "neutral research agent" in prompt]
+        self.assertTrue(research_prompts)
+        used = {alias for prompt in research_prompts for alias in re.findall(r'"(E\d+)"', prompt)}
+        self.assertLessEqual(used, set(aliases.values()))
+        self.assertGreater(max(int(alias[1:]) for alias in used), 1)  # not restarted at E1 per domain
+
     def test_unknown_alias_is_still_rejected(self):
         from research_service.models import evidence_aliases, unalias_evidence_ids
 

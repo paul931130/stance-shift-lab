@@ -290,12 +290,14 @@ class Engine:
                     f"only; do not invent, shorten, or transform any ID: {json.dumps(allowed_ids, ensure_ascii=False)}. "
                     f"Validation error: {str(error)[:200]}"}]
 
-    def validated_research(self, protocol, domain, items, messages):
+    def validated_research(self, protocol, domain, items, messages, aliases=None):
         """Retry a source-validation rejection before emitting a degraded fallback."""
         validation_failures = []
         attempt_messages = messages
-        aliases = evidence_aliases(items)
-        allowed_ids = list(aliases.values())
+        # One case-wide numbering: "E7" in a research summary must mean the
+        # same evidence when decision agents read that summary later.
+        aliases = aliases or evidence_aliases(items)
+        allowed_ids = [aliases[item["evidence_id"]] for item in items]
         for attempt in range(1, protocol.provider_retry_attempts + 1):
             retry_key = f"research-{domain}" if attempt == 1 else f"research-{domain}:validation-retry-{attempt}"
             audit = None
@@ -336,6 +338,8 @@ class Engine:
         effective_workers = self.parallel_workers
         if "inputs" not in state:
             state["inputs"] = research_inputs(dataset, config["analysis_date"], protocol)
+            # Prompt-only short IDs, kept with the job so any "E7" in a stored rationale can be resolved.
+            state["evidence_aliases"] = evidence_aliases(state["inputs"]["evidence"])
             state["memory"] = {group: self.store.memory(config, group) for group in "ABCD"}
             state["memory_audit"] = self.store.memory_audit(config)
             label = "coordinator"
@@ -365,7 +369,9 @@ class Engine:
 
             def run_research(domain, items, messages):
                 try:
-                    result, audit = self.validated_research(protocol, domain, items, messages)
+                    result, audit = self.validated_research(
+                        protocol, domain, items, messages,
+                        state.get("evidence_aliases") or evidence_aliases(state["inputs"]["evidence"]))
                     return {**result, "status": "complete", "audit": audit}
                 except Exception as error:
                     # Preserve source fidelity and let the shared report finish.
