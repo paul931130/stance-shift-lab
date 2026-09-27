@@ -14,7 +14,7 @@
 
 ## 快速開始
 
-有三種跑法，擇一即可；**每一種都能接三種模型來源**：雲端模型 API、GPUtw 雲端 GPU、Ollama。
+有三種跑法，擇一即可。模型來源有三種：雲端模型 API、GPUtw 雲端 GPU、Ollama；Codespaces 沒有顯示卡，只接前兩種。
 
 | | 跑法一：GitHub Codespaces | 跑法二：自己電腦 Docker | 跑法三：自己電腦 pip |
 | --- | --- | --- | --- |
@@ -22,7 +22,7 @@
 | 研究台網址 | `https://<codespace 名稱>-8000.app.github.dev` | <http://127.0.0.1:8000/> | <http://127.0.0.1:8000/> |
 | 雲端模型 API | ✅ | ✅ | ✅ |
 | GPUtw 雲端 GPU | ✅ | ✅ | ✅ |
-| Ollama | ✅ 由 Docker 一起跑，只有 CPU，很慢，適合小模型試用 | ✅ 電腦上的 Ollama，或由 Docker 一起跑 | ✅ 電腦上的 Ollama |
+| Ollama | ❌ | ✅ 電腦上的 Ollama，或由 Docker 一起跑 | ✅ 電腦上的 Ollama |
 | 資料存哪裡 | 那一台 Codespace（開新的一台就沒了） | 自己電腦 | 自己電腦（專案的 `research-data/`） |
 | 費用 | 用自己 GitHub 帳號的 Codespaces 額度 | 免費 | 免費 |
 
@@ -44,7 +44,7 @@
 | --- | --- | --- |
 | 雲端模型 API（最簡單） | 一把 API key：[Gemini](https://aistudio.google.com/apikey)、[OpenRouter](https://openrouter.ai/) 或 OpenAI；模型名稱例如 `gemini/gemini-2.5-flash` | 大多數人；依用量付費 |
 | 雲端租 GPU（GPUtw） | 依 [GPUtw 整合指南](docs/gputw-integration.md) 開好 Ollama 執行個體並下載 `qwen3:14b`，記下位址與存取 key | 想用正式協議的 `qwen3:14b`、又沒有顯示卡 |
-| Ollama | 在電腦裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`；或讓 Docker 一起跑 Ollama，連安裝都不用（跑法一、二）。`qwen3:14b` 建議 16 GB 以上顯示卡記憶體 | 有好顯示卡；不想付 API 或租 GPU 的費用 |
+| Ollama | 在電腦裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`；或讓 Docker 一起跑 Ollama，連安裝都不用（跑法二）。`qwen3:14b` 建議 16 GB 以上顯示卡記憶體 | 有好顯示卡；不想付 API 或租 GPU 的費用 |
 
 詳細比較見 [選擇模型來源](docs/model-sources.md)。
 
@@ -54,7 +54,7 @@
 
 [![Open in GitHub Codespaces](https://github.com/codespaces/badge.svg)](https://codespaces.new/paul931130/stance-shift-lab)
 
-Codespace 是 GitHub 借你的一台雲端電腦，研究台在上面用同一個 Docker 映像執行。三種模型來源都能用；Codespace 沒有顯示卡，Ollama 只能用 CPU 跑，速度很慢，正式研究建議用雲端模型 API 或 GPUtw。
+Codespace 是 GitHub 借你的一台雲端電腦，研究台在上面用同一個 Docker 映像執行。Codespace 沒有顯示卡，模型請用雲端模型 API 或 GPUtw。
 
 #### 第一次：建立 Codespace（只做一次）
 
@@ -62,7 +62,6 @@ Codespace 是 GitHub 借你的一台雲端電腦，研究台在上面用同一�
    - 資料來源：`SEC_USER_AGENT`、`FRED_API_KEY`、`ALPHA_VANTAGE_API_KEY`
    - 雲端模型 API：`GEMINI_API_KEY`（或 `OPENROUTER_API_KEY`／`OPENAI_API_KEY`）與 `RESEARCH_MODEL`
    - 或 GPUtw：`GPUTW_OLLAMA_BASE_URL`、`GPUTW_OLLAMA_API_KEY`
-   - 或 Ollama（Docker 一起跑）：`RESEARCH_OLLAMA_CONTAINER` 填 `true`、`RESEARCH_MODEL` 填 `ollama/qwen3:8b`。啟動時會自動下載模型（約 5 GB）。建立 Codespace 時請在「⋯ → New with options」把機型選 4-core／16 GB 以上，預設的 8 GB 記憶體跑不動 `qwen3:14b`
    - `RESEARCH_DEMO_MODE`，值填 `false`
 
    跳過也可以，開好後在研究台的「設定模型與金鑰」填，效果一樣。

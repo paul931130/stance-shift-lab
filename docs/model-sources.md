@@ -8,7 +8,7 @@
 | 需要準備 | 安裝 Ollama、下載模型 | GPUtw 帳號與執行個體 | 一把 API key |
 | 費用 | 免費（電費） | 依 GPU 使用時間計費，用完要停機 | 依 token 用量計費 |
 | 硬體 | 建議 16 GB 以上 VRAM；CPU 可跑但很慢 | 不需要 | 不需要 |
-| Codespaces 可用 | 可以，由 Docker 一起跑 Ollama（`RESEARCH_OLLAMA_CONTAINER=true`），但只有 CPU，很慢 | 是 | 是 |
+| Codespaces 可用 | 否（Codespace 沒有 GPU） | 是 | 是 |
 | 不用 Docker（pip）可用 | 是 | 是 | 是 |
 | 與正式協議一致 | 是（`ollama/qwen3:14b`） | 是（`ollama/qwen3:14b`） | 模型名稱不同，需在研究紀錄中註明 |
 

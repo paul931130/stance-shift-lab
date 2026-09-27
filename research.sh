@@ -108,12 +108,11 @@ choose_model_source() {
             ask RESEARCH_MODEL "模型"
             echo "Ollama 要怎麼跑？"
             echo "  a  這台電腦已經安裝 Ollama"
-            echo "  b  讓 Docker 一起跑 Ollama（不用另外安裝；Codespace 請選這個）"
+            echo "  b  讓 Docker 一起跑 Ollama（不用另外安裝）"
             echo "  c  讓 Docker 一起跑 Ollama，並使用 NVIDIA 顯示卡"
-            default=a; [ -n "${CODESPACES:-}" ] && default=b
-            printf '選擇 a / b / c [%s]: ' "$default"
+            printf '選擇 a / b / c [a]: '
             read -r where || where=""
-            case "${where:-$default}" in
+            case "${where:-a}" in
                 b) set_value RESEARCH_OLLAMA_CONTAINER true
                    echo "start 會自動下載模型 $(get_value RESEARCH_MODEL)。" ;;
                 c) set_value RESEARCH_OLLAMA_CONTAINER gpu
