@@ -143,23 +143,19 @@ cp research.env.example .env
 stance-shift
 ```
 
-會出現一連串問題：股票、分析日、模型來源、是否用 FinBERT。上一次的答案會變成預設值，直接按 Enter 就沿用；`.env` 或環境變數 `STANCE_SHIFT_TICKER`、`STANCE_SHIFT_DATE`、`STANCE_SHIFT_MODEL` 已設定的問題會直接跳過。
+會出現一連串選單：股票、分析日、模型來源（雲端 API／GPUtw／本機 Ollama）、模型、是否用 FinBERT，用方向鍵選、Enter 確認。上一次的答案會是預設選項；`.env` 或環境變數 `STANCE_SHIFT_TICKER`、`STANCE_SHIFT_DATE`、`STANCE_SHIFT_MODEL` 已設定的問題會直接跳過。
 
-執行時即時顯示四個資料 Agent、四個研究 Agent，以及 A/B/C/D 每一次模型回答，最後列出四組決策與 60 日回測（以下為示意）：
+開始後會出現即時儀表板：左邊是四個資料 Agent、四個研究 Agent、把關與回測的狀態，右邊是 A/B/C/D 四組每一票、每一輪看多／看空與裁決的決策，下方是進度與訊息。
 
-```text
-[資料] 四個資料 Agent 開始蒐集…
-  ✓ 技術面：已取得一致還原 OHLC；Yahoo Finance
-  ✓ 基本面：已取得 12 筆證據
-[決策] 中立研究報告已鎖定，A/B/C/D 開始決策
-  [ 1/22] A 單次判斷 · 決策 → Buy  預期 4.0%  信心 0.75
-  [13/22] D 立場交換辯論 · 第 2 輪 看空 → Sell  預期 -4.0%  信心 0.75
-  …
-=== NVDA · 2024-12-31 · gemini/gemini-2.5-flash ===
-組別            決策       預期報酬     信心  把關原因
-A 單次判斷       Buy          4%   0.75  —
-…
-```
+<p align="center">
+  <img src="docs/img/cli-dashboard.png" width="100%" alt="stance-shift 即時儀表板">
+</p>
+
+跑完列出四組的最終決策、預期報酬、信心、60 日回測與把關原因：
+
+<p align="center">
+  <img src="docs/img/cli-result.png" width="70%" alt="stance-shift 結果表">
+</p>
 
 給腳本用、不問問題：
 

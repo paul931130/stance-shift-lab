@@ -1,14 +1,13 @@
 """Interactive terminal run: `stance-shift` with no arguments.
 
-Asks for the ticker, analysis date and model source, remembers the answers as
-the next run's defaults, then collects data and runs A/B/C/D with live
-progress. Environment variables STANCE_SHIFT_TICKER, STANCE_SHIFT_DATE and
+Asks for the ticker, analysis date and model source (arrow-key menus in a
+terminal, see research_service.tui), remembers the answers as the next run's
+defaults, then collects data and runs A/B/C/D on a live dashboard. Environment variables STANCE_SHIFT_TICKER, STANCE_SHIFT_DATE and
 RESEARCH_MODEL skip their question.
 """
 from __future__ import annotations
 
 from datetime import date
-from getpass import getpass
 import importlib.util
 import json
 import os
@@ -47,19 +46,6 @@ def load_env_files(paths=(".env", ".env.research")):
                 os.environ[key.strip()] = value
 
 
-def ask(label, default="", choices=None, secret=False):
-    shown = f" [{default}]" if default and not secret else (" [已設定，Enter 保留]" if default else "")
-    while True:
-        try:
-            answer = (getpass if secret else input)(f"{label}{shown}: ").strip()
-        except EOFError:
-            answer = ""
-        answer = answer or default
-        if choices is None or answer in choices:
-            return answer
-        print(f"  請輸入其中之一：{' / '.join(choices)}")
-
-
 class Remembered:
     """The previous run's answers, stored next to the research data."""
 
@@ -79,46 +65,83 @@ class Remembered:
         self.path.write_text(json.dumps(self.values, ensure_ascii=False), encoding="utf-8")
 
 
-def choose_model(settings, remembered):
+MODEL_CHOICES = {
+    "gemini": ["gemini/gemini-2.5-flash", "gemini/gemini-3.1-pro-preview", "gemini/gemini-2.5-pro"],
+    "openrouter": ["openrouter/qwen/qwen3-14b", "openrouter/qwen/qwen3-32b"],
+    "openai": ["openai/gpt-4.1-mini", "openai/gpt-4.1"],
+    "ollama": ["ollama/qwen3:14b", "ollama/qwen3:8b"],
+}
+CUSTOM = "__custom__"
+
+
+def installed_ollama_models():
+    """Models on the configured Ollama (local or GPUtw); empty when unreachable."""
+    try:
+        from types import SimpleNamespace
+
+        from .web.ollama import _probe_ollama
+
+        result = _probe_ollama(SimpleNamespace(demo_mode=False, demo_model_id=""))
+        return [model for model in result.get("models", []) if model.startswith("ollama/")]
+    except Exception:
+        return []
+
+
+def pick_model(prompter, options, default):
+    choices = [(model, model) for model in dict.fromkeys([*options, default]) if model]
+    choices.append((CUSTOM, "自己輸入其他模型名稱…"))
+    model = prompter.select("模型", choices, default)
+    if model == CUSTOM:
+        model = prompter.text("模型名稱（LiteLLM 格式，例如 gemini/gemini-2.5-flash）", default)
+    return model
+
+
+def choose_model(settings, remembered, prompter):
     if os.getenv("STANCE_SHIFT_MODEL"):
         return os.environ["STANCE_SHIFT_MODEL"]
-    print("\n模型要在哪裡執行？")
-    print("  1  雲端模型 API（Gemini／OpenRouter／OpenAI）")
-    print("  2  雲端租 GPU（GPUtw 遠端 Ollama）")
-    print("  3  自己電腦的 Ollama")
-    source = ask("選擇", remembered.get("source", "1"), ("1", "2", "3"))
+    prompter.header("模型來源", "雲端模型 API 最簡單；GPUtw 與本機 Ollama 可跑正式協議的 qwen3:14b。")
+    source = prompter.select("模型要在哪裡執行？", [
+        ("1", "雲端模型 API（Gemini／OpenRouter／OpenAI）"),
+        ("2", "雲端租 GPU（GPUtw 遠端 Ollama）"),
+        ("3", "自己電腦的 Ollama"),
+    ], remembered.get("source", "1"))
+    previous = remembered.get("model", "")
     if source == "1":
-        print("  1 Gemini　2 OpenRouter　3 OpenAI")
-        provider, key, suggested = CLOUD[ask("哪一家", remembered.get("provider", "1"), tuple(CLOUD))]
+        number = prompter.select("哪一家？", [(key, value[0].capitalize() if key != "2" else "OpenRouter")
+                                             for key, value in CLOUD.items()], remembered.get("provider", "1"))
+        provider, key, suggested = CLOUD[number]
         values = {}
-        secret = ask(f"{provider} API key", os.getenv(key, ""), secret=True)
+        secret = prompter.secret(f"{provider} API key", os.getenv(key, ""))
         if secret and secret != os.getenv(key, ""):
             values[key] = secret
-        model = ask("模型", remembered.get("model") if remembered.get("model", "").startswith(provider + "/") else suggested)
+        model = pick_model(prompter, MODEL_CHOICES[provider],
+                           previous if previous.startswith(provider + "/") else suggested)
         # A leftover GPUtw address would otherwise take over ollama/ models later.
         settings.save(values, clear=["GPUTW_OLLAMA_BASE_URL"])
-        remembered.save(source=source, provider=next(k for k, v in CLOUD.items() if v[0] == provider))
+        remembered.save(source=source, provider=number)
     else:
         if source == "2":
-            url = ask("GPUtw 遠端 Ollama 位址（https://…）", os.getenv("GPUTW_OLLAMA_BASE_URL", ""))
-            token = ask("遠端 Ollama 存取 key（沒有保護可略過）", os.getenv("GPUTW_OLLAMA_API_KEY", ""), secret=True)
+            url = prompter.text("GPUtw 遠端 Ollama 位址（https://…）", os.getenv("GPUTW_OLLAMA_BASE_URL", ""))
+            token = prompter.secret("遠端 Ollama 存取 key", os.getenv("GPUTW_OLLAMA_API_KEY", ""))
             settings.save({"GPUTW_OLLAMA_BASE_URL": url, "GPUTW_OLLAMA_API_KEY": token or ""})
         else:
             settings.save({}, clear=["GPUTW_OLLAMA_BASE_URL"])
-        default = remembered.get("model") if remembered.get("model", "").startswith("ollama/") else "ollama/qwen3:14b"
-        model = ask("模型", default)
+        installed = installed_ollama_models() if prompter.fancy else []
+        model = pick_model(prompter, installed or MODEL_CHOICES["ollama"],
+                           previous if previous.startswith("ollama/") else "ollama/qwen3:14b")
         remembered.save(source=source)
     return model
 
 
-def ask_data_keys(settings):
+def ask_data_keys(settings, prompter):
     missing = [key for key in ("SEC_USER_AGENT", "FRED_API_KEY", "ALPHA_VANTAGE_API_KEY") if not os.getenv(key)]
     if not missing:
         return
-    print("\n資料來源金鑰（Enter 略過；略過的面向會標成資料缺口）：")
+    prompter.header("資料來源金鑰", "都免費；略過的面向會標成資料缺口。之後在網頁「設定模型與金鑰」也能改。")
     labels = {"SEC_USER_AGENT": "SEC 研究名稱與聯絡信箱（例如 Your Name you@example.com）",
               "FRED_API_KEY": "FRED API key", "ALPHA_VANTAGE_API_KEY": "Alpha Vantage API key"}
-    values = {key: ask(labels[key], secret=key.endswith("KEY")) for key in missing}
+    values = {key: (prompter.secret(labels[key]) if key.endswith("KEY") else prompter.text(labels[key]))
+              for key in missing}
     settings.save({key: value for key, value in values.items() if value})
 
 
@@ -172,6 +195,16 @@ def progress(phase, **event):
 
 
 def print_result(result):
+    from .tui import console, is_interactive, result_table
+
+    if is_interactive():
+        console.print(result_table(result))
+        if result["degraded_research_domains"]:
+            console.print(f"[yellow]注意：{'、'.join(result['degraded_research_domains'])} 研究輸出未通過來源驗證，這個案例不適合放進正式分析。")
+        console.print(f"實驗 ID：[bold]{result['job_id']}[/]")
+        console.print("完整紀錄與四組比較：執行 [bold]stance-shift serve[/]，瀏覽器開 "
+                      f"http://127.0.0.1:8000/?tab=runs&selected={result['job_id']}")
+        return
     print(f"\n=== {result['ticker']} · {result['analysis_date']} · {result['model']} ===")
     print(f"{'組別':<14}{'決策':<9}{'預期報酬':>9}{'信心':>7}  把關原因")
     for group, item in result["decisions"].items():
@@ -199,46 +232,90 @@ def _num(value):
     return "—" if value is None else f"{value:g}"
 
 
+def planned_calls(protocol=None):
+    """The decision calls a job will make, for the dashboard's four columns."""
+    from .protocol import StudyProtocol, decision_plan
+
+    return [{"key": c.key, "group": c.group, "kind": c.kind, "stance": c.stance, "round": c.round, "sample": c.sample}
+            for c in decision_plan(protocol or StudyProtocol())]
+
+
+def run_case(research, job_id, title, data=None):
+    """Run a stored job with the live dashboard in a terminal, plain lines otherwise."""
+    from .engine import protocol_from
+    from .tui import Dashboard, is_interactive
+
+    if not is_interactive():
+        return research.resume(job_id, progress=progress)
+    board = Dashboard(title, planned_calls(protocol_from(research.store.get(job_id)["config"]["protocol"])))
+    board.data = data or {domain: ("done", "") for domain in board.data}
+    with board:
+        return research.resume(job_id, progress=board.update)
+
+
 def _demo(research):
     from .demo import DEMO_ANALYSIS_DATE
+    from .tui import banner, notice
 
-    print("展示模式（RESEARCH_DEMO_MODE=true）：使用內建合成 NVDA 資料與固定回應，不連網、不呼叫模型，也不是研究結果。")
+    banner()
+    notice("展示模式（RESEARCH_DEMO_MODE=true）：使用內建合成 NVDA 資料與固定回應，不連網、不呼叫模型，也不是研究結果。")
     dataset_id = research.collect("NVDA", DEMO_ANALYSIS_DATE)["id"]
     job_id = research.start("NVDA", DEMO_ANALYSIS_DATE, dataset_id=dataset_id)
-    print_result(research.resume(job_id, progress=progress))
+    print_result(run_case(research, job_id, f"NVDA · {DEMO_ANALYSIS_DATE} · {research.model}（展示模式）"))
     return 0
 
 
 def interactive(data_dir=None):
     from . import StanceShiftResearch, ResearchRunError
     from .errors import PreflightError
+    from .protocol import COMPANY_NAMES
+    from .tui import Dashboard, Prompter, banner, is_interactive, notice, summary
 
     load_env_files()
     research = StanceShiftResearch(data_dir=data_dir)
     remembered = Remembered(research.store.root)
     if research.demo_mode:
         return _demo(research)
-    print("Stance Shift Research：多代理人立場交換回測（按 Enter 採用括號內的上次答案）")
-    print(f"研究股票：{' '.join(STUDY_TICKERS)}")
-    ticker = os.getenv("STANCE_SHIFT_TICKER") or ask("股票", remembered.get("ticker", "NVDA"), STUDY_TICKERS)
+    prompter = Prompter()
+    banner()
+
+    ticker = os.getenv("STANCE_SHIFT_TICKER")
+    if not ticker:
+        prompter.header("股票", f"研究股票固定為 9 檔：{' '.join(STUDY_TICKERS)}")
+        ticker = prompter.select("股票", [(t, f"{t:<6} {COMPANY_NAMES[t][0]}" if prompter.fancy else t) for t in STUDY_TICKERS],
+                                 remembered.get("ticker", "NVDA"))
     today = date.today().isoformat()
-    print(f"分析日：2021–2025 的季末（例如 {QUARTER_DATES[-1]}），或今天 {today}（當下分析，不計入正式統計）")
-    analysis_date = os.getenv("STANCE_SHIFT_DATE") or ask("分析日", remembered.get("date", QUARTER_DATES[-1]),
-                                                          (*QUARTER_DATES, today))
-    ask_data_keys(research.settings)
-    model = choose_model(research.settings, remembered)
+    analysis_date = os.getenv("STANCE_SHIFT_DATE")
+    if not analysis_date:
+        prompter.header("分析日", f"2021–2025 的季末（例如 {QUARTER_DATES[-1]}），或今天 {today}（當下分析，不計入正式統計）")
+        dates = [(d, d) for d in reversed(QUARTER_DATES)] + [(today, f"{today}（今天，當下分析）" if prompter.fancy else today)]
+        analysis_date = prompter.select("分析日", dates, remembered.get("date", QUARTER_DATES[-1]))
+    ask_data_keys(research.settings, prompter)
+    model = choose_model(research.settings, remembered, prompter)
     finbert_installed = bool(importlib.util.find_spec("transformers"))
     use_finbert = False
     if finbert_installed:
-        use_finbert = ask("用本機 FinBERT 分析新聞標題（正式實驗需要）？y/n", remembered.get("finbert", "y"), ("y", "n")) == "y"
+        prompter.header("新聞情緒", "正式實驗需要用本機 FinBERT 為每則新聞標題評分；第一次會下載約 438 MB 的模型。")
+        use_finbert = prompter.confirm("用 FinBERT 分析新聞標題？", remembered.get("finbert", "y") == "y")
     else:
-        print("（未安裝 FinBERT，新聞不會評分，只能當測試；要正式實驗請 pip install \".[finbert]\"）")
+        notice("未安裝 FinBERT，新聞不會評分，只能當測試；要正式實驗請 pip install \".[finbert]\"")
     remembered.save(ticker=ticker, date=analysis_date, model=model, finbert="y" if use_finbert else "n")
+    summary([("股票", f"{ticker}  {COMPANY_NAMES[ticker][0]}"), ("分析日", analysis_date), ("模型", model),
+             ("FinBERT", "是" if use_finbert else "否"), ("資料位置", str(research.store.root))])
+    if prompter.fancy and not prompter.confirm("開始？", True):
+        return 0
 
+    title = f"{ticker} · {analysis_date} · {model}"
+    # The collection view is transient; run_case redraws it with the decisions.
+    board = Dashboard(title, planned_calls(), transient=True) if is_interactive() else None
     try:
-        dataset_id = research.collect(ticker, analysis_date, use_finbert=use_finbert, progress=progress)["id"]
+        if board:
+            with board:
+                dataset_id = research.collect(ticker, analysis_date, use_finbert=use_finbert, progress=board.update)["id"]
+        else:
+            dataset_id = research.collect(ticker, analysis_date, use_finbert=use_finbert, progress=progress)["id"]
     except ValueError as error:
-        print(f"\n[資料蒐集失敗] {error}")
+        notice(f"[資料蒐集失敗] {error}", "red")
         return 1
     options = {}
     while True:
@@ -246,16 +323,15 @@ def interactive(data_dir=None):
             job_id = research.start(ticker, analysis_date, model=model, dataset_id=dataset_id, **options)
             break
         except PreflightError as error:
-            print(f"\n[未通過檢查] {error}")
+            notice(f"[未通過檢查] {error}", "red")
             flag = OVERRIDES.get(error.reason)
-            if not flag or ask(f"要允許「{flag[1]}」例外、只當敏感性測試繼續嗎？y/n", "n", ("y", "n")) != "y":
+            if not flag or not prompter.confirm(f"要允許「{flag[1]}」例外、只當敏感性測試繼續嗎？", False):
                 return 1
             options[flag[0]] = True
     try:
-        result = research.resume(job_id, progress=progress)
+        result = run_case(research, job_id, title, board.data if board else None)
     except ResearchRunError as error:
-        print(f"\n[中斷] {error}")
-        print(f"進度已保存。排除問題後執行：stance-shift resume {error.job_id}")
+        notice(f"[中斷] {error}\n進度已保存。排除問題後執行：stance-shift resume {error.job_id}", "red")
         return 1
     print_result(result)
     return 0
