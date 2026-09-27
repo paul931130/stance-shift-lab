@@ -12,16 +12,20 @@ web service, so every case is stored, auditable and visible in the web UI
 """
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import os
 from types import SimpleNamespace
+from uuid import uuid4
 
 from .app import _redact
 from .collect import collect_dataset
 from .engine import Engine, protocol_from
 from .protocol import DEFAULT_RESEARCH_MODEL, StudyProtocol, decision_plan
 from .settings import Settings
-from .storage import Store, now
+from .storage import JobLeaseLost, Store, now
 
+# A CLI lease untouched this long belongs to a killed process and may be taken over.
+STALE_LEASE = timedelta(minutes=30)
 GROUP_NAMES = {"A": "單次判斷", "B": "獨立投票", "C": "固定立場辯論", "D": "立場交換辯論"}
 
 
@@ -96,41 +100,55 @@ class StanceShiftResearch:
     def resume(self, job_id, progress=None):
         """Continue a stored job from its last checkpoint until it finishes."""
         report = _forward(progress, "run")
-        job = self._take_over(job_id)
+        job, owner = self._take_over(job_id)
         protocol = protocol_from(job["config"]["protocol"])
         total = len(decision_plan(protocol))
-        while not job["state"].get("finished"):
-            before = len(job["state"].get("records", []))
-            try:
-                state = self.engine.advance(job)
-            except Exception as error:
-                state = getattr(error, "state", job["state"])
-                message = f"{type(error).__name__}: {_redact(str(error), os.getenv('RESEARCH_ACCESS_KEY', ''))[:700]}"
-                state.setdefault("attempts", []).append({"at": now(), "status": "error", "message": message})
-                self.store.save_step(job_id, state, message)
-                raise ResearchRunError(message, job_id) from error
-            state.setdefault("attempts", []).append({"at": now(), "status": "ok", "node": state["trace"][-1]["node"]})
-            self.store.save_step(job_id, state)
-            report(node=state["trace"][-1]["node"], completed=len(state.get("records", [])), total=total,
-                   new_records=state.get("records", [])[before:], research=state.get("research", {}),
-                   decisions=state.get("decisions"))
-            job = self.store.get(job_id)
+        try:
+            while not job["state"].get("finished"):
+                before = len(job["state"].get("records", []))
+                try:
+                    state = self.engine.advance(job)
+                except Exception as error:
+                    state = getattr(error, "state", job["state"])
+                    message = f"{type(error).__name__}: {_redact(str(error), os.getenv('RESEARCH_ACCESS_KEY', ''))[:700]}"
+                    state.setdefault("attempts", []).append({"at": now(), "status": "error", "message": message})
+                    self._save(job_id, state, owner, message)
+                    raise ResearchRunError(message, job_id) from error
+                state.setdefault("attempts", []).append({"at": now(), "status": "ok", "node": state["trace"][-1]["node"]})
+                self._save(job_id, state, owner)
+                report(node=state["trace"][-1]["node"], completed=len(state.get("records", [])), total=total,
+                       new_records=state.get("records", [])[before:], research=state.get("research", {}),
+                       decisions=state.get("decisions"))
+                job = self.store.get(job_id)
+                if not job["state"].get("finished") and job["status"] in ("paused", "cancelled"):
+                    done = "取消" if job["status"] == "cancelled" else "暫停"
+                    raise ResearchRunError(f"此實驗已在網頁上被{done}；已完成的步驟都保留", job_id)
+        finally:
+            if owner:
+                self.store.release(job_id, owner)
         return summarize(job)
 
+    def _save(self, job_id, state, owner, error=""):
+        try:
+            self.store.save_step(job_id, state, error, owner=owner)
+        except JobLeaseLost as lost:
+            raise ResearchRunError(str(lost), job_id) from lost
+
     def _take_over(self, job_id):
-        """Check a stored job may be advanced here, and keep a web worker off it."""
+        """Take exclusive ownership of a stored job; returns the job and this run's lease token."""
         job = self.store.get(job_id)
         if job["state"].get("finished") or job["status"] == "complete":
-            return job
+            return job, None
         if job["status"] == "cancelled":
             raise ValueError("此實驗已取消，不能繼續；請建立新實驗")
-        if job["status"] == "running":
-            raise ValueError("此實驗正由網頁服務的背景 worker 執行；請在網頁暫停後再從這裡繼續")
         if job["config"]["protocol"].get("version") != StudyProtocol().version:
             raise ValueError("舊版協議的實驗不能用新版引擎繼續；請在網頁用「複製至新版重新執行」")
-        if job["status"] == "queued" and not self.store.hold(job_id):
-            raise ValueError("此實驗剛被網頁服務的背景 worker 領取；請在網頁暫停後再繼續")
-        return self.store.get(job_id)
+        owner = f"cli:{uuid4().hex}"
+        stale_before = (datetime.now(timezone.utc) - STALE_LEASE).isoformat()
+        if not self.store.acquire(job_id, owner, stale_before):
+            raise ValueError("此實驗正由其他程序執行（網頁服務的背景 worker 或另一個 stance-shift）；"
+                             "請等它結束，或在網頁暫停後再從這裡繼續")
+        return self.store.get(job_id), owner
 
 
 def summarize(job):

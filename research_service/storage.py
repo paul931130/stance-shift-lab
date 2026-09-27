@@ -13,6 +13,10 @@ def now():
     return datetime.now(timezone.utc).isoformat()
 
 
+class JobLeaseLost(RuntimeError):
+    """Another process took over the job; this process must not write its state."""
+
+
 class Store:
     def __init__(self, root):
         self.root = Path(root)
@@ -41,7 +45,15 @@ class Store:
                     protocol_hash TEXT PRIMARY KEY, dataset_ids TEXT, frozen_at TEXT);
             """)
             self._ensure_steps_column(db)
+            self._ensure_owner_column(db)
         self.backfill_case_results()
+
+    @staticmethod
+    def _ensure_owner_column(db):
+        """Who is running a job: 'worker' (web service) or 'cli:<token>' (CLI / Python API)."""
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
+        if "owner" not in columns:
+            db.execute("ALTER TABLE jobs ADD COLUMN owner TEXT NOT NULL DEFAULT ''")
 
     @staticmethod
     def _ensure_steps_column(db):
@@ -70,7 +82,7 @@ class Store:
 
     def recover(self):
         with self.connect() as db:
-            db.execute("UPDATE jobs SET status='paused', wants_run=0, error='研究服務曾重新啟動；已完成的步驟都保留，請按「繼續執行」' WHERE status='running'")
+            db.execute("UPDATE jobs SET status='paused', wants_run=0, owner='', error='研究服務曾重新啟動；已完成的步驟都保留，請按「繼續執行」' WHERE status='running'")
 
     def backup_bytes(self):
         """Return a WAL-safe SQLite snapshot without stopping the research worker."""
@@ -214,12 +226,24 @@ class Store:
             db.execute("UPDATE jobs SET wants_run=?,status=?,error=?,updated_at=? WHERE id=?",
                        (wanted, status, "" if command == "resume" else job.get("error", ""), now(), key))
 
-    def hold(self, key):
-        """Pause a queued job unless a worker has already claimed it; True when held."""
+    def acquire(self, key, owner, stale_before):
+        """Atomically give ``owner`` the right to run a paused or queued job; True when granted.
+
+        A CLI lease not refreshed since ``stale_before`` (its process was killed)
+        can be taken over; a job the web worker is running never can.
+        """
         with self.connect() as db:
-            changed = db.execute("UPDATE jobs SET status='paused', wants_run=0, updated_at=? "
-                                 "WHERE id=? AND status='queued'", (now(), key)).rowcount
+            changed = db.execute("""UPDATE jobs SET status='running', wants_run=0, owner=?, error='', updated_at=?
+                WHERE id=? AND (status IN ('paused', 'queued')
+                                OR (status='running' AND owner LIKE 'cli:%' AND updated_at < ?))""",
+                (owner, now(), key, stale_before)).rowcount
         return changed == 1
+
+    def release(self, key, owner):
+        """Give up a lease that is still held (e.g. the CLI was interrupted)."""
+        with self.connect() as db:
+            db.execute("UPDATE jobs SET status='paused', owner='', updated_at=? WHERE id=? AND owner=? AND status='running'",
+                       (now(), key, owner))
 
     def claim(self):
         with self.connect() as db:
@@ -232,7 +256,7 @@ class Store:
                 ORDER BY json_extract(config, '$.analysis_date'), created_at LIMIT 1""").fetchone()
             if not row:
                 return None
-            db.execute("UPDATE jobs SET status='running',updated_at=? WHERE id=?", (now(), row["id"]))
+            db.execute("UPDATE jobs SET status='running',owner='worker',updated_at=? WHERE id=?", (now(), row["id"]))
             job = self.unpack(row)
             from .protocol import StudyProtocol
             if job["config"]["protocol"].get("version") != StudyProtocol().version:
@@ -241,13 +265,26 @@ class Store:
                 return None
             return job
 
-    def save_step(self, key, state, error=""):
+    def save_step(self, key, state, error="", owner=None):
+        """Persist one step. With ``owner`` (a CLI lease) the write happens only while that lease is held."""
         with self.connect() as db:
-            row = db.execute("SELECT wants_run,status,config,created_at FROM jobs WHERE id=?", (key,)).fetchone()
-            status = "cancelled" if row["status"] == "cancelled" else "paused" if error else "complete" if state.get("finished") else "queued" if row["wants_run"] else "paused"
-            db.execute("UPDATE jobs SET state=?,status=?,wants_run=?,error=?,updated_at=?,steps=? WHERE id=?",
-                (json.dumps(state, ensure_ascii=False, allow_nan=False), status, 0 if error else row["wants_run"], error, now(),
-                 len(state.get("records", [])), key))
+            db.execute("BEGIN IMMEDIATE")
+            row = db.execute("SELECT wants_run,status,config,created_at,owner FROM jobs WHERE id=?", (key,)).fetchone()
+            if owner is None:
+                status = "cancelled" if row["status"] == "cancelled" else "paused" if error else "complete" if state.get("finished") else "queued" if row["wants_run"] else "paused"
+                wants_run = 0 if error else row["wants_run"]
+            else:
+                if row["owner"] != owner:
+                    raise JobLeaseLost("此實驗的執行權已被其他程序取走；本次結果未寫入")
+                # Keep the lease while the job runs; a pause or cancel pressed
+                # in the web UI ends it after this step.
+                status = ("cancelled" if row["status"] == "cancelled" else "paused" if error
+                          else "complete" if state.get("finished") else "running" if row["status"] == "running"
+                          else "paused")
+                wants_run = 0
+            db.execute("UPDATE jobs SET state=?,status=?,wants_run=?,error=?,updated_at=?,steps=?,owner=? WHERE id=?",
+                (json.dumps(state, ensure_ascii=False, allow_nan=False), status, wants_run, error, now(),
+                 len(state.get("records", [])), owner if owner is not None and status == "running" else "", key))
             # A job cancelled during its final step must not feed memory or statistics.
             if state.get("finished") and status == "complete":
                 self._upsert_case_results(db, key, json.loads(row["config"]), state, row["created_at"])
