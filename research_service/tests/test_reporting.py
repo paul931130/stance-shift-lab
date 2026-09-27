@@ -118,5 +118,18 @@ class StabilityReportTests(unittest.TestCase):
         self.assertEqual(audit["nonformal_reasons"], {"not_preregistered_dataset": 1})
 
 
+class StableModelIdentityTests(unittest.TestCase):
+    def test_lookup_time_does_not_split_one_model(self):
+        from research_service.reporting import stable_model_identity
+
+        first = {"model_identity": {"id": "gemini/gemini-2.5-flash", "provider": "cloud_alias",
+                                    "resolved_at": "2026-09-27T01:00:00+00:00"}}
+        later = {"model_identity": {"id": "gemini/gemini-2.5-flash", "provider": "cloud_alias",
+                                    "resolved_at": "2026-09-27T09:30:00+00:00"}}
+        other = {"model_identity": {"id": "ollama/qwen3:14b", "digest": "abc", "modified_at": "x"}}
+        self.assertEqual(stable_model_identity(first), stable_model_identity(later))
+        self.assertNotEqual(stable_model_identity(first), stable_model_identity(other))
+
+
 if __name__ == "__main__":
     unittest.main()

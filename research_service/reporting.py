@@ -28,6 +28,18 @@ def _is_complete(job):
     return job.get("status") == "complete" and bool(job.get("state", {}).get("finished"))
 
 
+# When the model was looked up, not which model it is: two jobs on the same model
+# weights must compare equal even when created minutes apart.
+VOLATILE_IDENTITY_FIELDS = ("resolved_at", "modified_at")
+
+
+def stable_model_identity(config):
+    """The model identity used to decide whether jobs may be pooled."""
+    identity = {key: value for key, value in (config.get("model_identity") or {}).items()
+                if key not in VOLATILE_IDENTITY_FIELDS}
+    return json.dumps(identity, sort_keys=True, separators=(",", ":"))
+
+
 def _formal_exclusion_reason(job, eligible_dataset_ids, frozen_at=None):
     """Fail closed unless a completed job carries formal-study provenance."""
     config = job.get("config", {})
@@ -77,8 +89,7 @@ def _completed_unique(jobs, *, formal_only=False, eligible_dataset_ids=None, fro
     if len(hashes) != 1:
         raise ValueError("不同協議、模型或資料類型不可合併統計")
     if formal_only:
-        identities = {json.dumps(job["config"].get("model_identity", {}), sort_keys=True,
-                                 separators=(",", ":")) for job in usable}
+        identities = {stable_model_identity(job["config"]) for job in usable}
         if len(identities) != 1:
             raise ValueError("不同解析模型版本不可合併正式統計")
         case_datasets = {}
@@ -303,8 +314,7 @@ def stability_report(jobs):
     by_case = {}
     for job in sorted(eligible, key=lambda item: item.get("created_at", "")):
         config = job.get("config", {})
-        identity = json.dumps(config.get("model_identity", {}), sort_keys=True, separators=(",", ":"))
-        key = (config.get("ticker"), config.get("analysis_date"), config.get("dataset_id"), identity)
+        key = (config.get("ticker"), config.get("analysis_date"), config.get("dataset_id"), stable_model_identity(config))
         by_case.setdefault(key, []).append(job)
     repeated = {key: runs for key, runs in by_case.items() if len(runs) >= 2}
     groups = {}

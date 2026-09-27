@@ -104,6 +104,44 @@ class ApiTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "worker"):
             research.resume(running)
 
+    def test_only_one_process_can_hold_a_job(self):
+        research = DemoResearch(self.tmp.name)
+        job_id = research.start("NVDA", "2024-12-31")
+        _, owner = research._take_over(job_id)
+        with self.assertRaisesRegex(ValueError, "其他程序"):
+            research._take_over(job_id)  # a second stance-shift resume
+        research.store.control(job_id, "resume")  # 繼續 pressed in the web UI
+        self.assertIsNone(research.store.claim())
+        from research_service.storage import JobLeaseLost
+        job = research.store.get(job_id)
+        with self.assertRaises(JobLeaseLost):
+            research.store.save_step(job_id, job["state"], owner="cli:someone-else")
+        research.store.release(job_id, owner)
+        self.assertEqual(research.store.get(job_id)["owner"], "")
+
+    def test_a_killed_cli_lease_can_be_taken_over_after_it_goes_stale(self):
+        research = DemoResearch(self.tmp.name)
+        job_id = research.start("NVDA", "2024-12-31")
+        research._take_over(job_id)
+        with research.store.connect() as db:
+            db.execute("UPDATE jobs SET updated_at='2000-01-01T00:00:00+00:00' WHERE id=?", (job_id,))
+        self.assertEqual(research.resume(job_id)["status"], "complete")
+
+    def test_pausing_in_the_web_ui_stops_a_cli_run(self):
+        research = DemoResearch(self.tmp.name)
+        job_id = research.start("NVDA", "2024-12-31")
+
+        def pause_then_answer(protocol, messages, **kwargs):
+            research.store.control(job_id, "pause")
+            return demo_model(protocol, messages, **kwargs)
+
+        research.engine.model_call = pause_then_answer
+        with self.assertRaisesRegex(api.ResearchRunError, "暫停"):
+            research.resume(job_id)
+        job = research.store.get(job_id)
+        self.assertEqual((job["status"], job["owner"]), ("paused", ""))
+        self.assertTrue(job["steps"] or job["state"]["research"])  # the finished step was kept
+
     def test_resume_takes_a_queued_job_away_from_the_worker(self):
         research = DemoResearch(self.tmp.name)
         job_id = research.start("NVDA", "2024-12-31")
