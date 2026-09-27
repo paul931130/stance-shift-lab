@@ -2,6 +2,9 @@
 from fastapi import APIRouter
 from fastapi.responses import Response
 
+from .context import BatchInput
+from .jobs import prepare
+
 from ..reporting import csv_text, hold_band_sensitivity, pilot_diagnostics, stability_report, study_report
 
 
@@ -16,8 +19,8 @@ def build_router(ctx):
     def report(protocol_hash: str):
         jobs = protocol_jobs(protocol_hash)
         preregistration = store.preregistration(protocol_hash)
-        eligible_dataset_ids = preregistration["dataset_ids"] if preregistration else None
-        result = study_report(jobs, eligible_dataset_ids=eligible_dataset_ids)
+        result = study_report(jobs, eligible_dataset_ids=preregistration["dataset_ids"] if preregistration else None,
+                              frozen_at=preregistration["frozen_at"] if preregistration else None)
         if preregistration:
             frozen = set(preregistration["dataset_ids"])
             post_freeze = sorted({j["config"]["dataset_id"] for j in jobs
@@ -26,6 +29,21 @@ def build_router(ctx):
         else:
             result["preregistration"] = None
         return result
+
+    @router.post("/api/studies/preregister")
+    def preregister(payload: BatchInput):
+        """Lock a planned sample before any of it runs; creates no jobs.
+
+        Every case goes through the same validation as a real job, so the lock
+        records the exact protocol the batch will run under. Only jobs created
+        after this lock count as formal results.
+        """
+        prepared = [prepare(ctx, item) for item in payload.cases]
+        hashes = {item["protocol_hash"] for item in prepared}
+        if len(hashes) != 1:
+            raise ValueError("批次內的案例必須使用同一套研究協議（相同模型與設定）才能一起鎖定樣本")
+        [protocol_hash] = hashes
+        return {**store.freeze(protocol_hash, {item["dataset_id"] for item in prepared}), "cases": len(prepared)}
 
     @router.post("/api/studies/{protocol_hash}/freeze")
     def freeze_study(protocol_hash: str):

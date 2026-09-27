@@ -35,7 +35,7 @@ export async function showStatistics() {
   const prereg = report.preregistration;
   const preregBlock = prereg
     ? `<p class="${prereg.post_freeze_dataset_ids.length ? 'protocol-warning' : 'hint'}">研究樣本已於 ${escape(formatStamp(prereg.frozen_at))} 鎖定（事前登記），共 ${prereg.dataset_ids.length} 個資料集。${prereg.post_freeze_dataset_ids.length ? `⚠️ 鎖定後又追加了 ${prereg.post_freeze_dataset_ids.length} 個資料集的實驗；這些是看過結果後才加入的，不應算進正式結論。` : '目前所有案例都在鎖定的樣本內。'}</p>`
-    : `<p class="hint">尚未鎖定研究樣本（事前登記）。正式實驗開始、還沒看統計結果之前按一次：會記下目前要分析的資料集清單，之後才加入的案例都會被標記，證明樣本不是看了結果才挑的。測試階段不需要按，而且按了不能撤銷。</p><button class="quiet" type="button" data-freeze="${escape(protocol)}">鎖定目前的研究樣本</button>`;
+    : `<p class="hint">尚未鎖定研究樣本（事前登記）。正式實驗要在執行前鎖定：到「建立實驗」的批次研究匯入案例清單，並勾選「先鎖定這批研究樣本」。只有鎖定後建立的實驗算正式結果；已經跑完的結果即使之後鎖定，也只算探索性分析，避免看了結果才挑樣本。</p>`;
   element.innerHTML = `<section class="stats-substep"><div class="section-label">4.1 / 回測摘要</div><h2>同協議研究比較</h2><p class="hint">只比較用同一套研究規則（同協議版本）跑出的結果。以下為 60 個交易日、扣除估計交易成本（Corwin–Schultz）、各案例等權重的結果，共 ${report.unique_cases || 0} 個完成的案例；同一案例重跑的紀錄會保留但不重複計算。</p>${insufficient}${preregBlock}
     <div class="chart-pair">${comparisonBars(primary, 'selective_accuracy', '有下注時的方向準確率', percentage)}${comparisonBars(primary, 'sharpe', 'Sharpe', number)}</div>
     <div class="table-wrap"><table><thead><tr><th>方法</th><th>下注比例</th><th>有下注時準確率</th><th>Hold 比例</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div></section>

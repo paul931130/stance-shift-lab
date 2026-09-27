@@ -91,6 +91,17 @@ class StabilityReportTests(unittest.TestCase):
         result = study_report([job], eligible_dataset_ids={"dataset-b"})
         self.assertEqual(result["excluded_nonformal_reasons"], {"not_preregistered_dataset": 1})
 
+    def test_sample_locked_after_a_run_does_not_make_it_formal(self):
+        job = completed_run("2024-01-01T00:00:00+00:00",
+                            {group: "Buy" for group in "ABCD"}, {})
+        job["config"]["protocol"] = {"dataset_kind": "historical", "allow_small_model": False}
+        job["config"]["formal_readiness"] = {"eligible": True}
+        job["state"]["report"]["dataset_kind"] = "historical"
+        late = study_report([job], eligible_dataset_ids={"dataset-a"}, frozen_at="2024-06-01T00:00:00+00:00")
+        self.assertEqual(late["excluded_nonformal_reasons"], {"run_before_preregistration": 1})
+        from research_service.reporting import _formal_exclusion_reason
+        self.assertIsNone(_formal_exclusion_reason(job, {"dataset-a"}, "2023-12-31T00:00:00+00:00"))
+
     def test_formal_report_keeps_exclusion_reasons_when_other_cases_are_usable(self):
         included = completed_run("2024-01-01T00:00:00+00:00",
                                  {group: "Buy" for group in "ABCD"}, {})

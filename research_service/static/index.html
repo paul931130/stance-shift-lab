@@ -181,7 +181,7 @@
       <p class="hint">本機模型每次呼叫可能需要數十秒到數分鐘；一次完整實驗約 22 次模型呼叫（B 組 5 次時為 20 次），實際時間依模型大小與硬體而定。開始後，詳情頁會依平均耗時預估剩餘時間。</p>
       <button id="run-button" disabled>開始研究實驗 <span aria-hidden="true">→</span></button>
     </form>
-    <details><summary>批次研究 · 9 檔股票 × 20 個季末＝180 個案例</summary><p>匯入批次 JSON（含 cases 陣列），每一筆指定資料集 ID、分析日、模型與資料缺口策略。系統會先檢查全部案例，再一起排入佇列。</p><input id="batch-file" type="file" accept=".json,application/json" aria-label="匯入批次設定"></details>
+    <details><summary>批次研究 · 9 檔股票 × 20 個季末＝180 個案例</summary><p>匯入批次 JSON（含 cases 陣列），每一筆指定資料集 ID、分析日、模型與資料缺口策略。系統會先檢查全部案例，再一起排入佇列。</p><label class="check"><input id="batch-preregister" type="checkbox" checked>先鎖定這批研究樣本（事前登記）再排入佇列；正式實驗請勾選，只有鎖定後建立的實驗算正式結果</label><input id="batch-file" type="file" accept=".json,application/json" aria-label="匯入批次設定"></details>
     <details class="protocol-details"><summary>查看研究規則與資料缺口處理</summary><p class="hint">資料有缺口時，可以保留模型決策並標記為對照，也可以選保守模式一律 NoTrade。各組呼叫次數相同不代表 token 用量相同；每次呼叫都會記錄用量與提示詞雜湊。</p></details>
   </section>
 

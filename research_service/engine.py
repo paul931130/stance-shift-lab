@@ -13,8 +13,8 @@ from langgraph.graph import StateGraph, START, END
 from .anonymize import PLACEHOLDER, anonymize
 from .backtest import evaluate
 from .data import digest, research_inputs
-from .models import (compact_research_evidence, generate, messages_for, prompt_text,
-                     validate_decision, validate_research)
+from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate, messages_for,
+                     prompt_text, unalias_evidence_ids, validate_decision, validate_research)
 from .protocol import StudyProtocol, DOMAIN_NAMES, decision_plan, decision_wave, temperature_for
 from .storage import now
 from .logging_config import get_logger
@@ -211,7 +211,10 @@ class Engine:
         builder.add_edge("coordinator_step", END)
         self.graph = builder.compile()
 
-    def call_model(self, protocol, messages, call_key, temperature=None):
+    def call_model(self, protocol, messages, call_key, temperature=None, aliases=None):
+        """Call the provider; with ``aliases`` the prompt shows short evidence IDs and the answer is mapped back."""
+        if aliases:
+            messages = alias_messages(messages, aliases)
         seed = (protocol.inference_seed + int(digest(call_key)[:8], 16)) % 2_147_483_647
         kwargs = {}
         if self.model_accepts_seed:
@@ -219,6 +222,8 @@ class Engine:
         if self.model_accepts_temperature:
             kwargs["temperature"] = protocol.temperature if temperature is None else temperature
         result, audit = self.model_call(protocol, messages, **kwargs)
+        if aliases:
+            result = unalias_evidence_ids(result, aliases)
         audit = dict(audit)
         audit.setdefault("seed", seed)
         audit.setdefault("temperature", protocol.temperature if temperature is None else temperature)
@@ -241,12 +246,14 @@ class Engine:
         # exact IDs while still rejecting unsupported point-only facts.
         decision_evidence = [item for item in evidence
                              if item.get("domain") != "fundamental" or item.get("comparative") is True]
-        allowed_ids = [item["evidence_id"] for item in decision_evidence]
+        aliases = evidence_aliases(evidence)
+        allowed_ids = [aliases[item["evidence_id"]] for item in decision_evidence]
         for attempt in range(1, protocol.provider_retry_attempts + 1):
             retry_key = call.key if attempt == 1 else f"{call.key}:validation-retry-{attempt}"
             audit = None
             try:
-                result, audit = self.call_model(protocol, attempt_messages, retry_key, temperature_for(protocol, call))
+                result, audit = self.call_model(protocol, attempt_messages, retry_key, temperature_for(protocol, call),
+                                                aliases)
                 # Numbers are checked against everything this prompt showed the model.
                 result = validate_decision(result, decision_evidence, call, prompt_text(messages))
                 audit = dict(audit)
@@ -264,9 +271,18 @@ class Engine:
                 number_hint = ""
                 rejected_numbers = re.search(r"來源未支持的數字（([^）]*)）", str(error))
                 if rejected_numbers:
+                    rejected = [value.strip() for value in rejected_numbers.group(1).split(",")]
+                    context = prompt_text(messages)
+                    signed_matches = [f"-{value}" for value in rejected
+                                      if f"-{value}" in context]
                     number_hint = (f"These numbers in your text were not found in the supplied report: {rejected_numbers.group(1)}. "
                                    "Delete them or replace each with the exact figure as written in the report; "
-                                   "do not round, convert units, or compute new figures. ")
+                                   "do not round, convert units, or compute new figures. "
+                                   "If you cannot reproduce an exact figure, remove all numbers from that sentence. ")
+                    if signed_matches:
+                        number_hint += ("Sign check: the report contains " + ", ".join(signed_matches) +
+                                        " (negative values), not the corresponding positive magnitudes. "
+                                        "Keep the minus sign exactly, or omit the numbers. ")
                 attempt_messages = [*messages, {"role": "user", "content":
                     "The previous candidate was rejected by evidence validation. Return a new complete JSON "
                     "object. " + number_hint + "Do not cite a legacy SEC point fact without a comparable period. Comparative SEC "
@@ -274,16 +290,19 @@ class Engine:
                     f"only; do not invent, shorten, or transform any ID: {json.dumps(allowed_ids, ensure_ascii=False)}. "
                     f"Validation error: {str(error)[:200]}"}]
 
-    def validated_research(self, protocol, domain, items, messages):
+    def validated_research(self, protocol, domain, items, messages, aliases=None):
         """Retry a source-validation rejection before emitting a degraded fallback."""
         validation_failures = []
         attempt_messages = messages
-        allowed_ids = [item["evidence_id"] for item in items]
+        # One case-wide numbering: "E7" in a research summary must mean the
+        # same evidence when decision agents read that summary later.
+        aliases = aliases or evidence_aliases(items)
+        allowed_ids = [aliases[item["evidence_id"]] for item in items]
         for attempt in range(1, protocol.provider_retry_attempts + 1):
             retry_key = f"research-{domain}" if attempt == 1 else f"research-{domain}:validation-retry-{attempt}"
             audit = None
             try:
-                result, audit = self.call_model(protocol, attempt_messages, retry_key, protocol.temperature)
+                result, audit = self.call_model(protocol, attempt_messages, retry_key, protocol.temperature, aliases)
                 result = validate_research(result, items, domain)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
@@ -319,6 +338,8 @@ class Engine:
         effective_workers = self.parallel_workers
         if "inputs" not in state:
             state["inputs"] = research_inputs(dataset, config["analysis_date"], protocol)
+            # Prompt-only short IDs, kept with the job so any "E7" in a stored rationale can be resolved.
+            state["evidence_aliases"] = evidence_aliases(state["inputs"]["evidence"])
             state["memory"] = {group: self.store.memory(config, group) for group in "ABCD"}
             state["memory_audit"] = self.store.memory_audit(config)
             label = "coordinator"
@@ -348,7 +369,9 @@ class Engine:
 
             def run_research(domain, items, messages):
                 try:
-                    result, audit = self.validated_research(protocol, domain, items, messages)
+                    result, audit = self.validated_research(
+                        protocol, domain, items, messages,
+                        state.get("evidence_aliases") or evidence_aliases(state["inputs"]["evidence"]))
                     return {**result, "status": "complete", "audit": audit}
                 except Exception as error:
                     # Preserve source fidelity and let the shared report finish.

@@ -80,8 +80,10 @@ class ModelReliabilityTests(unittest.TestCase):
         messages = messages_for(call, report, history, [], protocol)
         payload = json.loads(messages[1]["content"])
         self.assertNotIn("audit", json.dumps(payload))
-        self.assertTrue(all(len(item["output"]["rationale"]) <= 60 for item in payload["history"]))
-        self.assertTrue(all(len(item["output"]["strongest_counterpoint"]) <= 50 for item in payload["history"]))
+        # v3-0927.1: whole arguments up to the prompt's own limits, and every citation.
+        self.assertTrue(all(len(item["output"]["rationale"]) <= 320 for item in payload["history"]))
+        self.assertTrue(all(len(item["output"]["strongest_counterpoint"]) <= 240 for item in payload["history"]))
+        self.assertTrue(all(len(item["output"]["evidence_ids"]) == 8 for item in payload["history"]))
 
     def test_4k_decision_view_limits_news_and_summarizes_maturity_memory(self):
         protocol = StudyProtocol(model="ollama/demo", dataset_kind="synthetic", bootstrap_replicates=199)
