@@ -1,8 +1,8 @@
 """The terminal dashboard and question helpers used by the interactive stance-shift."""
 import io
-import os
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from unittest.mock import patch
 
 from rich.console import Console
@@ -60,9 +60,11 @@ class DashboardTests(unittest.TestCase):
 class PrompterTests(unittest.TestCase):
     def test_plain_mode_validates_choices_and_keeps_defaults(self):
         prompter = tui.Prompter(fancy=False)
-        with patch("builtins.input", side_effect=["ZZZ", "MSFT", ""]):
+        output = io.StringIO()  # the hint is Chinese; Windows CI's cp1252 stdout cannot print it
+        with patch("builtins.input", side_effect=["ZZZ", "MSFT", ""]), redirect_stdout(output):
             self.assertEqual(prompter.select("股票", [("NVDA", "NVDA"), ("MSFT", "MSFT")], "NVDA"), "MSFT")
             self.assertTrue(prompter.confirm("開始？", True))
+        self.assertIn("請輸入其中之一", output.getvalue())
 
     def test_secret_keeps_the_current_value_on_enter(self):
         with patch("research_service.tui.getpass", return_value=""):
@@ -83,5 +85,4 @@ class PrompterTests(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     unittest.main()
