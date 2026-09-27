@@ -18,13 +18,23 @@
 - **存取**：8000 連接埠預設為私人，只有開 Codespace 的 GitHub 帳號登入後看得到；不要改成公開。
 - **費用與資料**：使用的是各自 GitHub 帳號的 Codespaces 額度。閒置會自動停機、資料保留；刪除 Codespace 時資料一併刪除，研究結果請先匯出。
 
+> **第二次以後請打開「原本那台」，不要再按上面的按鈕。** 上面的按鈕與 repo 頁面的 Create codespace 會開一台全新的 Codespace，裡面沒有你之前的資料集、上傳的新聞 CSV、網頁設定與實驗結果，全部要重來，還會多吃一份額度。請到 <https://github.com/codespaces> 點你已經建立的那一台。
+>
+> | 開啟方式 | `research-inputs/` 上傳的 CSV | 資料集、設定、實驗結果 |
+> | --- | --- | --- |
+> | 從 github.com/codespaces 點既有的 Codespace（含閒置停機後再開） | 保留 | 保留 |
+> | 在 Codespace 內執行 Rebuild Container | 保留 | **消失** |
+> | 按上方按鈕或 Create codespace 開新的 | **消失** | **消失** |
+>
+> 要重建或刪除 Codespace 前，先執行 `./research.sh backup` 並把研究結果匯出下載。
+
 ### 怎麼連模型
 
 三種方式擇一，以雲端模型 API（以 Gemini 為例）最簡單：
 
 1. **在網頁設定（最快）**：開啟研究台，按「資料準備」頁標題下方（或「建立實驗」頁模型欄位下方）的「設定模型與金鑰」按鈕，在「回測模型」與「雲端模型金鑰」填入 `GEMINI_API_KEY` 與 `RESEARCH_MODEL`（例如 `gemini/gemini-3.1-pro-preview`，想省錢可用 `gemini/gemini-2.5-flash`），按「儲存設定」立即生效。右上角模型狀態顯示該模型、不是「離線」就代表連上了。
 2. **在終端機設定**：`./research.sh setup`（Windows：`.\research.ps1 setup`）選 `3` 雲端模型 API → 選供應商 → 貼上金鑰，再用 `doctor` 確認「模型來源」一行顯示連線正常，最後 `start`。
-3. **用 Codespaces Secrets（每次開 Codespace 自動套用）**：到 GitHub → Settings → Codespaces → Secrets 新增 `GEMINI_API_KEY`、`RESEARCH_MODEL`，並把 `RESEARCH_DEMO_MODE` 設為 `false`，授權給這個 repo 後執行「Codespaces: Rebuild Container」。
+3. **用 Codespaces Secrets（每次開 Codespace 自動套用）**：到 GitHub → Settings → Codespaces → Secrets 新增 `GEMINI_API_KEY`、`RESEARCH_MODEL`，並把 `RESEARCH_DEMO_MODE` 設為 `false`，授權給這個 repo。每次啟動 Codespace 都會套用；改完 secrets 後，到 <https://github.com/codespaces> 把這台停止（Stop codespace）再打開即可。不要用 Rebuild Container，會清掉資料集。
 
 常被限流（429）時，把 `RESEARCH_PARALLEL_WORKERS` 調成 1 或 2。本機 Ollama、GPUtw 租 GPU、OpenRouter／OpenAI 的設定見 [選擇模型來源](docs/model-sources.md)。**金鑰只填在設定區、`.env.research` 或 Secrets，不要貼到聊天、issue 或 commit 裡。**
 

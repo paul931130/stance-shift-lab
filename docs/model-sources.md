@@ -63,4 +63,4 @@ Codespace 不讀 setup 的互動輸入，而是讀 GitHub → Settings → Codes
 | 雲端租 GPU | `GPUTW_OLLAMA_BASE_URL`、`GPUTW_OLLAMA_API_KEY`（端點有保護時） |
 | 雲端模型 API | `OPENROUTER_API_KEY`（或 `OPENAI_API_KEY`／`GEMINI_API_KEY`）與 `RESEARCH_MODEL`，例如 `openrouter/qwen/qwen3-14b` |
 
-另外把 `RESEARCH_DEMO_MODE` 設為 `false`（改值，不要只刪除）。改完 secrets 後執行「Codespaces: Rebuild Container」才會生效。也可以直接在 Codespace 終端機執行 `./research.sh setup`。
+另外把 `RESEARCH_DEMO_MODE` 設為 `false`（改值，不要只刪除）。改完 secrets 後，到 <https://github.com/codespaces> 把這台 Codespace 停止（Stop codespace）再打開，每次啟動都會重新寫入；也可以直接在終端機執行 `./research.sh setup` 或在網頁「設定模型與金鑰」填寫。不要用 Rebuild Container，重建會清掉資料集與實驗結果。
