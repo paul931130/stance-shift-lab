@@ -1,0 +1,173 @@
+{
+  "model": "ollama/qwen3:32b",
+  "mode": "identify",
+  "summary": {
+    "n": 18,
+    "identified": 6,
+    "rate": 0.333
+  },
+  "rows": [
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "AAPL",
+      "answer_ticker": "AMZN",
+      "answer_company": "Amazon.com Inc.",
+      "confidence": 0.75,
+      "clues": "The evidence includes financial figures such as revenue, net income, and operating cash flow. The revenue for the period is $94.836 billion, which is in line with Amazon's historical revenue figures. The net income is $24.16 billion, which is also consistent with Amazon's earnings. Additionally, the",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "AMZN",
+      "answer_ticker": "AMZN",
+      "answer_company": "Amazon.com Inc.",
+      "confidence": 0.85,
+      "clues": "The revenue of $127.36 billion for Q1 2023 aligns with Amazon's typical quarterly revenue range. The net income of $3.17 billion and operating cash flow of $4.79 billion also match Amazon's financial profile. The antitrust news reference to ASSET's online marketplace is consistent with Amazon's busi",
+      "identified": true
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "GE",
+      "answer_ticker": "HAL",
+      "answer_company": "Hindustan Aeronautics Limited",
+      "confidence": 0.95,
+      "clues": "1. The ticker symbol ASSET is a clear red herring, as the company is likely not named ASSET. 2. The news headline 'ASSET (ASSET), HAL Sign MOU to Make Jet Engines for IAF' directly links the company to HAL (Hindustan Aeronautics Limited). 3. The company is involved in aerospace manufacturing, as ind",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "GOOGL",
+      "answer_ticker": "AMZN",
+      "answer_company": "Amazon.com Inc.",
+      "confidence": 0.85,
+      "clues": "The evidence includes a 10-Q filing with revenue of $69.787 billion for Q1 2023, net income of $15.051 billion, and operating cash flow of $23.509 billion. These figures align closely with Amazon's financials for the same period. Additionally, one of the news headlines mentions Amazon spending $100 ",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "INTC",
+      "answer_ticker": "NVDA",
+      "answer_company": "NVIDIA Corporation",
+      "confidence": 0.85,
+      "clues": "1. Multiple news headlines reference 'ASSET' in the context of semiconductor/AI chip stocks (e.g., 'AI’s Trillion-Dollar Baby: Is ASSET Stock Overvalued or Just Getting Started?', 'New AI Chip Export Rules Put Semiconductor Firms in Spotlight').\n2. Sentiment news includes direct comparisons to AMD a",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "JPM",
+      "answer_ticker": "BAC",
+      "answer_company": "Bank of America Corporation",
+      "confidence": 0.75,
+      "clues": "The fundamental data includes a very high liabilities-to-assets ratio (91.9%), which is typical for banks. The negative operating cash flow (-$111.2 billion) is also consistent with a large financial institution. The sentiment data includes a news item about Bank of America expanding into new US mar",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "MCD",
+      "answer_ticker": "MCD",
+      "answer_company": "McDonald's Corporation",
+      "confidence": 0.92,
+      "clues": "1. The evidence mentions 'ASSET launches new purple shake, birthday meal for iconic purple character Grimace' - Grimace is a well-known McDonald's character.\n2. Another clue is 'ASSET vs. Restaurant Brands International: Which Fast-Food Chains Are Worth a Closer Look From Investors?' - McDonald's is",
+      "identified": true
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "MSFT",
+      "answer_ticker": "MSFT",
+      "answer_company": "Microsoft Corporation",
+      "confidence": 0.92,
+      "clues": "1. The SEC filings show a company with $52.86 billion in revenue for Q1 2023, up from $49.36 billion in Q1 2022 (7.08% YoY growth). This aligns with Microsoft's typical revenue scale and growth trajectory.\n2. Net income of $18.3 billion in Q1 2023, up from $16.73 billion in Q1 2022 (9.39% YoY growth",
+      "identified": true
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "NVDA",
+      "answer_ticker": "ASSET",
+      "answer_company": "ASSET",
+      "confidence": 0.1,
+      "clues": "The company is referred to as 'ASSET' in the evidence, but there is no additional information to identify the company.",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "AAPL",
+      "answer_ticker": "MSFT",
+      "answer_company": "Microsoft Corporation",
+      "confidence": 0.85,
+      "clues": "The most direct clue is the headline: 'How Nvidia surpassed Microsoft and ASSET to become world’s most valuable company'. This implies ASSET is a major tech company, likely in the same category as Microsoft and Nvidia. Microsoft's ticker is MSFT. The financial data also aligns with Microsoft's scale",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "AMZN",
+      "answer_ticker": "AMZN",
+      "answer_company": "Amazon.com Inc.",
+      "confidence": 0.95,
+      "clues": "1. Revenue of $143.313 billion for Q1 2024 aligns with Amazon's typical Q1 revenue range. 2. Net income of $10.431 billion for Q1 2024 matches Amazon's recent profitability pattern. 3. Operating cash flow of $18.989 billion is consistent with Amazon's scale. 4. The mention of \"ASSET becomes the 5th ",
+      "identified": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "GE",
+      "answer_ticker": "CEL",
+      "answer_company": "Celsion Corporation",
+      "confidence": 0.6,
+      "clues": "The evidence provided includes financial data and news headlines that reference ASSET. The ticker symbol 'CEL' is associated with Celsion Corporation, a biotechnology company. The financial data includes revenue, net income, and operating cash flow figures that align with the company's profile. Addi",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "GOOGL",
+      "answer_ticker": "TME",
+      "answer_company": "Temu",
+      "confidence": 0.75,
+      "clues": "The sentiment evidence includes an article titled 'How Global Regulators Are Catching Up With Temu', which directly references the company name 'Temu'. This is the only article in the sentiment data that mentions a specific company name, making it a strong clue. No other company names appear in the ",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "INTC",
+      "answer_ticker": "ENZR",
+      "answer_company": "Entegris, Inc.",
+      "confidence": 0.85,
+      "clues": "1. The SEC filings show a company with significant revenue (~$12.7B in a 90-day period), negative net income, and negative operating cash flow, consistent with a mid-sized tech/semiconductor company. 2. The most relevant clue is the headline: 'ASSET Demonstrates First Fully Integrated Optical I/O Ch",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "JPM",
+      "answer_ticker": "DLR",
+      "answer_company": "Digital Realty Trust, Inc.",
+      "confidence": 0.85,
+      "clues": "The sentiment evidence includes a headline mentioning 'Digital Realty’s prospects' and a positive sentiment score. This directly identifies the company as Digital Realty. The ticker symbol for Digital Realty is DLR.",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "MCD",
+      "answer_ticker": "MCD",
+      "answer_company": "McDonald's Corporation",
+      "confidence": 0.95,
+      "clues": "Multiple headlines reference 'McPlant burgers', 'McNuggets', 'Big Mac meal', and 'McDrive-through tests', all of which are directly associated with McDonald's. The company name is anonymized as 'ASSET' in the text, but the context and product names strongly point to McDonald's. Additionally, the fin",
+      "identified": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "MSFT",
+      "answer_ticker": "MSFT",
+      "answer_company": "Microsoft Corporation",
+      "confidence": 0.85,
+      "clues": "The most direct clue is the mention of 'ASSET Dynamics 365' in the headline 'CNH boosts customer loyalty with ASSET Dynamics 365'. This strongly suggests that 'ASSET' is a reference to Microsoft's Dynamics 365 product line. Microsoft is a major provider of enterprise software and cloud services, and",
+      "identified": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "NVDA",
+      "answer_ticker": "ASML",
+      "answer_company": "ASML Holding N.V.",
+      "confidence": 0.85,
+      "clues": "The most direct clue is the mention of 'ASSET H200 GPUs' in the headline 'DIGIASIA's Digi Tech Secures 5,120 ASSET H200 GPUs for AI Solutions'. This strongly suggests that 'ASSET' is a company known for high-end GPUs, which aligns with NVIDIA. However, the financial data (revenue, net income, operat",
+      "identified": false
+    }
+  ]
+}

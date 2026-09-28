@@ -5,13 +5,18 @@ settings) for the direction and size of each stock's 60-trading-session
 open-to-open return after an analysis date, then compares with the stored
 price history. Mirrors the 2026-09-27 Gemini probe in docs/knowledge-cutoff.md.
 
+Modes: recall (default) asks for outcomes with no evidence; identify shows the
+anonymized evidence and asks which company it is.
+
 Run inside the research container, e.g.
     python scripts/memory_probe.py --model ollama/qwen3:32b --protocol-hash 39f71a9c
 """
 import argparse
 import json
 import os
+import time
 from collections import defaultdict
+from urllib.error import HTTPError
 from urllib.request import Request
 
 from research_service.models import gputw_urlopen
@@ -39,19 +44,72 @@ def ask(base, model, ticker, analysis_date):
               f"over the {HORIZON} trading sessions after {analysis_date} (open of the next session to the open "
               f"{HORIZON} sessions later)? Give direction (up/down), return_pct, and confidence 0-1 that you "
               "actually remember this period rather than guessing. If you do not know, set confidence to 0.")
-    body = {"model": model.removeprefix("ollama/"), "stream": False, "think": False, "format": SCHEMA,
-            "options": {"temperature": 0, "seed": 905}, "messages": [{"role": "user", "content": prompt}]}
+    return chat(base, model, prompt, SCHEMA)
+
+
+def chat(base, model, prompt, schema, num_ctx=None):
+    options = {"temperature": 0, "seed": 905, **({"num_ctx": num_ctx} if num_ctx else {})}
+    body = {"model": model.removeprefix("ollama/"), "stream": False, "think": False, "format": schema,
+            "options": options, "messages": [{"role": "user", "content": prompt}]}
     headers = {"Content-Type": "application/json"}
     token = os.getenv("GPUTW_OLLAMA_API_KEY", "").strip()
     if token:
         headers["Authorization"] = f"Bearer {token}"
-    with gputw_urlopen(Request(base + "/api/chat", data=json.dumps(body).encode(), headers=headers), 600) as response:
-        return json.loads(json.load(response)["message"]["content"])
+    # GPUtw's Cloudflare edge returns 524 after 100 s; retry while the GPU is busy.
+    for attempt in range(1, 4):
+        try:
+            with gputw_urlopen(Request(base + "/api/chat", data=json.dumps(body).encode(), headers=headers),
+                               600) as response:
+                return json.loads(json.load(response)["message"]["content"])
+        except HTTPError as error:
+            if error.code not in (502, 503, 504, 524) or attempt == 3:
+                raise
+            time.sleep(10 * attempt)
+
+
+IDENTIFY_SCHEMA = {"type": "object", "required": ["ticker", "company", "confidence", "clues"],
+                   "properties": {"ticker": {"type": "string"}, "company": {"type": "string"},
+                                  "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+                                  "clues": {"type": "string"}}}
+EVIDENCE_CHARS = 6000
+
+
+def identify(base, model, dataset, ticker):
+    """Show the anonymized evidence a decision agent would read and ask which company it is."""
+    from research_service.anonymize import anonymize
+    from research_service.models import compact_research_evidence
+
+    evidence = {domain: compact_research_evidence(domain, dataset["evidence"])
+                for domain in ("fundamental", "sentiment", "technical", "macro")}
+    text = json.dumps(anonymize(evidence, ticker), ensure_ascii=False)[:EVIDENCE_CHARS]
+    prompt = ("The company in this evidence has been anonymized as ASSET. From the evidence alone, which "
+              "US-listed company is ASSET? Give the ticker, company name, confidence 0-1, and the clues you "
+              "used. If you cannot tell, give your best guess with low confidence.\n\nEvidence:\n" + text)
+    return chat(base, model, prompt, IDENTIFY_SCHEMA, num_ctx=16384)
+
+
+def run_identify(args, base, store, cases):
+    rows = []
+    for (analysis_date, ticker), dataset_id in sorted(cases.items()):
+        answer = identify(base, args.model, store.dataset(dataset_id), ticker)
+        rows.append({"analysis_date": analysis_date, "ticker": ticker, "answer_ticker": answer["ticker"],
+                     "answer_company": answer["company"], "confidence": answer["confidence"],
+                     "clues": answer["clues"][:300],
+                     "identified": answer["ticker"].strip().lstrip("$").upper() == ticker})
+        print(json.dumps(rows[-1], ensure_ascii=False), flush=True)
+    summary = {"n": len(rows), "identified": sum(row["identified"] for row in rows),
+               "rate": round(sum(row["identified"] for row in rows) / len(rows), 3) if rows else None}
+    with open(args.out, "w", encoding="utf-8") as handle:
+        json.dump({"model": args.model, "mode": "identify", "summary": summary, "rows": rows},
+                  handle, ensure_ascii=False, indent=2)
+    print(json.dumps(summary, indent=2))
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", required=True)
+    parser.add_argument("--mode", choices=("recall", "identify"), default="recall",
+                        help="recall: outcomes without evidence; identify: name the anonymized company")
     parser.add_argument("--protocol-hash", required=True, help="prefix; its jobs supply tickers and price data")
     parser.add_argument("--dates", nargs="*", default=DEFAULT_DATES)
     parser.add_argument("--data-dir", default=os.getenv("RESEARCH_DATA_DIR", "/data"))
@@ -66,6 +124,9 @@ def main():
         config = job["config"]
         if config.get("protocol_hash", "").startswith(args.protocol_hash) and config["analysis_date"] in args.dates:
             cases[(config["analysis_date"], config["ticker"])] = config["dataset_id"]
+    if args.mode == "identify":
+        run_identify(args, base, store, cases)
+        return
 
     rows = []
     for (analysis_date, ticker), dataset_id in sorted(cases.items()):
