@@ -2,6 +2,18 @@
 
 研究台可以用 `stance-shift` CLI、Python API 或網頁研究台（Docker、pip、Codespaces）操作，三者共用同一套流程與資料庫。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## v3-0929.1（2026-09-29）— 數字驗證不再中止工作：最後一次重試改為移除未支持的數字
+
+- 三次重試後模型仍寫出來源未支持的數字時，原本會整個工作中止。現在若這是唯一的錯誤，會把這些數字在 `summary`、`rationale`、`strongest_counterpoint`、`risks` 中替換為 `[數值已移除]`，其餘檢查（action、預期報酬、信心、引用 ID、辯論立場）全部照常重跑，任一不過仍中止。
+- 決策欄位（`action`、`expected_return_pct`、`confidence`）永不修改；被移除的數字記錄於決策的 `redacted_numbers` 與稽核的 `numeric_redaction`，完整重試歷程保留於 `validation_retries`，分析時可據此標記或排除。
+- 前兩次重試與重試提示不變；只有最後一次的失敗處理不同。
+- 回歸測試：來源中的數字（含負號）保留，編造的數字被移除且記入稽核。
+- 協議版本升級：`v3-0927.2` 工作（Gemini 3.1 Pro 正式批次）保留原協議繼續執行；`v3-0929.1` 用於 qwen3:32b 跨模型比較，兩者不可合併統計。
+- GPUtw：Ollama 連接埠設為 `unlisted`＋密碼時，設定 `GPUTW_OLLAMA_PASSWORD` 後研究台會先通過 GPUtw 密碼頁再呼叫 Ollama（不影響 protocol hash）。
+- GPUtw 連線：登入與模型呼叫帶自訂 User-Agent（Cloudflare 會以 403 擋下 Python 預設值）；只在實際取得 session cookie 後才重用，登入失敗會在下次呼叫重試。模型清單檢查（`/api/tags`）也走同一條路徑。
+- 第二個研究服務：`compose.qwen.yaml` 在 :8001 以 `ollama/qwen3:32b` 執行，與 :8000 共用資料庫；`RESEARCH_SETTINGS_PINNED` 讓它的模型與 GPUtw 設定不被共用的 `settings.json` 覆寫。兩個不同協議版本的服務不可同時開啟，否則會互相把對方的工作標為舊版並暫停。
+- 新增 `scripts/memory_probe.py`：不提供資料，詢問模型各股票 60 個交易日的漲跌並與實際報酬比較，用於判定沒有公布知識截止日的模型（例如 qwen3）。
+
 ## 未發布（2026-09-28）— 模型知識截止日前後分段分析（不改協議）
 
 - 記憶測試顯示 Gemini 3.1 Pro 在不給資料時，能以 89% 的方向正確率（基準 59%）回想 2022–2024 的 60 日漲跌，常精確到 1–2 個百分點；2025 年起信心全為 0、正確率等於基準。匿名化後 9 家公司仍全部被認出。詳見 `docs/knowledge-cutoff.md`。

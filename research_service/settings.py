@@ -26,9 +26,12 @@ class Settings:
     def __init__(self, root):
         self.path = Path(root) / "private" / "settings.json"
         self.lock = threading.RLock()
+        # A second service sharing this data directory (e.g. another model
+        # endpoint) can pin its own environment values over the saved ones.
+        pinned = {key.strip() for key in os.getenv("RESEARCH_SETTINGS_PINNED", "").split(",") if key.strip()}
         if self.path.exists():
             for key, value in self._read().items():
-                if key in FIELDS:
+                if key in FIELDS and key not in pinned:
                     os.environ[key] = value
 
     def _read(self):

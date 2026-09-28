@@ -282,6 +282,19 @@ class Engine:
                     failure["raw_response_hash"] = digest(audit.get("raw_response", ""))
                 validation_failures.append(failure)
                 if attempt >= protocol.provider_retry_attempts:
+                    # Last resort: a well-formed decision whose only defect is
+                    # unsupported numbers in prose is kept with those numbers
+                    # redacted (audited), instead of aborting the whole run.
+                    if audit is not None and "來源未支持的數字" in str(error):
+                        try:
+                            redacted = validate_decision(json.loads(json.dumps(result)), decision_evidence, call,
+                                                         prompt_text(messages), redact_numbers=True)
+                        except (ValueError, JsonSchemaValidationError, TypeError):
+                            raise error
+                        audit = dict(audit)
+                        audit["validation_retries"] = validation_failures
+                        audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
+                        return redacted, audit
                     raise
                 number_hint = ""
                 rejected_numbers = re.search(r"來源未支持的數字（([^）]*)）", str(error))

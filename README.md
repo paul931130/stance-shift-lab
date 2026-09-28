@@ -19,6 +19,7 @@
 
 - [2026-09] **互動式 `stance-shift` CLI 與 Python API**：`pip install` 後一個指令就能跑完蒐集資料、A/B/C/D 四組決策與回測，並即時顯示每一次模型回答。
 - [2026-09] **三種模型來源、三種跑法**：雲端模型 API（Gemini／OpenRouter／OpenAI）、GPUtw 雲端 GPU、Ollama；可用 pip、Docker 或 GitHub Codespaces 執行。
+- [2026-09] **協議 v3-0929.1**：重試三次後仍有來源未支持的數字時，改為移除該數字並記入稽核，不再中止整個工作；支援 GPUtw 密碼保護的 Ollama 連接埠。
 - [2026-09] **協議 v3-0926.7**：數字檢查比對模型實際看到的完整提示詞，大幅減少「財務摘要包含來源未支持的數字」的誤判；支援 Gemini 3.1 Pro。
 
 完整變更見 [CHANGELOG.md](CHANGELOG.md)。
