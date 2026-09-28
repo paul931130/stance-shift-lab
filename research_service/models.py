@@ -4,11 +4,47 @@ import json
 import os
 import re
 from decimal import Decimal
+import threading
 import time
 from urllib.request import Request, urlopen
 
 from .data import digest
 from .protocol import SWITCH_ROUND, StudyProtocol, visible_history
+
+_gputw_opener = None
+_gputw_lock = threading.Lock()
+
+
+def gputw_urlopen(request, timeout):
+    """Open a request, passing a GPUtw `unlisted` port's password page when configured.
+
+    GPUTW_OLLAMA_PASSWORD logs in once via GPUtw's share-login form and reuses
+    the resulting cookie; without it this is a plain urlopen.
+    """
+    global _gputw_opener
+    password = os.getenv("GPUTW_OLLAMA_PASSWORD", "").strip()
+    match = re.match(r"https://(\d+)-([0-9a-f-]{36})\.gputw\.ai", request.full_url)
+    if not password or not match:
+        return urlopen(request, timeout=timeout)
+    with _gputw_lock:
+        if _gputw_opener is None:
+            from http.cookiejar import CookieJar
+            from urllib.parse import urlencode
+            from urllib.request import HTTPCookieProcessor, build_opener
+            jar = CookieJar()
+            opener = build_opener(HTTPCookieProcessor(jar))
+            # GPUtw's edge rejects Python's default urllib User-Agent with 403.
+            opener.addheaders = [("User-Agent", "stance-shift-lab/1.0")]
+            form = urlencode({"password": password, "instanceId": match.group(2), "port": match.group(1)}).encode()
+            opener.open(Request("https://gputw.ai/api/share/login", data=form,
+                                headers={"Content-Type": "application/x-www-form-urlencoded"}), timeout=timeout).close()
+            # Cache only a real session, so one failed login is retried next call.
+            if not len(jar):
+                raise PermissionError("GPUtw 密碼頁登入失敗；請確認 GPUTW_OLLAMA_PASSWORD")
+            _gputw_opener = opener
+        opener = _gputw_opener
+    return opener.open(request, timeout=timeout)
+
 
 BACKTEST_HORIZONS = StudyProtocol().horizons
 
@@ -115,13 +151,21 @@ def _compact_history(records):
     return compact
 
 
-def validate_financial_numbers(result, evidence, context=None):
-    """Reject financial prose that introduces a number absent from the evidence it may use."""
+NUMBER_PATTERN = r'(?<![\w.])-?\d[\d,]*(?:\.\d+)?'
+REDACTED_NUMBER = '[數值已移除]'
+
+
+def validate_financial_numbers(result, evidence, context=None, redact=False):
+    """Reject financial prose that introduces a number absent from the evidence it may use.
+
+    v3-0929.1: with redact=True (last-resort after retries), unsupported numbers are
+    replaced in the prose fields instead of raising, and recorded in
+    result["redacted_numbers"] for audit. Decision fields are never touched.
+    """
     def numbers(text):
         if not isinstance(text, str):
             return set()
-        return {Decimal(value.replace(',', '')) for value in
-                re.findall(r'(?<![\w.])-?\d[\d,]*(?:\.\d+)?', text)}
+        return {Decimal(value.replace(',', '')) for value in re.findall(NUMBER_PATTERN, text)}
 
     cited = set(result.get('evidence_ids', []))
     source = ' '.join(e['claim'] for e in evidence if e['evidence_id'] in cited)
@@ -151,6 +195,17 @@ def validate_financial_numbers(result, evidence, context=None):
     # (0.500153 -> 50.0153%); any additional rounding is still rejected.
     supported |= {value * 100 for value in supported} | {value / 100 for value in supported}
     unsupported = numbers(text) - supported
+    if unsupported and redact:
+        def scrub(value):
+            return re.sub(NUMBER_PATTERN, lambda m: REDACTED_NUMBER
+                          if Decimal(m.group(0).replace(',', '')) in unsupported else m.group(0), value)
+        for key in ("summary", "rationale", "strongest_counterpoint"):
+            if isinstance(result.get(key), str):
+                result[key] = scrub(result[key])
+        if isinstance(result.get("risks"), list):
+            result["risks"] = [scrub(risk) if isinstance(risk, str) else risk for risk in result["risks"]]
+        result["redacted_numbers"] = sorted(format(value, 'f') for value in unsupported)
+        return
     if unsupported:
         shown = ', '.join(sorted(format(value, 'f') for value in unsupported)[:5])
         raise ValueError(f'財務摘要包含來源未支持的數字（{shown}）；必須原樣保留數值、單位與期間')
@@ -479,8 +534,8 @@ def generate(protocol, messages, seed=None, temperature=None):
                 remote_token = os.getenv("GPUTW_OLLAMA_API_KEY", "").strip()
                 if remote_token:
                     headers["Authorization"] = f"Bearer {remote_token}"
-                with urlopen(Request(base + "/api/chat", data=json.dumps(body).encode(), headers=headers),
-                             timeout=timeout_seconds) as response:
+                with gputw_urlopen(Request(base + "/api/chat", data=json.dumps(body).encode(), headers=headers),
+                                    timeout_seconds) as response:
                     provider_result = json.load(response)
                 content = provider_result["message"]["content"]
                 usage = {"prompt_tokens": provider_result.get("prompt_eval_count"),
@@ -546,7 +601,7 @@ def generate(protocol, messages, seed=None, temperature=None):
             time.sleep(.5 * attempt)
 
 
-def validate_decision(result, evidence, call=None, context=None):
+def validate_decision(result, evidence, call=None, context=None, redact_numbers=False):
     allowed_actions = ("Buy", "Hold", "Sell")
     if call is not None and call.kind == "debate":
         allowed_actions = ("Buy",) if call.stance == "BULL" else ("Sell",)
@@ -578,7 +633,7 @@ def validate_decision(result, evidence, call=None, context=None):
                 raise ValueError("角色交換輪 confidence_shift 須介於 -1 與 1")
     cited = set(result["evidence_ids"])
     if any(item.get("domain") == "fundamental" and item.get("evidence_id") in cited for item in evidence):
-        validate_financial_numbers(result, evidence, context)
+        validate_financial_numbers(result, evidence, context, redact=redact_numbers)
     validate_financial_interpretation(result, evidence)
     # Every citation must exist. Allowing one invented ID to pass an 80% ratio
     # made otherwise well-formed outputs impossible to audit reliably.

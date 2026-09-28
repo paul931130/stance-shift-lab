@@ -757,6 +757,25 @@ class WorkflowTests(unittest.TestCase):
         self.assertIn("maxLength=240", hint)
         self.assertNotIn("xxxx", hint)
 
+    def test_persistent_unsupported_numbers_are_redacted_instead_of_aborting(self):
+        engine = Engine(self.store, fake_model)
+        call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
+        evidence = [{"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True,
+                     "claim": "Revenue: year_over_year_change_pct=-1.400692"}]
+        messages = messages_for(call, {"evidence": evidence}, [], [], self.protocol)
+        invalid = {"action": "Sell", "expected_return_pct": -2.0, "confidence": .6,
+                   "rationale": "Revenue fell -1.400692%, roughly 1.4% (about 987654 units).",
+                   "evidence_ids": ["sec-yoy"], "risks": ["Margins near 12345.6789"]}
+        engine.call_model = lambda *_args, **_kwargs: (
+            json.loads(json.dumps(invalid)), {"prompt_hash": "synthetic", "usage": {}, "raw_response": "x"})
+        result, audit = engine.validated_decision(self.protocol, call, messages, evidence)
+        self.assertEqual(result["action"], "Sell")
+        self.assertIn("-1.400692", result["rationale"])
+        self.assertNotIn("987654", result["rationale"])
+        self.assertNotIn("12345.6789", result["risks"][0])
+        self.assertIn("987654", audit["numeric_redaction"])
+        self.assertEqual(len(audit["validation_retries"]), self.protocol.provider_retry_attempts)
+
     def test_comparable_fundamental_citation_is_valid_decision_evidence(self):
         engine = Engine(self.store, fake_model)
         call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")

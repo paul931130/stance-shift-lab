@@ -1,15 +1,23 @@
 """Ollama model inventory, shared by the model picker and job validation."""
+import json
 import os
 import re
 import time
 from urllib.error import HTTPError, URLError
+from urllib.request import Request
 
-from ..data import get_json
 from ..gputw import ollama_base_url as gputw_ollama_base_url
+from ..models import gputw_urlopen
 from ..protocol import DEFAULT_RESEARCH_MODEL, FORMAL_SMALL_MODEL_ALLOWLIST
 
 PARAMETER_SIZE_PATTERN = re.compile(r"(\d+(?:\.\d+)?)\s*[bB]\b")
 PROBE_CACHE_SECONDS = 15
+
+
+def get_json(url, headers=None):
+    """GET JSON from Ollama, passing a GPUtw password page when configured."""
+    with gputw_urlopen(Request(url, headers=headers or {}), 30) as response:
+        return json.load(response)
 
 
 def parameter_billions(value):
