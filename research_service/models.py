@@ -8,6 +8,8 @@ import threading
 import time
 from urllib.request import Request, urlopen
 
+from .data import digest
+from .protocol import SWITCH_ROUND, StudyProtocol, visible_history
 
 _gputw_opener = None
 _gputw_lock = threading.Lock()
@@ -43,8 +45,6 @@ def gputw_urlopen(request, timeout):
         opener = _gputw_opener
     return opener.open(request, timeout=timeout)
 
-from .data import digest
-from .protocol import SWITCH_ROUND, StudyProtocol, visible_history
 
 BACKTEST_HORIZONS = StudyProtocol().horizons
 
