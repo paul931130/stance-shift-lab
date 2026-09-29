@@ -354,7 +354,7 @@ def _canonical_news_url(value):
 
 
 def _deduplicate_news(items, limit=100):
-    """Deduplicate syndicated rows across providers by canonical URL or title/date."""
+    """Deduplicate syndicated rows across providers by canonical URL or title/date; ``limit=None`` keeps all."""
     selected, seen, aliases = [], {}, {}
     for item in sorted(items, key=lambda row: (row["available_at"], row["evidence_id"]), reverse=True):
         canonical = _canonical_news_url(item.get("source", ""))
@@ -377,7 +377,7 @@ def _deduplicate_news(items, limit=100):
         selected.append(item)
         for key in keys:
             seen[key] = item
-        if len(selected) >= limit:
+        if limit is not None and len(selected) >= limit:
             break
     return selected, aliases
 
@@ -448,7 +448,9 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
         notes.append("離線新聞模式：未呼叫 Alpha Vantage 即時 API")
     if not alpha_configured and not path and not cache_path:
         notes.append("未設定 ALPHA_VANTAGE_API_KEY、ALPHA_VANTAGE_NEWS_PATH 或 FNSPID_NEWS_PATH；可匯入具公開時間的新聞摘要")
-    unique, aliases = _deduplicate_news(items)
+    # The uncapped rule (item_limit=None) keeps every headline of the window;
+    # the legacy capped rule keeps its 100-item cap so old snapshots reproduce.
+    unique, aliases = _deduplicate_news(items, limit=None if item_limit is None else 100)
     if aliases:
         notes.append(f"跨來源去除 {len(aliases)} 筆重複新聞")
     return unique, "；".join(notes)
