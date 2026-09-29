@@ -147,6 +147,19 @@ class SecFundamentalTests(unittest.TestCase):
         revenue = next(item for item in items if item["metric"] == "Revenue")
         self.assertEqual(revenue["current_period"], "2024-09-30")
 
+    def test_uncapped_news_keeps_every_headline_after_deduplication(self):
+        from research_service.data import fetch_sentiment
+
+        rows = [{"evidence_id": f"n{i}", "domain": "sentiment", "claim": f"Headline {i}", "headline": f"Headline {i}",
+                 "available_at": f"2024-12-{1 + i % 28:02d}", "source": f"https://example.com/a{i}",
+                 "source_type": "FNSPID"} for i in range(150)]
+        with patch.dict("os.environ", {"FNSPID_NEWS_PATH": "x.csv", "ALPHA_VANTAGE_NEWS_PATH": "",
+                                       "ALPHA_VANTAGE_API_KEY": ""}),              patch("research_service.data._resolve_alpha_vantage_cache_path", return_value=""),              patch("research_service.data._fnspid_news", return_value=rows):
+            uncapped, _ = fetch_sentiment("NVDA", "2024-12-31", allow_live=False, item_limit=None)
+            legacy, _ = fetch_sentiment("NVDA", "2024-12-31", allow_live=False)
+        self.assertEqual(len(uncapped), 150)
+        self.assertEqual(len(legacy), 100)
+
     def test_refresh_news_replaces_only_sentiment_and_marks_uncapped(self):
         import tempfile
         from research_service.collect import refresh_news
