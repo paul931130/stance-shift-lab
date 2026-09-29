@@ -20,6 +20,7 @@ from .protocol import BASE_RATE_MIN_WINDOWS, COMPANY_NAMES, DOMAIN_NAMES
 MIN_NEWS_RELEVANCE = .35
 MAX_EVIDENCE_ITEMS = 10000  # one dataset keeps every headline of its news window
 SENTIMENT_BAND = .10  # |mean FinBERT score| above this is called positive/negative
+MIN_INDICATOR_HEADLINES = 3  # fewer scored headlines of one kind give a share of 0, 1/2 or 1: not reported
 NEWS_WINDOW_DAYS = 90  # quarterly design; the monthly design passes 30 (see protocol.DESIGNS)
 PRICE_HISTORY_CALENDAR_DAYS = 900
 PRICE_FUTURE_CALENDAR_DAYS = 220
@@ -762,6 +763,10 @@ def _sentiment_indicator_summary(items):
     """Calibration block for the indicator rule: shares and mean over every scored headline."""
     values = _finbert_values(items)
     summary = _sentiment_summary(items)
+    if len(values) < MIN_INDICATOR_HEADLINES:
+        return {"headline_count": summary["count"], "scored_headlines": summary["scored_count"],
+                "mean_score": None, "direction": "unscored", "positive_share": None, "negative_share": None,
+                "score_definition": summary["score_definition"]}
     return {"headline_count": summary["count"], "scored_headlines": summary["scored_count"],
             "mean_score": summary["mean_score"], "direction": summary["direction"],
             "positive_share": round(sum(v > SENTIMENT_BAND for v in values) / len(values), 6) if values else None,
@@ -780,7 +785,7 @@ def _sentiment_indicator_items(target_items, context_items, analysis_date):
     for scope, items in (("target", target_items), ("context", context_items)):
         scored = [(float(item["sentiment_score"]), item) for item in items
                   if _finbert_values([item])]
-        if not scored:
+        if len(scored) < MIN_INDICATOR_HEADLINES:
             continue
         values = [value for value, _ in scored]
         metrics = [("mean", sum(values) / len(values))]

@@ -38,6 +38,9 @@ def fixture():
         "source": "unit-test-fixture", "available_at": "2024-12-20", **({"vintage_date": "2024-12-20"} if domain == "macro" else {}),
         **({"headline": "NVIDIA synthetic test evidence only", "sentiment_score": .2} if domain == "sentiment" else {})}
         for domain in ("fundamental", "sentiment", "macro")]
+    # Three direct headlines: a kind with fewer than three scored headlines reports no sentiment indicator.
+    evidence = evidence + [{**item, "evidence_id": f"sentiment-{number}"} for number in (2, 3)
+                           for item in evidence if item["domain"] == "sentiment"]
     return {"ticker": "NVDA", "kind": "synthetic", "source": "unit-test-fixture", "price_basis": "adjusted_ohlc", "prices": rows, "evidence": evidence}
 
 
@@ -142,7 +145,7 @@ class WorkflowTests(unittest.TestCase):
             for i in range(20))
         inputs = research_inputs(self.data, "2024-12-31")
         self.assertEqual(len(inputs["domains"]["sentiment"]), 12)
-        self.assertEqual(inputs["evidence_selection"]["sentiment"]["available"], 21)
+        self.assertEqual(inputs["evidence_selection"]["sentiment"]["available"], 23)  # 3 fixture headlines + 20
         self.assertTrue(all(len(item["claim"]) <= 1200 for item in inputs["domains"]["sentiment"]))
 
     def test_recovery_releases_only_jobs_of_stopped_services(self):

@@ -15,6 +15,7 @@ import argparse
 import json
 import os
 import time
+import urllib.request
 from collections import defaultdict
 from urllib.error import HTTPError
 from urllib.request import Request
@@ -47,7 +48,34 @@ def ask(base, model, ticker, analysis_date):
     return chat(base, model, prompt, SCHEMA)
 
 
+def gemini_chat(model, prompt, schema):
+    """One JSON answer from a Gemini model through the REST API (thinking off, temperature 0)."""
+    key = os.getenv("GEMINI_API_KEY", "").strip()
+    if not key:
+        raise SystemExit("GEMINI_API_KEY is not set")
+    body = {"contents": [{"parts": [{"text": prompt}]}],
+            "generationConfig": {"temperature": 0, "responseMimeType": "application/json",
+                                 "responseJsonSchema": schema, "thinkingConfig": {"thinkingBudget": 0}}}
+    request = urllib.request.Request(
+        f"https://generativelanguage.googleapis.com/v1beta/models/{model.removeprefix('gemini/')}:generateContent",
+        data=json.dumps(body).encode(), headers={"x-goog-api-key": key, "Content-Type": "application/json"})
+    for attempt in range(1, 6):
+        try:
+            with urllib.request.urlopen(request, timeout=300) as response:
+                payload = json.load(response)
+            answer = json.loads(payload["candidates"][0]["content"]["parts"][0]["text"])
+            # Gemini sometimes wraps a single object in a one-element array.
+            return answer[0] if isinstance(answer, list) and len(answer) == 1 else answer
+        except HTTPError as error:
+            if error.code not in (429, 500, 503) or attempt == 5:
+                raise
+            time.sleep(15 * attempt)
+
+
 def chat(base, model, prompt, schema, num_ctx=None):
+    if model.startswith("gemini/"):
+        time.sleep(float(os.getenv("PROBE_PACE_SECONDS", "0")))
+        return gemini_chat(model, prompt, schema)
     options = {"temperature": 0, "seed": 905, **({"num_ctx": num_ctx} if num_ctx else {})}
     body = {"model": model.removeprefix("ollama/"), "stream": False, "think": False, "format": schema,
             "options": options, "messages": [{"role": "user", "content": prompt}]}
@@ -71,17 +99,30 @@ IDENTIFY_SCHEMA = {"type": "object", "required": ["ticker", "company", "confiden
                    "properties": {"ticker": {"type": "string"}, "company": {"type": "string"},
                                   "confidence": {"type": "number", "minimum": 0, "maximum": 1},
                                   "clues": {"type": "string"}}}
-EVIDENCE_CHARS = 6000
+EVIDENCE_CHARS = 12000
 
 
-def identify(base, model, dataset, ticker):
-    """Show the anonymized evidence a decision agent would read and ask which company it is."""
+def identify(base, model, dataset, ticker, analysis_date):
+    """Show the anonymized evidence a decision agent reads under the current protocol and ask which company it is.
+
+    Since v3-0930.1 that is technical features, SEC comparisons, macro levels and FinBERT indicators; no headline text.
+    """
     from research_service.anonymize import anonymize
-    from research_service.models import compact_research_evidence
+    from research_service.data import research_inputs
+    from research_service.models import (_compact_base_rates, _compact_calibration, _decision_evidence,
+                                         evidence_aliases)
+    from research_service.protocol import StudyProtocol
 
-    evidence = {domain: compact_research_evidence(domain, dataset["evidence"])
-                for domain in ("fundamental", "sentiment", "technical", "macro")}
-    text = json.dumps(anonymize(evidence, ticker), ensure_ascii=False)[:EVIDENCE_CHARS]
+    inputs = research_inputs(dataset, analysis_date, StudyProtocol())
+    # Prompts show short aliases (E1, E2, ...) instead of real evidence IDs; real SEC IDs embed the filer's
+    # CIK, which would give the company away in a way the models never see.
+    aliases = evidence_aliases(inputs["evidence"])
+    evidence = [{**item, "evidence_id": aliases.get(item["evidence_id"], item["evidence_id"])}
+                for item in _decision_evidence({"evidence": inputs["evidence"]})]
+    view = {"evidence": evidence,
+            "decision_calibration": _compact_calibration(inputs["decision_calibration"]),
+            "base_rates": _compact_base_rates(inputs["base_rates"])}
+    text = json.dumps(anonymize(view, ticker), ensure_ascii=False)[:EVIDENCE_CHARS]
     prompt = ("The company in this evidence has been anonymized as ASSET. From the evidence alone, which "
               "US-listed company is ASSET? Give the ticker, company name, confidence 0-1, and the clues you "
               "used. If you cannot tell, give your best guess with low confidence.\n\nEvidence:\n" + text)
@@ -91,7 +132,7 @@ def identify(base, model, dataset, ticker):
 def run_identify(args, base, store, cases):
     rows = []
     for (analysis_date, ticker), dataset_id in sorted(cases.items()):
-        answer = identify(base, args.model, store.dataset(dataset_id), ticker)
+        answer = identify(base, args.model, store.dataset(dataset_id), ticker, analysis_date)
         rows.append({"analysis_date": analysis_date, "ticker": ticker, "answer_ticker": answer["ticker"],
                      "answer_company": answer["company"], "confidence": answer["confidence"],
                      "clues": answer["clues"][:300],

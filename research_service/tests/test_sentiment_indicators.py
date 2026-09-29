@@ -96,6 +96,16 @@ class IndicatorInputTests(unittest.TestCase):
         self.assertEqual(inputs["evidence_selection"]["sentiment"]["selected"], 0)
         self.assertFalse([item for item in inputs["evidence"] if item["domain"] == "sentiment"])
 
+    def test_a_kind_with_fewer_than_three_scored_headlines_reports_no_indicator(self):
+        inputs = research_inputs(dataset([.5, .5], [.2] * 10), DAY, StudyProtocol())
+        found = self.indicators(inputs)
+        self.assertEqual(set(found), {"sentiment-context-mean"})  # two direct headlines: shares would be 0, 1/2 or 1
+        target = inputs["decision_calibration"]["sentiment"]["target"]
+        self.assertEqual((target["direction"], target["mean_score"], target["headline_count"]), ("unscored", None, 2))
+        shown = _compact_calibration(inputs["decision_calibration"])
+        self.assertNotIn("mean_score", shown["sentiment_target"])
+        self.assertEqual(inputs["evidence_selection"]["sentiment"]["target_available"], 2)
+
     def test_a_dataset_may_keep_more_than_400_headlines(self):
         many = dataset([.1] * 1500, [])
         self.assertEqual(sum(item["domain"] == "sentiment" for item in many["evidence"]), 1500)
