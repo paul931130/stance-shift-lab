@@ -3,13 +3,13 @@ from copy import deepcopy
 import json
 import os
 import re
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
 import threading
 import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import DESIGNS, SWITCH_ROUND, visible_history
+from .protocol import DESIGNS, NUMERIC_CLAIM_VERSIONS, SWITCH_ROUND, visible_history
 
 _gputw_opener = None
 _gputw_lock = threading.Lock()
@@ -123,7 +123,59 @@ def _compact_evidence_item(item, *, sentiment_headline_limit=240, include_sentim
         compact["claim"] = claim if domain == "fundamental" else _short_text(claim, 360)
         if domain == "technical" and "value" in item:
             compact["value"] = item["value"]
+    number_fields = _numeric_source_fields(item)
+    if number_fields:
+        compact["numeric_fields"] = number_fields
     return {key: value for key, value in compact.items() if value not in (None, "")}
+
+
+def _numeric_source_fields(item):
+    """Expose typed source values so numeric claims can be checked by ID/metric/period/unit."""
+    domain = item.get("domain")
+    fields = []
+
+    def add(metric, period, unit, value):
+        if (isinstance(metric, str) and metric.strip() and isinstance(period, str) and period.strip()
+                and isinstance(unit, str) and unit.strip() and isinstance(value, (int, float, Decimal))
+                and not isinstance(value, bool)):
+            fields.append({"metric": metric, "period": period, "unit": unit, "value": value})
+
+    if domain == "fundamental":
+        metric = str(item.get("metric", "")).strip()
+        if metric:
+            add(metric, str(item.get("current_period", "")), "USD", item.get("current_value"))
+            add(metric, str(item.get("prior_period", "")), "USD", item.get("prior_value"))
+            if item.get("change_pct") is not None and item.get("current_period") and item.get("prior_period"):
+                add(f"{metric} year-over-year change", f"{item['prior_period']}..{item['current_period']}",
+                    "percent", item.get("change_pct"))
+        period = str(item.get("period_end", ""))
+        if period:
+            add("Assets", period, "USD", item.get("assets"))
+            add("Liabilities", period, "USD", item.get("liabilities"))
+            add("Liabilities-to-assets ratio", period, "percent", item.get("ratio_pct"))
+    elif domain == "sentiment" and item.get("source_type") == "finbert_indicator":
+        add(str(item.get("metric", "")), str(item.get("period", "")), str(item.get("unit", "")), item.get("value"))
+    elif domain == "technical":
+        metric = str(item.get("metric", "")).strip() or str(item.get("claim", "")).split("=", 1)[0].strip()
+        unit = item.get("unit") or ("annualized_decimal_volatility" if metric == "volatility60_annual" else "decimal_return")
+        add(metric, str(item.get("period") or item.get("available_at") or ""), str(unit), item.get("value"))
+    elif domain == "macro":
+        metric = str(item.get("metric", "")).strip()
+        period = str(item.get("period", "")).strip()
+        unit = str(item.get("unit", "")).strip()
+        value = item.get("value")
+        if not metric or not period or not unit or value is None:
+            claim = str(item.get("claim", ""))
+            metric = metric or claim.split(":", 1)[0].strip()
+            period_match = re.search(r"觀測期間\s+(\d{4}-\d{2}-\d{2})", claim)
+            period = period or (period_match.group(1) if period_match else "")
+            raw_value = re.search(r":\s*(-?\d+(?:\.\d+)?)", claim)
+            if value is None and raw_value:
+                value = raw_value.group(1)
+            unit = unit or {"FEDFUNDS": "percent_per_year", "CPIAUCSL": "index_points",
+                            "UNRATE": "percent"}.get(metric, "")
+        add(metric, period, unit, value)
+    return fields
 
 
 def compact_research_evidence(domain, items):
@@ -146,6 +198,7 @@ def _compact_history(records):
                  "confidence": output.get("confidence"),
                  "rationale": _short_text(output.get("rationale"), 320),
                  "evidence_ids": output.get("evidence_ids", []),
+                 "numeric_claims": output.get("numeric_claims", [])[:8],
                  "strongest_counterpoint": _short_text(output.get("strongest_counterpoint"), 240)}
         if output.get("rebutted_claim"):
             shown["rebutted_claim"] = _short_text(output.get("rebutted_claim"), 240)
@@ -212,6 +265,122 @@ def validate_financial_numbers(result, evidence, context=None, redact=False):
     if unsupported:
         shown = ', '.join(sorted(format(value, 'f') for value in unsupported)[:5])
         raise ValueError(f'財務摘要包含來源未支持的數字（{shown}）；必須原樣保留數值、單位與期間')
+
+
+def validate_numeric_claims(result, evidence, redact=False):
+    """Bind narrative numbers to a cited evidence ID, metric, period, unit and source value."""
+    cited = set(result.get("evidence_ids", []))
+    by_id = {item.get("evidence_id"): item for item in evidence if item.get("evidence_id")}
+    prose_fields = [("summary", result.get("summary")), ("rationale", result.get("rationale")),
+                    ("strongest_counterpoint", result.get("strongest_counterpoint")),
+                    ("rebutted_claim", result.get("rebutted_claim"))]
+    prose_fields.extend((f"risks[{index}]", value) for index, value in enumerate(result.get("risks", [])))
+    prose_fields = [(name, value) for name, value in prose_fields if isinstance(value, str)]
+    claims = result.get("numeric_claims", [])
+    if not isinstance(claims, list):
+        raise ValueError("numeric_claims 必須是陣列")
+
+    expected_keys = {"evidence_id", "metric", "period", "unit", "value", "quote"}
+    valid = []
+    invalid_claim_count = 0
+    for claim in claims:
+        if not isinstance(claim, dict) or set(claim) != expected_keys:
+            invalid_claim_count += 1
+            continue
+        evidence_id, quote = claim.get("evidence_id"), claim.get("quote")
+        item = by_id.get(evidence_id)
+        if (item is None or evidence_id not in cited or not isinstance(quote, str) or not quote
+                or not any(quote in text for _, text in prose_fields)
+                or not isinstance(claim.get("metric"), str) or not claim["metric"].strip()
+                or not isinstance(claim.get("period"), str) or not claim["period"].strip()
+                or not isinstance(claim.get("unit"), str) or not claim["unit"].strip()
+                or isinstance(claim.get("value"), bool)
+                or not isinstance(claim.get("value"), (int, float, Decimal))):
+            invalid_claim_count += 1
+            continue
+        displayed = Decimal(str(claim["value"]))
+        source_fields = item.get("numeric_fields") or _numeric_source_fields(item)
+        supported = any(
+            field.get("metric") == claim["metric"] and field.get("period") == claim["period"]
+            and field.get("unit") == claim["unit"]
+            and isinstance(field.get("value"), (int, float, Decimal))
+            and not isinstance(field.get("value"), bool)
+            and _rounds_to_significant_figures(Decimal(str(field["value"])), displayed)
+            for field in source_fields if isinstance(field, dict)
+        )
+        tokens = _numeric_tokens(quote)
+        period_numbers = {number for _, _, number, _ in _numeric_tokens(claim["period"])}
+        quote_values = [number for _, _, number, _ in tokens]
+        has_claim_value = displayed in quote_values
+        no_extra_values = all(number == displayed or number in period_numbers for number in quote_values)
+        if supported and has_claim_value and no_extra_values:
+            valid.append(claim)
+        else:
+            invalid_claim_count += 1
+
+    valid_quotes = [(claim["quote"], Decimal(str(claim["value"])),
+                     {number for _, _, number, _ in _numeric_tokens(claim["period"])}) for claim in valid]
+    unsupported = []
+    for field_name, text in prose_fields:
+        for start, end, number, raw in _numeric_tokens(text):
+            covered = False
+            for quote, value, period_numbers in valid_quotes:
+                quote_start = text.find(quote)
+                if quote_start <= start and end <= quote_start + len(quote):
+                    if number == value or number in period_numbers:
+                        covered = True
+                        break
+            if not covered:
+                unsupported.append({"field": field_name, "start": start, "end": end,
+                                    "value": raw, "number": number})
+
+    if (unsupported or invalid_claim_count) and not redact:
+        values = {item["number"] for item in unsupported}
+        if not values:
+            values = {Decimal(0)}
+        shown = ", ".join(format(value, "f") for value in sorted(values)[:5])
+        raise ValueError(f"來源未支持的數字（{shown}）；每項需有有效 numeric_claims，並綁定 evidence_id、metric、period、unit、value 與 quote")
+
+    if redact:
+        by_field = {}
+        for item in unsupported:
+            if item["field"].startswith("risks["):
+                match = re.fullmatch(r"risks\[(\d+)\]", item["field"])
+                if match:
+                    by_field.setdefault(("risk", int(match.group(1))), []).append(item)
+            else:
+                by_field.setdefault((item["field"], None), []).append(item)
+        for (field, index), spans in by_field.items():
+            text = result.get(field, "") if index is None else result.get("risks", [])[index]
+            for item in sorted(spans, key=lambda row: row["start"], reverse=True):
+                text = text[:item["start"]] + REDACTED_NUMBER + text[item["end"]:]
+            if index is None:
+                result[field] = text
+            else:
+                result["risks"][index] = text
+        result["numeric_claims"] = valid
+        result["numeric_claims_removed"] = invalid_claim_count
+        result["redacted_numbers"] = sorted({item["value"] for item in unsupported})
+        result["redacted_number_claims"] = [{"field": item["field"], "value": item["value"]}
+                                            for item in unsupported]
+    elif invalid_claim_count:
+        # A schema-valid but unused claim is not evidence; never retain it as if validated.
+        result["numeric_claims"] = valid
+
+
+def _rounds_to_significant_figures(source, displayed, figures=3):
+    """Accept exact values or standard half-up rounding to at most 3 significant figures."""
+    if source == displayed:
+        return True
+    if source == 0:
+        return False
+    quantum = Decimal(1).scaleb(source.copy_abs().adjusted() - figures + 1)
+    return source.quantize(quantum, rounding=ROUND_HALF_UP) == displayed
+
+
+def _numeric_tokens(text):
+    return [(match.start(), match.end(), Decimal(match.group(0).replace(",", "")), match.group(0))
+            for match in re.finditer(NUMBER_PATTERN, str(text or ""))]
 
 
 def validate_financial_interpretation(result, evidence=None):
@@ -289,6 +458,10 @@ def unalias_evidence_ids(result, aliases):
         reverse = {alias: evidence_id for evidence_id, alias in aliases.items()}
         result = {**result, "evidence_ids": [reverse.get(value, value) if isinstance(value, str) else value
                                              for value in result["evidence_ids"]]}
+        if isinstance(result.get("numeric_claims"), list):
+            result["numeric_claims"] = [({**claim, "evidence_id": reverse.get(
+                claim.get("evidence_id"), claim.get("evidence_id"))} if isinstance(claim, dict) else claim)
+                for claim in result["numeric_claims"]]
     return result
 
 
@@ -379,7 +552,7 @@ def _compact_report(report):
 
 DECISION_SCHEMA = {
     "type": "object", "additionalProperties": False,
-    "required": ["action", "expected_return_pct", "confidence", "rationale", "evidence_ids", "risks"],
+    "required": ["action", "expected_return_pct", "confidence", "rationale", "evidence_ids", "risks", "numeric_claims"],
     "properties": {
         "action": {"type": "string", "enum": ["Buy", "Hold", "Sell", "NoTrade"]},
         "expected_return_pct": {"type": "number", "minimum": -60, "maximum": 60},
@@ -388,6 +561,15 @@ DECISION_SCHEMA = {
         "evidence_ids": {"type": "array", "minItems": 1, "maxItems": 6, "items": {"type": "string"}},
         "risks": {"type": "array", "maxItems": 4, "items": {"type": "string", "maxLength": 160}},
         "strongest_counterpoint": {"type": "string", "maxLength": 240},
+        "numeric_claims": {"type": "array", "maxItems": 12, "items": {
+            "type": "object", "additionalProperties": False,
+            "required": ["evidence_id", "metric", "period", "unit", "value", "quote"],
+            "properties": {
+                "evidence_id": {"type": "string"}, "metric": {"type": "string", "maxLength": 120},
+                "period": {"type": "string", "maxLength": 120}, "unit": {"type": "string", "maxLength": 48},
+                "value": {"type": "number"}, "quote": {"type": "string", "maxLength": 360},
+            },
+        }},
     },
 }
 RESEARCH_SCHEMA = {
@@ -397,6 +579,15 @@ RESEARCH_SCHEMA = {
         "summary": {"type": "string", "maxLength": 1800},
         "evidence_ids": {"type": "array", "maxItems": 30, "items": {"type": "string"}},
         "risks": {"type": "array", "maxItems": 8, "items": {"type": "string", "maxLength": 300}},
+        "numeric_claims": {"type": "array", "maxItems": 12, "items": {
+            "type": "object", "additionalProperties": False,
+            "required": ["evidence_id", "metric", "period", "unit", "value", "quote"],
+            "properties": {
+                "evidence_id": {"type": "string"}, "metric": {"type": "string", "maxLength": 120},
+                "period": {"type": "string", "maxLength": 120}, "unit": {"type": "string", "maxLength": 48},
+                "value": {"type": "number"}, "quote": {"type": "string", "maxLength": 360},
+            },
+        }},
     },
 }
 
@@ -405,16 +596,22 @@ def messages_for(call, report, records, memory, protocol):
     base_rates = report.get("base_rates", {})
     band = base_rates.get("hold_band_pct")
     band_text = f"{band:.6f}%" if isinstance(band, (int, float)) else "the neutral band stated in report.base_rates"
+    claim_bound = protocol.version in NUMERIC_CLAIM_VERSIONS
+    numeric_claim_instruction = (
+        "Every factual number in rationale, risks, strongest_counterpoint, or rebutted_claim must have one numeric_claims item: cite the exact evidence_id, metric, period, unit and value from that evidence's numeric_fields, and copy the exact sentence fragment into quote. The quote must be present verbatim in the prose. Use source values exactly or round half-up to at most 3 significant figures; never change units, periods, or compute unsupported values. Keep expected_return_pct as a separate forecast; do not repeat it as if it were a source fact. If a number cannot be fully bound, write the sentence without that number and omit its numeric_claim. "
+        if claim_bound else
+        "Copy financial numbers exactly as shown in cited evidence; do not invent, round, convert units, or compute values. Use numeric_claims: [] unless a factual numeric claim is explicitly supported. "
+    )
     common = ("You are a decision agent in a fixed historical experiment. "
         f"Forecast the target's return over the next {protocol.primary_horizon} trading sessions using only the supplied report; do not use remembered future facts. "
         "Candidate action is Buy, Hold, or Sell. NoTrade is reserved for the later Gatekeeper. "
         f"Give one expected_return_pct forecast for those {protocol.primary_horizon} sessions. "
         f"Choose Hold only when that point forecast is inside the {band_text} neutral band; otherwise choose Buy or Sell even when uncertain. "
         "Hold is not a way to avoid committing; uncertainty lowers confidence, never substitutes for a forecast. Read decision_calibration before research summaries. "
-        "Target evidence is direct company evidence; context news cannot decide direction by itself. Use supplied comparative SEC metrics only as stated: copy their numbers exactly and never invent a growth rate, benchmark, valuation, or financial-quality label; words such as growth, decline, strong, weak, profit, loss or losses need a supplied comparison that states them. Legacy SEC point facts without a comparable period are excluded from this decision payload. "
-        "Every number you write in rationale, risks or strongest_counterpoint must be copied exactly as it appears in the supplied report or in your own forecast fields: do not round it, convert units, or compute a new figure such as a growth rate or percentage change. If you cannot copy a number exactly, describe it in words instead. "
+        "Target evidence is direct company evidence; context news cannot decide direction by itself. Use supplied comparative SEC metrics only as stated: never invent a growth rate, benchmark, valuation, or financial-quality label; words such as growth, decline, strong, weak, profit, loss or losses need a supplied comparison that states them. Legacy SEC point facts without a comparable period are excluded from this decision payload. "
+        + numeric_claim_instruction +
         "Use only supplied evidence IDs exactly; URLs and invented IDs are forbidden. Keep rationale under 320 characters and give at most 4 concise risks. "
-        "Return one compact JSON object with action (Buy, Hold, Sell), expected_return_pct (-60..60), confidence (0..1), rationale (string), evidence_ids (array of supplied IDs), risks (array of strings).")
+        "Return one compact JSON object with action (Buy, Hold, Sell), expected_return_pct (-60..60), confidence (0..1), rationale (string), evidence_ids (array of supplied IDs), risks (array of strings), numeric_claims (array; [] when no narrative number is used).")
     if call.kind == "debate":
         required_action = "Buy" if call.stance == "BULL" else "Sell"
         common += (f" Your assigned debate stance is {call.stance}. Argue this stance using evidence, address counterarguments and disclose uncertainty. "
@@ -613,7 +810,7 @@ def generate(protocol, messages, seed=None, temperature=None):
             time.sleep(.5 * attempt)
 
 
-def validate_decision(result, evidence, call=None, context=None, redact_numbers=False):
+def validate_decision(result, evidence, call=None, context=None, redact_numbers=False, claim_bound=False):
     allowed_actions = ("Buy", "Hold", "Sell")
     if call is not None and call.kind == "debate":
         allowed_actions = ("Buy",) if call.stance == "BULL" else ("Sell",)
@@ -644,7 +841,9 @@ def validate_decision(result, evidence, call=None, context=None, redact_numbers=
             if isinstance(shift, bool) or not isinstance(shift, (float, int)) or not -1 <= shift <= 1:
                 raise ValueError("角色交換輪 confidence_shift 須介於 -1 與 1")
     cited = set(result["evidence_ids"])
-    if any(item.get("domain") == "fundamental" and item.get("evidence_id") in cited for item in evidence):
+    if claim_bound:
+        validate_numeric_claims(result, evidence, redact=redact_numbers)
+    elif any(item.get("domain") == "fundamental" and item.get("evidence_id") in cited for item in evidence):
         validate_financial_numbers(result, evidence, context, redact=redact_numbers)
     validate_financial_interpretation(result, evidence)
     # Every citation must exist. Allowing one invented ID to pass an 80% ratio
@@ -656,7 +855,7 @@ def validate_decision(result, evidence, call=None, context=None, redact_numbers=
     return result
 
 
-def validate_research(result, evidence, domain):
+def validate_research(result, evidence, domain, claim_bound=False):
     """Validate a research-agent answer before it becomes part of the frozen report."""
     if not isinstance(result, dict) or not isinstance(result.get("summary"), str) or not result["summary"].strip():
         raise ValueError("研究代理人輸出格式錯誤")
@@ -667,7 +866,10 @@ def validate_research(result, evidence, domain):
     allowed = {item["evidence_id"] for item in evidence}
     if any(evidence_id not in allowed for evidence_id in result["evidence_ids"]):
         raise ValueError("研究代理人引用未提供的證據")
-    if domain == "fundamental":
+    if claim_bound:
+        validate_numeric_claims(result, evidence)
+    elif domain == "fundamental":
         validate_financial_numbers(result, evidence)
+    if domain == "fundamental":
         validate_financial_interpretation(result, evidence)
     return result

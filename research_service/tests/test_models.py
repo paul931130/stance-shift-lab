@@ -121,7 +121,7 @@ class ModelReliabilityTests(unittest.TestCase):
         payloads = [
             {"message": {"content": '{"action":"Buy"'}, "model": "demo"},
             {"message": {"content": json.dumps({"action":"Buy", "expected_return_pct":3.0, "confidence":.8,
-                "rationale":"brief", "evidence_ids":["e1"], "risks":[]})}, "model": "demo"},
+                "rationale":"brief", "evidence_ids":["e1"], "risks":[], "numeric_claims":[]})}, "model": "demo"},
         ]
 
         def request(req, timeout):
@@ -145,7 +145,7 @@ class ModelReliabilityTests(unittest.TestCase):
             request = req
             return Response(json.dumps({"message": {"content": json.dumps({
                 "action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
-                "rationale": "brief", "evidence_ids": ["e1"], "risks": []
+                "rationale": "brief", "evidence_ids": ["e1"], "risks": [], "numeric_claims": []
             })}, "model": "demo"}).encode())
 
         protocol = StudyProtocol(model="ollama/demo", dataset_kind="synthetic", bootstrap_replicates=199)
@@ -160,7 +160,7 @@ class ModelReliabilityTests(unittest.TestCase):
         from types import SimpleNamespace
         seen = {}
         content = json.dumps({"action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
-                              "rationale": "brief", "evidence_ids": ["e1"], "risks": []})
+                              "rationale": "brief", "evidence_ids": ["e1"], "risks": [], "numeric_claims": []})
 
         def completion(**kwargs):
             seen[kwargs["model"]] = kwargs
@@ -191,7 +191,7 @@ class ModelReliabilityTests(unittest.TestCase):
         from research_service.models import GEMINI_THINKING_ALLOWANCE
         seen = {}
         content = json.dumps({"action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
-                              "rationale": "brief", "evidence_ids": ["e1"], "risks": []})
+                              "rationale": "brief", "evidence_ids": ["e1"], "risks": [], "numeric_claims": []})
 
         def completion(**kwargs):
             seen.update(kwargs)
@@ -212,7 +212,7 @@ class ModelReliabilityTests(unittest.TestCase):
         import litellm
         from types import SimpleNamespace
         content = json.dumps({"action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
-                              "rationale": "brief", "evidence_ids": ["e1"], "risks": []})
+                              "rationale": "brief", "evidence_ids": ["e1"], "risks": [], "numeric_claims": []})
         calls = []
 
         def completion(**kwargs):
@@ -242,7 +242,7 @@ class ModelReliabilityTests(unittest.TestCase):
             seen["body"] = json.loads(req.data)
             return Response(json.dumps({"message": {"content": json.dumps({
                 "action": "Buy", "expected_return_pct": 3.0, "confidence": .8,
-                "rationale": "brief", "evidence_ids": ["e1"], "risks": []
+                "rationale": "brief", "evidence_ids": ["e1"], "risks": [], "numeric_claims": []
             })}, "model": "demo"}).encode())
 
         protocol = StudyProtocol(model="ollama/demo", dataset_kind="synthetic", bootstrap_replicates=199)

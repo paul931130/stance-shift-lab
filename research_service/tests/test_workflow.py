@@ -644,8 +644,9 @@ class WorkflowTests(unittest.TestCase):
         items = [{"evidence_id": "sec-revenue", "domain": "fundamental", "claim": "Revenues = 91166000000 USD"},
                  {"evidence_id": "sec-income", "domain": "fundamental", "claim": "NetIncomeLoss = 50,789,000,000 USD"}]
         result, audit = source_locked_fundamental(items)
-        self.assertIn("Revenues = 91,166,000,000 USD", result["summary"])
-        self.assertIn("NetIncomeLoss = 50,789,000,000 USD", result["summary"])
+        # v3-0930.3: exact values live in claim_map and the cited evidence, not in free summary prose.
+        self.assertNotIn("91,166,000,000", result["summary"])
+        self.assertEqual(result["claim_map"][0], {"evidence_id": "sec-revenue", "claim": "Revenues = 91166000000 USD"})
         self.assertEqual(result["evidence_ids"], ["sec-revenue", "sec-income"])
         self.assertEqual(result["claim_map"][1], {"evidence_id": "sec-income", "claim": "NetIncomeLoss = 50,789,000,000 USD"})
         self.assertEqual(audit["mode"], "source_locked_extract")
@@ -766,12 +767,18 @@ class WorkflowTests(unittest.TestCase):
     def test_persistent_unsupported_numbers_are_redacted_instead_of_aborting(self):
         engine = Engine(self.store, fake_model)
         call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
-        evidence = [{"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True,
+        evidence = [{"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True, "metric": "Revenue",
+                     "current_period": "2024-12-31", "prior_period": "2023-12-31",
+                     "current_value": 98.5993, "prior_value": 100.0, "change_pct": -1.400692,
                      "claim": "Revenue: year_over_year_change_pct=-1.400692"}]
         messages = messages_for(call, {"evidence": evidence}, [], [], self.protocol)
+        bound = {"evidence_id": "sec-yoy", "metric": "Revenue year-over-year change",
+                 "period": "2023-12-31..2024-12-31", "unit": "percent", "value": -1.400692,
+                 "quote": "Revenue fell -1.400692%"}
         invalid = {"action": "Sell", "expected_return_pct": -2.0, "confidence": .6,
                    "rationale": "Revenue fell -1.400692%, roughly 1.4% (about 987654 units).",
-                   "evidence_ids": ["sec-yoy"], "risks": ["Margins near 12345.6789"]}
+                   "evidence_ids": ["sec-yoy"], "risks": ["Margins near 12345.6789"],
+                   "numeric_claims": [bound]}
         engine.call_model = lambda *_args, **_kwargs: (
             json.loads(json.dumps(invalid)), {"prompt_hash": "synthetic", "usage": {}, "raw_response": "x"})
         result, audit = engine.validated_decision(self.protocol, call, messages, evidence)

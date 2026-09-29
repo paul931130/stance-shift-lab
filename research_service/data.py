@@ -517,10 +517,12 @@ def fetch_macro(analysis_date):
         for row in result.get("observations", []):
             if row["value"] == ".":
                 continue
+            units = {"FEDFUNDS": "percent_per_year", "CPIAUCSL": "index_points", "UNRATE": "percent"}
             items.append({"evidence_id": f"alfred-{series}-{analysis_date}", "domain": "macro",
                 "claim": f"{series}: {row['value']}，觀測期間 {row['date']}，截至 {analysis_date} 可知版本",
                 "source": f"https://alfred.stlouisfed.org/series?seid={series}",
-                "available_at": analysis_date, "vintage_date": analysis_date})
+                "available_at": analysis_date, "vintage_date": analysis_date,
+                "metric": series, "period": row["date"], "unit": units[series], "value": float(row["value"])})
     return items, "" if items else "ALFRED 無可用觀測值"
 
 
@@ -650,7 +652,8 @@ def fetch_fundamental(ticker, analysis_date, requester=get_json):
             "source": _filing_url(ticker, asset), "available_at": asset["filed"],
             "comparative": True, "metric": "LiabilitiesToAssets",
             "assets": asset["val"], "liabilities": liability["val"],
-            "ratio_pct": round(float(ratio), 6), "current_accession": asset["accn"],
+            "ratio_pct": round(float(ratio), 6), "period_end": asset["end"],
+            "current_accession": asset["accn"],
             "selection_rule": "same_accession_same_period_ratio_v1"})
 
     # Keep the domain auditable when a company has no comparable pair, but mark
@@ -793,14 +796,53 @@ def _sentiment_indicator_items(target_items, context_items, analysis_date):
             metrics += [("positive_share", sum(value > SENTIMENT_BAND for value in values) / len(values)),
                         ("negative_share", sum(value < -SENTIMENT_BAND for value in values) / len(values))]
         members = digest(sorted(item["evidence_id"] for _, item in scored))
+        periods = sorted(item["available_at"] for _, item in scored)
         for name, value in metrics:
+            unit = "finbert_score" if name == "mean" else "proportion"
             indicators.append({
                 "evidence_id": f"sentiment-{scope}-{name}-{analysis_date}", "domain": "sentiment",
                 "claim": f"sentiment_{scope}_{name} = {value:.6f}", "value": value,
                 "available_at": max(item["available_at"] for _, item in scored),
                 "source": "finbert_scores_of_pre_cutoff_headlines", "source_type": "finbert_indicator",
-                "evidence_scope": scope, "headline_count": len(scored), "members_digest": members})
+                "evidence_scope": scope, "headline_count": len(scored), "members_digest": members,
+                "metric": f"sentiment_{scope}_{name}", "period": f"{periods[0]}..{periods[-1]}",
+                "unit": unit})
     return indicators
+
+
+def _news_coverage(sentiment_pool, window_days):
+    """Auditable headline coverage for the full sentiment window, not just prompt items."""
+    source_names = {
+        "alpha_vantage_news_sentiment": "Alpha Vantage",
+        "alpha_vantage_news_cache": "Alpha Vantage cache",
+        "FNSPID": "FNSPID",
+    }
+    result = {"window_days": window_days, "scopes": {}}
+    for scope, items in sentiment_pool.items():
+        by_source = {}
+        mixed_source_headlines = 0
+        for item in items:
+            source_types = item.get("source_types") or [item.get("source_type", "unknown")]
+            source_types = sorted({str(value) for value in source_types})
+            mixed_source_headlines += int(len(source_types) > 1)
+            scored = int(bool(_finbert_values([item])))
+            for source_type in source_types:
+                source = source_names.get(source_type, source_type)
+                bucket = by_source.setdefault(source, {"headline_count": 0, "scored_count": 0})
+                bucket["headline_count"] += 1
+                bucket["scored_count"] += scored
+        headline_count = len(items)
+        scored_count = sum(len(_finbert_values([item])) for item in items)
+        result["scopes"][scope] = {
+            "headline_count": headline_count,
+            "scored_count": scored_count,
+            "missing_score_count": headline_count - scored_count,
+            "missing_score_rate": ((headline_count - scored_count) / headline_count if headline_count else None),
+            "indicator_emitted": scored_count >= MIN_INDICATOR_HEADLINES,
+            "source_counts": by_source, "mixed_source_headlines": mixed_source_headlines,
+            "source_counts_are_nonexclusive": True,
+        }
+    return result
 
 
 def _technical_calibration(return20, mean_gap, volatility):
@@ -856,6 +898,8 @@ def research_inputs(dataset, analysis_date, protocol=None):
     primary_horizon = getattr(protocol, "primary_horizon", 60)
     hold_band_sigma = getattr(protocol, "hold_band_sigma", .5)
     relevance_floor = getattr(protocol, "news_relevance_floor", MIN_NEWS_RELEVANCE)
+    news_window_days = getattr(protocol, "news_window_days", NEWS_WINDOW_DAYS)
+    news_window_start = (date.fromisoformat(analysis_date) - timedelta(days=news_window_days)).isoformat()
     target_context_priority = getattr(protocol, "target_context_priority", True)
     indicator_mode = bool(getattr(protocol, "sentiment_indicators", False))
     sentiment_pool = {"target": [], "context": []}
@@ -865,6 +909,10 @@ def research_inputs(dataset, analysis_date, protocol=None):
     for domain in ("fundamental", "sentiment", "macro"):
         domain_items = [item for item in eligible if item["domain"] == domain]
         if domain == "sentiment":
+            # Older frozen datasets can contain news outside the protocol's
+            # window. Keep both prompt indicators and coverage within bounds.
+            domain_items = [item for item in domain_items
+                            if news_window_start <= item["available_at"] < analysis_date]
             domain_items = [item for item in domain_items if _passes_relevance(item, relevance_floor)]
             domain_items.sort(key=lambda item: (round(_relevance_value(item), 2),
                                                 item["available_at"], item["evidence_id"]), reverse=True)
@@ -890,6 +938,7 @@ def research_inputs(dataset, analysis_date, protocol=None):
                 item["evidence_scope"] = _sentiment_scope(item, ticker)
             target_items = [item for item in domain_items if item["evidence_scope"] == "target"]
             context_items = [item for item in domain_items if item["evidence_scope"] == "context"]
+            sentiment_pool = {"target": target_items, "context": context_items}
             if target_context_priority:
                 # Direct company evidence gets the first eight slots, while a
                 # bounded contextual sample remains available for sector risk.
@@ -929,8 +978,10 @@ def research_inputs(dataset, analysis_date, protocol=None):
                  ("mean20_vs_mean60", mean20 / mean60 - 1),
                  ("volatility60_annual", vol)]
     for key, value in technical:
+        unit = "annualized_decimal_volatility" if key == "volatility60_annual" else "decimal_return"
         evidence.append({"evidence_id": f"price-{key}-{history[-1]['date']}", "domain": "technical",
-            "claim": f"{key} = {value:.6f}", "value": value, "available_at": history[-1]["date"], "source": dataset["source"]})
+            "claim": f"{key} = {value:.6f}", "value": value, "available_at": history[-1]["date"],
+            "source": dataset["source"], "metric": key, "period": history[-1]["date"], "unit": unit})
     selection["technical"] = {"available": len(technical), "selected": len(technical),
                               "strategy": "derived_from_pre_cutoff_ohlc"}
     selected_sentiment = [item for item in evidence if item["domain"] == "sentiment"]
@@ -956,8 +1007,12 @@ def research_inputs(dataset, analysis_date, protocol=None):
             "Supplied macro values are point-in-time levels; they do not by themselves prove a rate, inflation, or employment trend.",
         ],
     }
+    sentiment_coverage = _news_coverage(sentiment_pool, news_window_days)
+    sentiment_coverage.update({"window_start_inclusive": news_window_start,
+                               "window_end_exclusive": analysis_date})
     return {"domains": {domain: [e for e in evidence if e["domain"] == domain] for domain in DOMAIN_NAMES},
             "evidence": evidence, "volatility": vol, "last_price_date": history[-1]["date"],
             "evidence_selection": selection, "decision_calibration": decision_calibration,
+            "sentiment_coverage": sentiment_coverage,
             "base_rates": base_rates, "horizon_sigma_pct": base_rates["horizon_sigma_pct"],
             "boundary": "strictly before analysis_date; analysis-day releases excluded"}

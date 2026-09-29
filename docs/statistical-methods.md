@@ -2,9 +2,9 @@
 
 主要持有期固定為 60 日，30/90 日只作穩健性分析。比較必須具有相同 case、資料版本、協議與模型設定；不得把不同配置混成一份統計。實驗尚未產生足量真實資料前，不呈現假造的顯著性結果。
 
-方向準確率採配對 McNemar 精確雙尾二項式檢定；同時顯示四格表、配對數與不一致數。這項經典檢定本身不校正不同 case 之同期市場相依，輸出必須保留警語並搭配日期區塊敏感性分析。多組比較另提供 Holm 校正，不以選擇最小 p 值宣稱結果有效。[statsmodels 官方定義](https://www.statsmodels.org/dev/generated/statsmodels.stats.contingency_tables.mcnemar.html)
+方向準確率採配對 McNemar 精確雙尾二項式檢定；同時顯示四格表、配對數與不一致數。這項經典檢定本身不校正不同 case 之同期市場相依，輸出另提供整個分析日群聚的配對準確率差區間，以及連續日期區塊長度敏感度（季度 1／2／4 個分析日、月度 1／3／6／12 個分析日）。這些百分位區間只作依賴結構敏感性分析，不另宣稱為顯著性 p 值；季度僅 20 個日期群聚，須特別保守。多組比較另提供 Holm 校正，不以選擇最小 p 值宣稱結果有效。[statsmodels 官方定義](https://www.statsmodels.org/dev/generated/statsmodels.stats.contingency_tables.mcnemar.html)
 
-Sharpe 檢定輸入為**對齊的每日超額投資組合報酬**，不是將 200 個重疊 case 的 60 日累積報酬當成 200 個獨立每日報酬。主分析建立完整 date × case × method panel，對每個已選入 case 採固定等權；尚未進入持有期的 sleeve 視為現金 0，這是可部署投組的 `portfolio_basis=all`。`portfolio_basis=active` 只平均當天有方向部位的 sleeve，權重隨日期改變，僅作敏感性分析。零波動策略回報不可檢定，而非產生無限大 Sharpe 或虛假的 p 值。
+Sharpe 檢定輸入為**對齊的每日超額投資組合報酬**，不是將季度 180 案或月度 540 案的重疊持有期報酬視為獨立每日觀測。主分析建立完整 date × case × method panel，對每個已選入 case 採固定等權；尚未進入持有期的 sleeve 視為現金 0，這是可部署投組的 `portfolio_basis=all`。`portfolio_basis=active` 只平均當天有方向部位的 sleeve，權重隨日期改變，僅作敏感性分析。零波動策略回報不可檢定，而非產生無限大 Sharpe 或虛假的 p 值。
 
 Jobson–Korkie 採 Memmel 修正版，明示 IID 聯合常態假設。主要穩健補充使用 Ledoit–Wolf 的對稱 studentized circular block bootstrap，依論文式 (2)、(5)–(9) 實作。原樣本標準誤使用 Bartlett HAC（含 T/(T−4) 修正），不是作者偏好的 prewhitened QS；此核函數選擇在輸出中明示。bootstrap 樣本以抽出的完整區塊計算 natural block studentizer，而非套用 IID 標準誤或 percentile interval。[Ledoit 與 Wolf 原論文](https://www.econ.uzh.ch/dam/jcr:ffffffff-935a-b0d6-0000-00007214c2bc/jef_2008pdf.pdf)
 
@@ -12,6 +12,12 @@ Jobson–Korkie 採 Memmel 修正版，明示 IID 聯合常態假設。主要穩
 
 主分析使用 `decision_layer=candidate`，以避免把 Gatekeeper 的風控覆寫誤當成 A/B/C/D 決策機制的效果；`decision_layer=gated` 另列為敏感性結果。Hold 是棄權，不當成免費正確答案：同時報告 coverage、selective accuracy、hold justified rate 與 hold opportunity cost。候選 action 由儲存的 `expected_return_pct` 與預先註冊 `hold_band_sigma=0.5` 推導；sigma 0、0.25、0.5、1.0 都必須呈現為敏感性分析。
 
-D 組第 2 輪刻意不讀取前一輪辯論，以測量模型在中立報告下是否能重新找出相反立場的證據。這會讓 D 的 prompt token 數通常低於 C；呼叫數雖保持 A=1、B=7、C=7、D=7，token 數並不等化且會輸出。若 D 表現不同，不能排除較短脈絡本身的影響；應以 `switch_isolation=false` 做敏感性重跑。
+D 組第 2 輪只讀自己的第 1 輪；C 組則讀雙方第 1 輪。因此 D−C 是「交換立場＋交換輪資訊隔離」的整套機制效果，不能寫成只識別立場互換的因果效果。兩組呼叫數均為 7，但 token 數不等化且會輸出。若要單獨估計交換效果，需另增 E 組：同 C 的雙方歷史可見性，只改變第 2 輪立場，並在新一輪實驗前事前登記。
 
-這些模組目前正在接入正式資料與實驗介面；單元測試使用人工生成的測試向量，不能作為研究績效或方法優越性的證據。
+數字驗證自季度 v3-0930.3／月度 v3-0930.4 起採結構化 `numeric_claims`：研究摘要與決策敘述每個數字都需連結引用證據 ID、來源欄位指標、期間、單位、數值與逐字敘述片段。允許來源原值或標準四捨五入至最多三位有效數字（half-up）；不允許改單位或自行計算。決策重試仍未能驗證者，只在敘述中移除未支持數字，並保留稽核；研究摘要若未通過驗證則標記為降級來源摘錄並排除正式統計。報告需另列修補案例的分層結果，不得據此推論修補對決策沒有影響。舊版 180 案維持其原協議與驗證方式，不能視為新規則下的正式重跑。
+
+全量 FinBERT 新聞輸入需隨每案保存窗口內新聞數、來源標籤、已評分／缺分數量、缺失率及是否達至少三則指標門檻；報告按股票與年份呈現覆蓋，避免平均值掩蓋集中缺失。指標版本與舊版標題摘要不可直接合併比較。
+
+狀態呈現分為三個門檻：工作案例是否全數完成、已完成案例是否通過正式品質條件、事前登記的完整樣本是否全部完成。達到 30 個案例只表示系統允許計算統計量，並不表示工作完成或正式樣本完整。Training、Validation、Test 需各自報告；Test 僅作凍結後最終評估，不用於提示或模型選擇。
+
+新版統計與品質報告已接入目前工作目錄中的研究報告介面，但尚無新版正式批次產生的實證結果；任何合成資料檢查都只能驗證程式流程，不能作為研究績效或方法優越性的證據。

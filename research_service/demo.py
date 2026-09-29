@@ -84,7 +84,7 @@ def demo_model(protocol, messages, seed=None, temperature=None):
         evidence_ids = _evidence_ids_from_research_message(messages[1]["content"])
         result = {"summary": "Deterministic demo summary of the supplied synthetic evidence.",
                   "evidence_ids": evidence_ids or ["demo-technical-1"],
-                  "risks": ["這是合成展示資料，不代表真實研究結論。"]}
+                  "risks": ["這是合成展示資料，不代表真實研究結論。"], "numeric_claims": []}
     else:
         payload = json.loads(messages[1]["content"])
         evidence = payload.get("report", {}).get("evidence", [])
@@ -95,7 +95,7 @@ def demo_model(protocol, messages, seed=None, temperature=None):
             action, expected = "Buy", 4.0
         result = {"action": action, "expected_return_pct": expected, "confidence": .75,
                   "rationale": "Deterministic demo response; not a research conclusion.",
-                  "evidence_ids": evidence_ids, "risks": ["合成展示資料不具外部效度。"]}
+                  "evidence_ids": evidence_ids, "risks": ["合成展示資料不具外部效度。"], "numeric_claims": []}
         if "assigned debate stance" in system:
             result["strongest_counterpoint"] = "The opposing stance remains possible in this synthetic example."
         if "role-switch round" in system:

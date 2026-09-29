@@ -40,10 +40,13 @@ DESIGNS = {
     "quarterly": {"dates": QUARTER_DATES, "primary_horizon": 60, "horizons": (30, 60, 90), "news_window_days": 90},
     "monthly": {"dates": MONTH_END_DATES, "primary_horizon": 20, "horizons": (10, 20, 30), "news_window_days": 30},
 }
-MONTHLY_VERSION = "v3-0930.2"
+QUARTERLY_VERSION = "v3-0930.3"
+MONTHLY_VERSION = "v3-0930.4"
+MONTHLY_VERSIONS = frozenset({"v3-0930.2", MONTHLY_VERSION})
 # From v3-0930.1 the prompt carries FinBERT indicators computed over every eligible headline instead of a
 # 12-headline sample (see data.research_inputs); earlier versions keep the headline sample.
-INDICATOR_VERSIONS = ("v3-0930.1", MONTHLY_VERSION)
+INDICATOR_VERSIONS = ("v3-0930.1", "v3-0930.2", QUARTERLY_VERSION, MONTHLY_VERSION)
+NUMERIC_CLAIM_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION})
 DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
 BASE_RATE_MIN_WINDOWS = 8
 DEFAULT_RESEARCH_MODEL = "ollama/qwen3:14b"
@@ -68,7 +71,7 @@ COMPANY_NAMES = {
 class StudyProtocol:
     # Display, extraction and validation rules change what enters a report.
     # Version them so a partially completed job cannot mix evidence rules.
-    version: str = "v3-0930.1"
+    version: str = QUARTERLY_VERSION
     design: Literal["quarterly", "monthly"] = "quarterly"
     study: Literal["study1", "study2"] = "study1"
     model: str = DEFAULT_RESEARCH_MODEL
@@ -102,7 +105,7 @@ class StudyProtocol:
     study_universe: tuple[str, ...] = STUDY_TICKERS
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2"):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", QUARTERLY_VERSION, MONTHLY_VERSION):
             raise ValueError("Unsupported protocol version")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")
@@ -118,8 +121,8 @@ class StudyProtocol:
             raise ValueError("v3 fixes three rounds and supports voting n=5 or n=7")
         if self.design not in DESIGNS:
             raise ValueError("Unsupported study design")
-        if (self.design == "monthly") != (self.version == MONTHLY_VERSION):
-            raise ValueError(f"The monthly design is exactly protocol {MONTHLY_VERSION}")
+        if ((self.design == "monthly") != (self.version in MONTHLY_VERSIONS)):
+            raise ValueError(f"Monthly versions are {', '.join(sorted(MONTHLY_VERSIONS))}; quarterly protocols cannot use them")
         design = DESIGNS[self.design]
         if self.primary_horizon != design["primary_horizon"] or tuple(self.horizons) != design["horizons"]:
             raise ValueError(f"The {self.design} design fixes the primary endpoint at {design['primary_horizon']} sessions")
@@ -208,7 +211,7 @@ def protocol_is_current(protocol: dict) -> bool:
     Older versions stay readable but are never resumed on a newer engine. Each design has its
     own current version, so a quarterly and a monthly job never make each other look stale.
     """
-    current = MONTHLY_VERSION if protocol.get("design", "quarterly") == "monthly" else StudyProtocol().version
+    current = MONTHLY_VERSION if protocol.get("design", "quarterly") == "monthly" else QUARTERLY_VERSION
     return protocol.get("version") == current
 
 

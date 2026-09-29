@@ -15,8 +15,10 @@ import zipfile
 import numpy as np
 
 from .backtest import metrics
-from .statistics import (aligned_portfolio_returns, mcnemar, jobson_korkie_memmel,
-                         ledoit_wolf_block, holm_adjust)
+from .statistics import (aligned_portfolio_returns, date_cluster_block_accuracy, mcnemar,
+                         jobson_korkie_memmel, ledoit_wolf_block, holm_adjust)
+from .protocol import DESIGNS, STUDY_TICKERS
+from .splits import SPLIT_DEFINITIONS, classify_analysis_date
 
 
 EXPORT_SCHEMA = "stance-shift-export/v1"
@@ -223,16 +225,24 @@ def _case_metrics(rows, compute_usages):
 
 def _comparison(rows, portfolios, protocol, group, horizon, cost_model, decision_layer, portfolio_basis):
     lookup = {key: row for key, row in rows[group]}
-    paired = [(row.get("correct"), lookup[key].get("correct")) for key, row in rows["D"]
+    paired = [(key, row.get("correct"), lookup[key].get("correct")) for key, row in rows["D"]
               if key in lookup and row.get("correct") is not None and lookup[key].get("correct") is not None]
     endpoint = ("primary" if decision_layer == "candidate" and horizon == protocol.get("primary_horizon", 60)
                 and cost_model == "corwin_schultz" and portfolio_basis == "all" else "robustness")
     result = {"groups": ["D", group], "horizon": horizon, "cost_model": cost_model,
               "decision_layer": decision_layer, "portfolio_basis": portfolio_basis,
               "endpoint": endpoint, "portfolio_dates": len(portfolios["D"])}
-    result["mcnemar"] = (mcnemar(np.array([first for first, _ in paired], dtype=bool),
-                                  np.array([second for _, second in paired], dtype=bool)) if paired
+    result["mcnemar"] = (mcnemar(np.array([first for _, first, _ in paired], dtype=bool),
+                                  np.array([second for _, _, second in paired], dtype=bool)) if paired
                           else {"status": "no_paired_directional_cases", "pvalue": None})
+    by_date = {key[1]: [] for key, _ in rows["D"]}
+    for key, first, second in paired:
+        by_date.setdefault(key[1], []).append((bool(first), bool(second)))
+    lengths = (1, 2, 4) if protocol.get("design", "quarterly") == "quarterly" else (1, 3, 6, 12)
+    result["date_cluster_direction_sensitivity"] = date_cluster_block_accuracy(
+        by_date, block_lengths=lengths,
+        replicates=protocol.get("bootstrap_replicates", 1999),
+        seed=protocol.get("inference_seed", 905))
     for name, function in (("jobson_korkie", jobson_korkie_memmel), ("ledoit_wolf", ledoit_wolf_block)):
         try:
             kwargs = {} if name == "jobson_korkie" else {
@@ -410,12 +420,168 @@ def knowledge_cutoff_report(complete, include_inference=True):
                     "截止日後樣本較少且市場環境不同，差異需一併考量。"}
 
 
+def _expected_protocol_cases(protocol):
+    design = protocol.get("design", "quarterly")
+    dates = protocol.get("analysis_dates") or DESIGNS.get(design, DESIGNS["quarterly"])["dates"]
+    tickers = protocol.get("study_universe") or STUDY_TICKERS
+    return {(ticker, analysis_date) for analysis_date in dates for ticker in tickers}
+
+
+def _completion_status(jobs, protocol, quality_complete, *, eligible_dataset_ids=None, frozen_at=None):
+    expected = _expected_protocol_cases(protocol) if protocol else set()
+    completed_keys = {(job["config"].get("ticker"), job["config"].get("analysis_date"))
+                      for job in jobs if _is_complete(job)}
+    quality_keys = {(job["config"].get("ticker"), job["config"].get("analysis_date"))
+                    for job in quality_complete}
+    work_complete = bool(expected) and expected <= completed_keys
+    preregistered = eligible_dataset_ids is not None and frozen_at is not None
+    formal_complete = preregistered and bool(expected) and expected <= quality_keys
+    return {
+        "target_cases": len(expected) if expected else None,
+        "work_completed_cases": len(expected & completed_keys) if expected else len(completed_keys),
+        "work_complete": work_complete,
+        "work_status": "complete" if work_complete else "incomplete",
+        "quality_passed_cases": len(quality_keys),
+        "quality_excluded_completed_cases": len(expected & completed_keys) - len(expected & quality_keys)
+        if expected else None,
+        "quality_status": "passed_for_all_completed" if completed_keys and completed_keys == quality_keys else
+                          "has_exclusions" if quality_keys or completed_keys else "not_assessed",
+        "formal_sample_preregistered": preregistered,
+        "formal_sample_complete": formal_complete,
+        "formal_sample_status": "complete" if formal_complete else
+                                "incomplete" if preregistered else "not_preregistered",
+    }
+
+
+def _temporal_split_results(complete, protocol):
+    design = protocol.get("design", "quarterly")
+    dates = protocol.get("analysis_dates") or DESIGNS.get(design, DESIGNS["quarterly"])["dates"]
+    tickers = protocol.get("study_universe") or STUDY_TICKERS
+    splits = {}
+    for name, definition in SPLIT_DEFINITIONS.items():
+        target_dates = [day for day in dates if classify_analysis_date(day) == name]
+        jobs = [job for job in complete if classify_analysis_date(job["config"].get("analysis_date")) == name]
+        by_group = {}
+        for group in "ABCD":
+            rows = [_primary_candidate_row(job, group) for job in jobs]
+            rows = [row for row in rows if row is not None]
+            directional = [row for row in rows if row.get("correct") is not None]
+            by_group[group] = {
+                "cases": len(rows), "directional_cases": len(directional),
+                "coverage": len(directional) / len(rows) if rows else None,
+                "selective_accuracy": (sum(bool(row["correct"]) for row in directional) / len(directional)
+                                       if directional else None),
+                "mean_net_return": (statistics.fmean(float(row["net_return"]) for row in rows
+                                    if isinstance(row.get("net_return"), (int, float)))
+                                    if any(isinstance(row.get("net_return"), (int, float)) for row in rows) else None),
+            }
+        splits[name] = {"label": definition["label"], "years": list(definition["years"]),
+                        "purpose": definition["purpose"], "frozen": definition["frozen"],
+                        "target_cases": len(tickers) * len(target_dates), "completed_cases": len(jobs),
+                        "by_group": by_group}
+    return {"basis": "analysis_date_year", "primary_horizon": protocol.get("primary_horizon", 60),
+            "cost_model": "corwin_schultz", "decision_layer": "candidate", "splits": splits,
+            "note": "Train、Validation、Test 分開呈現描述統計；不以 Test 調參，也不把小分組 p 值當正式結論。"}
+
+
+def _numeric_validation_quality(complete):
+    by_flag = {"no_redaction": [], "redaction": []}
+    redacted_calls = redacted_values = removed_claims = 0
+    known = False
+    for job in complete:
+        version = job.get("config", {}).get("protocol", {}).get("version")
+        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4"}:
+            known = True
+        records = job.get("state", {}).get("records", [])
+        case_redacted_calls = 0
+        for record in records:
+            audit = record.get("audit", {}) or {}
+            values = audit.get("numeric_redaction", [])
+            claims_removed = int(audit.get("numeric_claims_removed", 0) or 0)
+            if values or claims_removed:
+                case_redacted_calls += 1
+                redacted_calls += 1
+                redacted_values += len(values)
+                removed_claims += claims_removed
+        by_flag["redaction" if case_redacted_calls else "no_redaction"].append(job)
+    strata = {}
+    for name, jobs in by_flag.items():
+        by_group = {}
+        for group in "ABCD":
+            rows = [_primary_candidate_row(job, group) for job in jobs]
+            rows = [row for row in rows if row is not None]
+            directional = [row for row in rows if row.get("correct") is not None]
+            by_group[group] = {"cases": len(rows), "directional_cases": len(directional),
+                               "coverage": len(directional) / len(rows) if rows else None,
+                               "selective_accuracy": (sum(bool(row["correct"]) for row in directional) / len(directional)
+                                                      if directional else None),
+                               "mean_net_return": (statistics.fmean(float(row["net_return"]) for row in rows
+                                                   if isinstance(row.get("net_return"), (int, float)))
+                                                   if any(isinstance(row.get("net_return"), (int, float)) for row in rows) else None)}
+        strata[name] = {"cases": len(jobs), "by_group": by_group}
+    return {"status": "available" if known else "not_recorded",
+            "redacted_cases": len(by_flag["redaction"]), "redacted_calls": redacted_calls,
+            "redacted_numeric_tokens": redacted_values, "removed_numeric_claims": removed_claims,
+            "strata": strata,
+            "note": "依每案任一決策呼叫曾移除數字分層；僅作品質／選擇診斷，不代表移除數字造成或未造成決策改變。"}
+
+
+def _sentiment_coverage_report(complete):
+    aggregate = {}
+    observed = 0
+    for job in complete:
+        coverage = (job.get("state", {}).get("inputs", {}).get("sentiment_coverage")
+                    or job.get("state", {}).get("report", {}).get("sentiment_coverage"))
+        ticker, year = job["config"].get("ticker"), str(job["config"].get("analysis_date", ""))[:4]
+        key = f"{ticker}:{year}"
+        row = aggregate.setdefault(key, {"ticker": ticker, "year": year, "cases": 0,
+            "coverage_recorded_cases": 0, "window_days": None,
+            "scopes": {scope: {"headline_count": 0, "scored_count": 0, "source_counts": {},
+                               "indicator_cases": 0} for scope in ("target", "context")}})
+        row["cases"] += 1
+        if not isinstance(coverage, dict):
+            continue
+        observed += 1
+        row["coverage_recorded_cases"] += 1
+        if row["window_days"] is None:
+            row["window_days"] = coverage.get("window_days")
+        for scope in ("target", "context"):
+            info = coverage.get("scopes", {}).get(scope, {})
+            dst = row["scopes"][scope]
+            dst["headline_count"] += int(info.get("headline_count", 0) or 0)
+            dst["scored_count"] += int(info.get("scored_count", 0) or 0)
+            dst["indicator_cases"] += int(bool(info.get("indicator_emitted")))
+            for source, counts in info.get("source_counts", {}).items():
+                bucket = dst["source_counts"].setdefault(source, {"headline_count": 0, "scored_count": 0})
+                bucket["headline_count"] += int(counts.get("headline_count", 0) or 0)
+                bucket["scored_count"] += int(counts.get("scored_count", 0) or 0)
+    for row in aggregate.values():
+        for info in row["scopes"].values():
+            info["missing_score_count"] = info["headline_count"] - info["scored_count"]
+            info["missing_score_rate"] = (info["missing_score_count"] / info["headline_count"]
+                                          if info["headline_count"] else None)
+    return {"status": "available" if observed else "not_recorded", "cases_with_coverage": observed,
+            "cases_without_coverage": max(0, len(complete) - observed),
+            "coverage_record_rate": observed / len(complete) if complete else None,
+            "by_ticker_year": sorted(aggregate.values(), key=lambda row: (row["ticker"], row["year"])),
+            "source_counts_are_nonexclusive": True,
+            "note": "新聞來源組成按去重後的來源標籤計數；跨來源重複會使各來源小計不互斥。缺失率以符合相關性篩選的窗口新聞為分母。"}
+
+
 def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dataset_ids=None, frozen_at=None,
                  split_knowledge=True):
     complete, excluded = _completed_unique(
         jobs, formal_only=formal_only,
         eligible_dataset_ids=None if eligible_dataset_ids is None else set(eligible_dataset_ids),
         frozen_at=frozen_at)
+    quality_complete, _ = _completed_unique(
+        jobs, formal_only=True,
+        eligible_dataset_ids=None if eligible_dataset_ids is None else set(eligible_dataset_ids),
+        frozen_at=frozen_at)
+    protocol = (complete[0] if complete else next((job for job in jobs if job.get("config", {}).get("protocol")), None))
+    protocol = protocol.get("config", {}).get("protocol", {}) if protocol else {}
+    completion = _completion_status(jobs, protocol, quality_complete,
+                                    eligible_dataset_ids=eligible_dataset_ids, frozen_at=frozen_at)
     stability = stability_report(jobs)
     if not complete:
         return {"status": "no_formal_cases" if formal_only and excluded["completed"] else "no_completed_cases",
@@ -423,7 +589,9 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
                 "excluded_incomplete_runs": len(jobs) - excluded["completed"],
                 "excluded_degraded_research_runs": excluded["degraded"],
                 "excluded_nonformal_runs": excluded["nonformal"],
-                "excluded_nonformal_reasons": excluded["nonformal_reasons"], "stability": stability}
+                "excluded_nonformal_reasons": excluded["nonformal_reasons"], "stability": stability,
+                "completion": completion, "sentiment_coverage": _sentiment_coverage_report([]),
+                "numeric_validation_quality": _numeric_validation_quality([])}
     protocol = complete[0]["config"].get("protocol", {})
     layers = sorted({_layer(row) for job in complete for row in job["state"].get("cases", [])}) or ["gated"]
     summary, comparisons = [], []
@@ -470,6 +638,8 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
                         for item, adjusted in zip(family, holm_adjust([item["pvalue"] for item in family])):
                             item["holm_pvalue"] = adjusted
     inferred = include_inference and len(complete) >= MIN_CASES_FOR_INFERENCE
+    completion["inference_ready"] = inferred
+    completion["inference_minimum_cases"] = MIN_CASES_FOR_INFERENCE
     return {"status": "complete" if inferred else "insufficient_cases",
             "protocol_hash": complete[0]["config"].get("protocol_hash"), "unique_cases": len(complete),
             "primary_horizon": protocol.get("primary_horizon", 60), "design": protocol.get("design", "quarterly"),
@@ -479,6 +649,10 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
             "excluded_nonformal_runs": excluded["nonformal"],
             "excluded_nonformal_reasons": excluded["nonformal_reasons"], "summary": summary,
             "comparisons": comparisons, "completeness": _completeness(complete),
+            "completion": completion,
+            "temporal_split_results": _temporal_split_results(complete, protocol),
+            "numeric_validation_quality": _numeric_validation_quality(complete),
+            "sentiment_coverage": _sentiment_coverage_report(complete),
             "stability": stability,
             **({"knowledge_cutoff": knowledge_cutoff_report(complete, include_inference)} if split_knowledge else {}),
             "conventions": [
@@ -491,8 +665,10 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
                 "portfolio_basis=all holds equal fixed case weights and treats inactive sleeves as cash; portfolio_basis=active uses changing active-sleeve weights as sensitivity only",
                 "Compute matching is by call count (A=1, B=7, C=7, D=7); token counts differ by arm and are reported, not equalised",
                 "First valid completed run per ticker/date is fixed for aggregate analysis; later reruns remain separate audit artifacts",
-                "McNemar uses mutually directional cases; Holm correction is applied within each horizon/cost/layer/basis/method family",
+                "McNemar uses mutually directional cases; paired date-cluster and contiguous-date-block percentile intervals are an additional direction-accuracy sensitivity analysis, not a second p-value",
+                "Holm correction is applied within each horizon/cost/layer/basis/method p-value family",
                 "Formal inference is withheld until at least 30 unique completed historical cases are available",
+                "Inference readiness is not the same as all jobs complete, quality passing, or a complete preregistered sample",
                 "Runs using deterministic research-source fallback are excluded from formal aggregate statistics",
                 "Repeated complete runs are summarized separately by stability_report; they are not collapsed into the primary case panel",
             ]}
