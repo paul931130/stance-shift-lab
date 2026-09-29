@@ -44,6 +44,9 @@ def prepare(ctx, payload, model_probe=None):
         missing_data_policy=payload.missing_data_policy,
         allow_point_fundamental=payload.allow_point_fundamental,
         allow_small_model=payload.allow_small_model)
+    if protocol.sentiment_indicators and data.get("kind") == "historical" and rules.get("news_item_limit") != "uncapped":
+        raise PreflightError("news_capped", "此資料集的新聞在蒐集時被截斷（每來源最多 50 筆）；v3-0930 之後的協議需要窗口內的全部標題，"
+                             "請重新蒐集資料")
     # Build the frozen evidence selection once before accepting a job.  The
     # quality gate catches stale broad-market news while retaining a
     # researcher-visible override for deliberate sensitivity cases.

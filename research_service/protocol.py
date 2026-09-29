@@ -40,7 +40,10 @@ DESIGNS = {
     "quarterly": {"dates": QUARTER_DATES, "primary_horizon": 60, "horizons": (30, 60, 90), "news_window_days": 90},
     "monthly": {"dates": MONTH_END_DATES, "primary_horizon": 20, "horizons": (10, 20, 30), "news_window_days": 30},
 }
-MONTHLY_VERSION = "v3-0929.2"
+MONTHLY_VERSION = "v3-0930.2"
+# From v3-0930.1 the prompt carries FinBERT indicators computed over every eligible headline instead of a
+# 12-headline sample (see data.research_inputs); earlier versions keep the headline sample.
+INDICATOR_VERSIONS = ("v3-0930.1", MONTHLY_VERSION)
 DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
 BASE_RATE_MIN_WINDOWS = 8
 DEFAULT_RESEARCH_MODEL = "ollama/qwen3:14b"
@@ -65,7 +68,7 @@ COMPANY_NAMES = {
 class StudyProtocol:
     # Display, extraction and validation rules change what enters a report.
     # Version them so a partially completed job cannot mix evidence rules.
-    version: str = "v3-0929.1"
+    version: str = "v3-0930.1"
     design: Literal["quarterly", "monthly"] = "quarterly"
     study: Literal["study1", "study2"] = "study1"
     model: str = DEFAULT_RESEARCH_MODEL
@@ -99,7 +102,7 @@ class StudyProtocol:
     study_universe: tuple[str, ...] = STUDY_TICKERS
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0929.2"):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2"):
             raise ValueError("Unsupported protocol version")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")
@@ -151,6 +154,11 @@ class StudyProtocol:
     @property
     def analysis_dates(self) -> tuple[str, ...]:
         return DESIGNS[self.design]["dates"]
+
+    @property
+    def sentiment_indicators(self) -> bool:
+        """Whether sentiment reaches the models as FinBERT indicators over all headlines (v3-0930.1+)."""
+        return self.version in INDICATOR_VERSIONS
 
     @property
     def news_window_days(self) -> int:

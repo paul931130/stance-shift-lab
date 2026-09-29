@@ -146,11 +146,14 @@ class DatasetDesignTests(unittest.TestCase):
             return {"id": key, "ticker": "AAPL", "kind": "historical", "requested_analysis_date": "2021-03-31",
                     "coverage": {"research_ready": True}, "collection_rules": rules}
 
-        store = Store([snapshot("quarterly", {"version": "point-in-time-input-v2"}),
-                       snapshot("monthly", {"version": "point-in-time-input-v2", "design": "monthly",
-                                            "news_window_days": 30})])
+        uncapped = {"version": "point-in-time-input-v2", "news_item_limit": "uncapped"}
+        store = Store([snapshot("capped-legacy", {"version": "point-in-time-input-v2"}),
+                       snapshot("quarterly", uncapped),
+                       snapshot("monthly", {**uncapped, "design": "monthly", "news_window_days": 30})])
         self.assertEqual(reusable_snapshot(store, "AAPL", "2021-03-31")["id"], "quarterly")
         self.assertEqual(reusable_snapshot(store, "AAPL", "2021-03-31", "monthly")["id"], "monthly")
+        # A snapshot whose news was capped at collection time is never reused.
+        self.assertIsNone(reusable_snapshot(Store([snapshot("capped-legacy", {"version": "x"})]), "AAPL", "2021-03-31"))
 
     def test_readiness_follows_the_dataset_design(self):
         data = demo_dataset()

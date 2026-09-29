@@ -18,6 +18,8 @@ from .protocol import BASE_RATE_MIN_WINDOWS, COMPANY_NAMES, DOMAIN_NAMES
 
 
 MIN_NEWS_RELEVANCE = .35
+MAX_EVIDENCE_ITEMS = 10000  # one dataset keeps every headline of its news window
+SENTIMENT_BAND = .10  # |mean FinBERT score| above this is called positive/negative
 NEWS_WINDOW_DAYS = 90  # quarterly design; the monthly design passes 30 (see protocol.DESIGNS)
 PRICE_HISTORY_CALENDAR_DAYS = 900
 PRICE_FUTURE_CALENDAR_DAYS = 220
@@ -64,7 +66,7 @@ def validate_dataset(data):
                 f"low={row['low']}, close={row['close']}）"
             )
     evidence = data.get("evidence", [])
-    if len(evidence) > 400:
+    if len(evidence) > MAX_EVIDENCE_ITEMS:
         raise ValueError("每個資料集最多 400 筆摘要證據")
     ids = set()
     for item in evidence:
@@ -180,7 +182,7 @@ def download_prices(ticker, analysis_date, chart_requester=get_json):
 
 
 def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE,
-                        window_days=NEWS_WINDOW_DAYS):
+                        window_days=NEWS_WINDOW_DAYS, item_limit=50):
     key = os.getenv("ALPHA_VANTAGE_API_KEY", "")
     if not key:
         return None
@@ -189,7 +191,7 @@ def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_flo
         "function": "NEWS_SENTIMENT", "tickers": ticker,
         "time_from": (anchor - timedelta(days=window_days)).strftime("%Y%m%dT0000"),
         "time_to": (anchor - timedelta(days=1)).strftime("%Y%m%dT2359"),
-        "sort": "RELEVANCE", "limit": 200, "apikey": key,
+        "sort": "RELEVANCE", "limit": 200 if item_limit else 1000, "apikey": key,
     })
     payload = requester("https://www.alphavantage.co/query?" + query)
     provider_error = payload.get("Error Message") or payload.get("Information") or payload.get("Note")
@@ -397,14 +399,15 @@ def _resolve_alpha_vantage_cache_path():
 
 
 def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE,
-                    allow_live=True, window_days=NEWS_WINDOW_DAYS):
+                    allow_live=True, window_days=NEWS_WINDOW_DAYS, item_limit=50):
     """Fetch point-in-time news without silently inventing sentiment evidence."""
     items, notes = [], []
     cache_path = _resolve_alpha_vantage_cache_path()
     cache_items = []
     if cache_path:
         try:
-            cache_items = _alpha_vantage_cached_news(cache_path, ticker, analysis_date, window_days=window_days)
+            cache_items = _alpha_vantage_cached_news(cache_path, ticker, analysis_date, limit=item_limit,
+                                                     window_days=window_days)
             items.extend(cache_items)
             if not cache_items:
                 notes.append(f"Alpha Vantage 快取檔在切點前 {window_days} 天無相符新聞")
@@ -415,7 +418,7 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
     path = os.getenv("FNSPID_NEWS_PATH", "").strip()
     if path:
         try:
-            fnspid_items = _fnspid_news(path, ticker, analysis_date, window_days=window_days)
+            fnspid_items = _fnspid_news(path, ticker, analysis_date, limit=item_limit, window_days=window_days)
             items.extend(fnspid_items)
             if not fnspid_items:
                 notes.append(f"FNSPID 在切點前 {window_days} 天無相符新聞")
@@ -430,7 +433,7 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
     if allow_live and alpha_configured and not cache_items and len(items) < 50:
         try:
             alpha_items, alpha_stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor,
-                                                           window_days=window_days)
+                                                           window_days=window_days, item_limit=item_limit)
             items.extend(alpha_items)
             notes.append(_alpha_note(alpha_stats))
             if not alpha_items:
@@ -743,6 +746,58 @@ def _sentiment_summary(items):
             "direction": direction, "score_definition": "mean(P(positive)-P(negative))"}
 
 
+def _finbert_values(items):
+    values = []
+    for item in items:
+        try:
+            score = float(item["sentiment_score"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if math.isfinite(score) and -1 <= score <= 1:
+            values.append(score)
+    return values
+
+
+def _sentiment_indicator_summary(items):
+    """Calibration block for the indicator rule: shares and mean over every scored headline."""
+    values = _finbert_values(items)
+    summary = _sentiment_summary(items)
+    return {"headline_count": summary["count"], "scored_headlines": summary["scored_count"],
+            "mean_score": summary["mean_score"], "direction": summary["direction"],
+            "positive_share": round(sum(v > SENTIMENT_BAND for v in values) / len(values), 6) if values else None,
+            "negative_share": round(sum(v < -SENTIMENT_BAND for v in values) / len(values), 6) if values else None,
+            "score_definition": summary["score_definition"]}
+
+
+def _sentiment_indicator_items(target_items, context_items, analysis_date):
+    """FinBERT indicators over every eligible headline of the window (protocol v3-0930.1+).
+
+    The prompt never carries headline text: models get deterministic, scale-free summaries of the
+    per-headline FinBERT scores, as they do for the technical features. Raw counts stay in the item
+    for audit but are not shown, because the news sources differ in volume by period.
+    """
+    indicators = []
+    for scope, items in (("target", target_items), ("context", context_items)):
+        scored = [(float(item["sentiment_score"]), item) for item in items
+                  if _finbert_values([item])]
+        if not scored:
+            continue
+        values = [value for value, _ in scored]
+        metrics = [("mean", sum(values) / len(values))]
+        if scope == "target":
+            metrics += [("positive_share", sum(value > SENTIMENT_BAND for value in values) / len(values)),
+                        ("negative_share", sum(value < -SENTIMENT_BAND for value in values) / len(values))]
+        members = digest(sorted(item["evidence_id"] for _, item in scored))
+        for name, value in metrics:
+            indicators.append({
+                "evidence_id": f"sentiment-{scope}-{name}-{analysis_date}", "domain": "sentiment",
+                "claim": f"sentiment_{scope}_{name} = {value:.6f}", "value": value,
+                "available_at": max(item["available_at"] for _, item in scored),
+                "source": "finbert_scores_of_pre_cutoff_headlines", "source_type": "finbert_indicator",
+                "evidence_scope": scope, "headline_count": len(scored), "members_digest": members})
+    return indicators
+
+
 def _technical_calibration(return20, mean_gap, volatility):
     if return20 > 0 and mean_gap > 0:
         direction = "upward"
@@ -797,6 +852,8 @@ def research_inputs(dataset, analysis_date, protocol=None):
     hold_band_sigma = getattr(protocol, "hold_band_sigma", .5)
     relevance_floor = getattr(protocol, "news_relevance_floor", MIN_NEWS_RELEVANCE)
     target_context_priority = getattr(protocol, "target_context_priority", True)
+    indicator_mode = bool(getattr(protocol, "sentiment_indicators", False))
+    sentiment_pool = {"target": [], "context": []}
     evidence = []
     selection = {}
     ticker = str(dataset.get("ticker", "")).upper()
@@ -808,6 +865,20 @@ def research_inputs(dataset, analysis_date, protocol=None):
                                                 item["available_at"], item["evidence_id"]), reverse=True)
         else:
             domain_items.sort(key=lambda item: (item["available_at"], item["evidence_id"]), reverse=True)
+        if domain == "sentiment" and indicator_mode:
+            for item in domain_items:
+                item["evidence_scope"] = _sentiment_scope(item, ticker)
+            sentiment_pool = {scope: [item for item in domain_items if item["evidence_scope"] == scope]
+                              for scope in ("target", "context")}
+            selected = _sentiment_indicator_items(sentiment_pool["target"], sentiment_pool["context"], analysis_date)
+            evidence.extend(selected)
+            selection[domain] = {"available": len(domain_items), "selected": len(selected),
+                                 "target_available": len(sentiment_pool["target"]),
+                                 "context_available": len(sentiment_pool["context"]),
+                                 "target_selected": sum(item["evidence_scope"] == "target" for item in selected),
+                                 "context_selected": sum(item["evidence_scope"] == "context" for item in selected),
+                                 "relevance_floor": relevance_floor, "strategy": "finbert_indicators_v1"}
+            continue
         limit = 12 if domain == "sentiment" else len(domain_items)
         if domain == "sentiment":
             for item in domain_items:
@@ -861,12 +932,17 @@ def research_inputs(dataset, analysis_date, protocol=None):
     selected_fundamental = [item for item in evidence if item["domain"] == "fundamental"]
     target_sentiment = [item for item in selected_sentiment if item.get("evidence_scope") == "target"]
     context_sentiment = [item for item in selected_sentiment if item.get("evidence_scope") == "context"]
+    if indicator_mode:  # calibration covers every eligible headline, not a sample
+        sentiment_calibration = {"target": _sentiment_indicator_summary(sentiment_pool["target"]),
+                                 "context": _sentiment_indicator_summary(sentiment_pool["context"])}
+    else:
+        sentiment_calibration = {"target": _sentiment_summary(target_sentiment),
+                                 "context": _sentiment_summary(context_sentiment)}
     base_rates = _base_rates(history, primary_horizon, vol, hold_band_sigma)
     decision_calibration = {
-        "rules_version": "target-context-calibration-v1",
+        "rules_version": "finbert-indicators-v1" if indicator_mode else "target-context-calibration-v1",
         "technical": _technical_calibration(dict(technical)["return20"], dict(technical)["mean20_vs_mean60"], vol),
-        "sentiment": {"target": _sentiment_summary(target_sentiment),
-                      "context": _sentiment_summary(context_sentiment)},
+        "sentiment": sentiment_calibration,
         "limits": [
             "Context-only news is market or sector context, not a direct target-company fact.",
             ("Supplied fundamental evidence contains deterministic same-concept comparisons or ratios; it still provides no valuation or peer benchmark."

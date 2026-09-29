@@ -60,6 +60,7 @@ def reusable_snapshot(store, ticker, analysis_date, design="quarterly"):
         rules = existing.get("collection_rules") or {}
         if (existing.get("ticker") == ticker and existing.get("kind") == "historical"
                 and rules.get("design", "quarterly") == design
+                and rules.get("news_item_limit") == "uncapped"
                 and existing.get("requested_analysis_date") == analysis_date
                 and existing.get("coverage", {}).get("research_ready")):
             return existing
@@ -91,7 +92,8 @@ def collect_dataset(store, ticker, analysis_date, *, refresh=False, use_finbert=
             pool.submit(download_prices, ticker, analysis_date): "technical",
             pool.submit(fetch_fundamental, ticker, analysis_date): "fundamental",
             pool.submit(fetch_sentiment, ticker, analysis_date,
-                        allow_live=not offline_news_only, window_days=news_window_days): "sentiment",
+                        allow_live=not offline_news_only, window_days=news_window_days,
+                        item_limit=None): "sentiment",
             pool.submit(fetch_macro, cutoff): "macro",
         }
         # Report each domain as soon as its agent finishes so the UI can
@@ -121,7 +123,9 @@ def collect_dataset(store, ticker, analysis_date, *, refresh=False, use_finbert=
                     agents[domain] = {"status": "error", "records": 0,
                         "message": f"{name} 下載失敗：{type(error).__name__}"}
             report(agents={key: dict(value) for key, value in agents.items()})
-    if design != "quarterly":  # Quarterly datasets keep their original rules (and content hash).
+    # Every headline of the window is kept (no per-source cap); the protocol decides how much reaches a prompt.
+    data["collection_rules"] = {**data.get("collection_rules", {}), "news_item_limit": "uncapped"}
+    if design != "quarterly":
         data["collection_rules"] = {**data["collection_rules"], "design": design,
                                     "news_window_days": news_window_days}
     for domain in ("fundamental", "sentiment", "macro"):

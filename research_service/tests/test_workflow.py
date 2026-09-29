@@ -35,7 +35,8 @@ def fixture():
         rows.append({"date": day.isoformat(), "open": value, "high": value + 1, "low": value - 1, "close": value + .1})
     evidence = [{"evidence_id": domain + "-1", "domain": domain,
         "claim": "NVIDIA synthetic test evidence only" if domain == "sentiment" else "Synthetic test evidence only",
-        "source": "unit-test-fixture", "available_at": "2024-12-20", **({"vintage_date": "2024-12-20"} if domain == "macro" else {})}
+        "source": "unit-test-fixture", "available_at": "2024-12-20", **({"vintage_date": "2024-12-20"} if domain == "macro" else {}),
+        **({"headline": "NVIDIA synthetic test evidence only", "sentiment_score": .2} if domain == "sentiment" else {})}
         for domain in ("fundamental", "sentiment", "macro")]
     return {"ticker": "NVDA", "kind": "synthetic", "source": "unit-test-fixture", "price_basis": "adjusted_ohlc", "prices": rows, "evidence": evidence}
 
@@ -193,7 +194,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_missing_sentiment_domain_is_not_blocked_by_news_quality_gate(self):
         historical = json.loads(json.dumps(self.data))
-        historical.update(kind="historical", requested_analysis_date="2024-12-31", evidence=[])
+        historical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, requested_analysis_date="2024-12-31", evidence=[])
         dataset_id = self.store.add_dataset(historical)
         with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
             response = client.post('/api/jobs', json={"dataset_id": dataset_id,
@@ -202,7 +203,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_point_only_fundamental_requires_an_explicit_sensitivity_override(self):
         historical = json.loads(json.dumps(self.data))
-        historical.update(kind="historical", requested_analysis_date="2024-12-31")
+        historical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, requested_analysis_date="2024-12-31")
         historical["evidence"] = [item for item in historical["evidence"] if item["domain"] == "fundamental"]
         dataset_id = self.store.add_dataset(historical)
         with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
@@ -405,7 +406,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_complete_dataset_snapshot_is_reused_unless_refresh_is_requested(self):
         technical = json.loads(json.dumps(self.data))
-        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        technical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         by_domain = {domain: [next(item for item in self.data["evidence"] if item["domain"] == domain)]
                      for domain in ("fundamental", "sentiment", "macro")}
         with patch("research_service.collect.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))) as prices, \
@@ -431,7 +432,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_collection_task_matches_sync_download_and_hides_internal_errors(self):
         technical = json.loads(json.dumps(self.data))
-        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        technical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         by_domain = {domain: [next(item for item in self.data["evidence"] if item["domain"] == domain)]
                      for domain in ("fundamental", "sentiment", "macro")}
         case = {"ticker": "NVDA", "analysis_date": "2024-12-31", "refresh": True}
@@ -476,7 +477,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_readiness_date_guard_and_finbert_version_endpoint(self):
         historical = json.loads(json.dumps(self.data))
-        historical.update(kind="historical", requested_analysis_date="2024-12-31")
+        historical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, requested_analysis_date="2024-12-31")
         historical_id = self.store.add_dataset(historical)
 
         def enrich(data, **kwargs):
@@ -513,7 +514,7 @@ class WorkflowTests(unittest.TestCase):
                     active -= 1
 
         technical = json.loads(json.dumps(self.data))
-        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        technical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         with patch("research_service.collect.download_prices", side_effect=lambda *_: tracked(technical)), \
              patch("research_service.collect.fetch_fundamental", side_effect=lambda *_: tracked(([], "SEC not configured"))), \
              patch("research_service.collect.fetch_sentiment", side_effect=lambda *_, **__: tracked(([], "news not configured"))), \
@@ -528,7 +529,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_download_with_finbert_keeps_zero_news_as_missing_data(self):
         technical = json.loads(json.dumps(self.data))
-        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        technical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         with patch("research_service.collect.download_prices", return_value=technical), \
              patch("research_service.collect.fetch_fundamental", return_value=([], "SEC not configured")), \
              patch("research_service.collect.fetch_sentiment", return_value=([], "news not configured")), \
@@ -660,7 +661,9 @@ class WorkflowTests(unittest.TestCase):
         sentiment = job["state"]["research"]["sentiment"]
         self.assertEqual(sentiment["status"], "degraded")
         self.assertEqual(sentiment["audit"]["fallback"], "deterministic_source_extract")
-        self.assertEqual(sentiment["evidence_ids"], ["sentiment-1"])
+        # Sentiment reaches the models as FinBERT indicators (v3-0930.1), so the audited fallback cites those.
+        self.assertEqual(len(sentiment["evidence_ids"]), 3)
+        self.assertTrue(all(item.startswith("sentiment-target-") for item in sentiment["evidence_ids"]))
 
     def test_invalid_decision_citation_retries_with_new_seed_and_audit(self):
         job = self.create()
