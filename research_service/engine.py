@@ -15,7 +15,8 @@ from .backtest import evaluate
 from .data import digest, research_inputs
 from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate, messages_for,
                      prompt_text, unalias_evidence_ids, validate_decision, validate_research)
-from .protocol import StudyProtocol, DOMAIN_NAMES, decision_plan, decision_wave, temperature_for
+from .protocol import (DOMAIN_NAMES, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
+                       temperature_for)
 from .storage import now
 from .logging_config import get_logger
 
@@ -350,7 +351,7 @@ class Engine:
                     f"{json.dumps(allowed_ids, ensure_ascii=False)}. Validation error: {validation_hint(error)}"}]
 
     def advance(self, job):
-        if job["config"]["protocol"].get("version") != StudyProtocol().version:
+        if not protocol_is_current(job["config"]["protocol"]):
             raise ValueError("舊版實驗已隔離；請複製至新版")
         state = self.graph.invoke({"job": job, "state": job["state"]})["state"]
         failure = state.pop("_step_error", None)

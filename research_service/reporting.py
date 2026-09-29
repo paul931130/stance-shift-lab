@@ -362,8 +362,9 @@ def stability_report(jobs):
 
 
 def _primary_rows(report):
+    primary_horizon = report.get("primary_horizon", 60)
     return [row for row in report.get("summary", [])
-            if row.get("horizon") == 60 and row.get("cost_model") == "corwin_schultz"
+            if row.get("horizon") == primary_horizon and row.get("cost_model") == "corwin_schultz"
             and row.get("decision_layer") == "candidate" and row.get("portfolio_basis") == "all"
             and row.get("group") in GROUPS]
 
@@ -377,7 +378,7 @@ def knowledge_cutoff_report(complete, include_inference=True):
     """
     from .knowledge import KNOWLEDGE_CUTOFFS, cutoff_for, split_by_knowledge
 
-    groups = split_by_knowledge(complete)
+    groups = split_by_knowledge(complete, horizon=complete[0]["config"].get("protocol", {}).get("primary_horizon", 60))
     models = sorted({job["config"].get("protocol", {}).get("model") for job in complete})
     segments = {}
     for name in ("before_cutoff", "straddles_cutoff", "after_cutoff"):
@@ -389,7 +390,8 @@ def knowledge_cutoff_report(complete, include_inference=True):
         segments[name] = {"cases": part.get("unique_cases", 0), "status": part.get("status"),
                           "primary": _primary_rows(part),
                           "comparisons": [item for item in part.get("comparisons", [])
-                                          if item.get("horizon") == 60 and item.get("cost_model") == "corwin_schultz"
+                                          if item.get("horizon") == part.get("primary_horizon", 60)
+                                          and item.get("cost_model") == "corwin_schultz"
                                           and item.get("decision_layer") == "candidate"
                                           and item.get("portfolio_basis") == "all"]}
     by_group = {}
@@ -470,6 +472,7 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
     inferred = include_inference and len(complete) >= MIN_CASES_FOR_INFERENCE
     return {"status": "complete" if inferred else "insufficient_cases",
             "protocol_hash": complete[0]["config"].get("protocol_hash"), "unique_cases": len(complete),
+            "primary_horizon": protocol.get("primary_horizon", 60), "design": protocol.get("design", "quarterly"),
             "required_cases": MIN_CASES_FOR_INFERENCE, "excluded_duplicate_runs": excluded["duplicates"],
             "excluded_incomplete_runs": len(jobs) - excluded["completed"],
             "excluded_degraded_research_runs": excluded["degraded"],
@@ -479,7 +482,8 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
             "stability": stability,
             **({"knowledge_cutoff": knowledge_cutoff_report(complete, include_inference)} if split_knowledge else {}),
             "conventions": [
-                "Primary analysis: decision_layer=candidate, horizon=60, cost_model=corwin_schultz, portfolio_basis=all",
+                f"Primary analysis: decision_layer=candidate, horizon={protocol.get('primary_horizon', 60)}, "
+                "cost_model=corwin_schultz, portfolio_basis=all",
                 "Candidate actions measure the decision mechanism; gated actions are a separate risk-control sensitivity layer",
                 "Open-to-open: entry at t+1 open, exit at t+horizon+1 open",
                 "Short positions are floored at -100%; insolvent cases are retained and flagged, not excluded",
@@ -683,7 +687,7 @@ def hold_band_sensitivity(jobs, sigmas=(0.0, 0.25, 0.5, 1.0)):
         rerun = _sensitivity_jobs(complete, float(sigma))
         report = study_report(rerun, include_inference=False) if rerun else {"summary": [], "status": "no_completed_cases"}
         primary = [row for row in report.get("summary", [])
-                   if row.get("decision_layer") == "candidate" and row.get("horizon") == 60
+                   if row.get("decision_layer") == "candidate" and row.get("horizon") == report.get("primary_horizon", 60)
                    and row.get("cost_model") == "corwin_schultz" and row.get("portfolio_basis") == "all"]
         results.append({"hold_band_sigma": float(sigma), "status": report.get("status"),
                         "summary": primary, "pilot": pilot_diagnostics(rerun) if rerun else None})

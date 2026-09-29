@@ -18,6 +18,7 @@ from .protocol import BASE_RATE_MIN_WINDOWS, COMPANY_NAMES, DOMAIN_NAMES
 
 
 MIN_NEWS_RELEVANCE = .35
+NEWS_WINDOW_DAYS = 90  # quarterly design; the monthly design passes 30 (see protocol.DESIGNS)
 PRICE_HISTORY_CALENDAR_DAYS = 900
 PRICE_FUTURE_CALENDAR_DAYS = 220
 
@@ -178,14 +179,15 @@ def download_prices(ticker, analysis_date, chart_requester=get_json):
             f"本次行情下載路徑：{source}。"]})
 
 
-def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE):
+def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE,
+                        window_days=NEWS_WINDOW_DAYS):
     key = os.getenv("ALPHA_VANTAGE_API_KEY", "")
     if not key:
         return None
     anchor = date.fromisoformat(analysis_date)
     query = urlencode({
         "function": "NEWS_SENTIMENT", "tickers": ticker,
-        "time_from": (anchor - timedelta(days=90)).strftime("%Y%m%dT0000"),
+        "time_from": (anchor - timedelta(days=window_days)).strftime("%Y%m%dT0000"),
         "time_to": (anchor - timedelta(days=1)).strftime("%Y%m%dT2359"),
         "sort": "RELEVANCE", "limit": 200, "apikey": key,
     })
@@ -204,7 +206,7 @@ def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_flo
         if len(published) < 8 or not published[:8].isdigit():
             continue
         available_at = f"{published[:4]}-{published[4:6]}-{published[6:8]}"
-        if not (anchor - timedelta(days=90)).isoformat() <= available_at < analysis_date:
+        if not (anchor - timedelta(days=window_days)).isoformat() <= available_at < analysis_date:
             continue
         title, source = str(row.get("title", "")).strip(), str(row.get("url", "")).strip()
         if not title or not source:
@@ -246,9 +248,9 @@ def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_flo
     return items, stats
 
 
-def _fnspid_news(path, ticker, analysis_date, limit=50):
+def _fnspid_news(path, ticker, analysis_date, limit=50, window_days=NEWS_WINDOW_DAYS):
     anchor = date.fromisoformat(analysis_date)
-    start = (anchor - timedelta(days=90)).isoformat()
+    start = (anchor - timedelta(days=window_days)).isoformat()
     items = []
     with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -290,7 +292,7 @@ def _fnspid_news(path, ticker, analysis_date, limit=50):
     return list(unique.values())[:limit]
 
 
-def _alpha_vantage_cached_news(path, ticker, analysis_date, limit=50):
+def _alpha_vantage_cached_news(path, ticker, analysis_date, limit=50, window_days=NEWS_WINDOW_DAYS):
     """Read a previously-fetched Alpha Vantage NEWS_SENTIMENT archive from disk.
 
     Unlike _alpha_vantage_news, this never calls the live API or spends a
@@ -299,7 +301,7 @@ def _alpha_vantage_cached_news(path, ticker, analysis_date, limit=50):
     reach) can serve a case without touching the daily rate limit.
     """
     anchor = date.fromisoformat(analysis_date)
-    start = (anchor - timedelta(days=90)).isoformat()
+    start = (anchor - timedelta(days=window_days)).isoformat()
     items = []
     with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -395,17 +397,17 @@ def _resolve_alpha_vantage_cache_path():
 
 
 def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE,
-                    allow_live=True):
+                    allow_live=True, window_days=NEWS_WINDOW_DAYS):
     """Fetch point-in-time news without silently inventing sentiment evidence."""
     items, notes = [], []
     cache_path = _resolve_alpha_vantage_cache_path()
     cache_items = []
     if cache_path:
         try:
-            cache_items = _alpha_vantage_cached_news(cache_path, ticker, analysis_date)
+            cache_items = _alpha_vantage_cached_news(cache_path, ticker, analysis_date, window_days=window_days)
             items.extend(cache_items)
             if not cache_items:
-                notes.append("Alpha Vantage 快取檔在切點前 90 天無相符新聞")
+                notes.append(f"Alpha Vantage 快取檔在切點前 {window_days} 天無相符新聞")
         except FileNotFoundError:
             notes.append("ALPHA_VANTAGE_NEWS_PATH 檔案不存在；請確認路徑或清空改用即時 API")
         except Exception as error:
@@ -413,10 +415,10 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
     path = os.getenv("FNSPID_NEWS_PATH", "").strip()
     if path:
         try:
-            fnspid_items = _fnspid_news(path, ticker, analysis_date)
+            fnspid_items = _fnspid_news(path, ticker, analysis_date, window_days=window_days)
             items.extend(fnspid_items)
             if not fnspid_items:
-                notes.append("FNSPID 在切點前 90 天無相符新聞")
+                notes.append(f"FNSPID 在切點前 {window_days} 天無相符新聞")
         except FileNotFoundError:
             notes.append("FNSPID 檔案不存在；請將 CSV 放入 research-inputs/Stock_news.csv，或清空 FNSPID_NEWS_PATH 改用 Alpha Vantage")
         except Exception as error:
@@ -427,11 +429,12 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
     # source budget for this ticker and point-in-time window.
     if allow_live and alpha_configured and not cache_items and len(items) < 50:
         try:
-            alpha_items, alpha_stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor)
+            alpha_items, alpha_stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor,
+                                                           window_days=window_days)
             items.extend(alpha_items)
             notes.append(_alpha_note(alpha_stats))
             if not alpha_items:
-                notes.append("Alpha Vantage 在切點前 90 天無相符新聞")
+                notes.append(f"Alpha Vantage 在切點前 {window_days} 天無相符新聞")
         except Exception as error:
             detail = str(error) if isinstance(error, ValueError) else type(error).__name__
             notes.append(f"Alpha Vantage 下載失敗：{detail[:180]}")

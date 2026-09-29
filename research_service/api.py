@@ -20,7 +20,7 @@ from uuid import uuid4
 from .app import _redact
 from .collect import collect_dataset
 from .engine import Engine, protocol_from
-from .protocol import DEFAULT_RESEARCH_MODEL, StudyProtocol, decision_plan
+from .protocol import DEFAULT_RESEARCH_MODEL, decision_plan, protocol_is_current
 from .settings import Settings
 from .storage import JobLeaseLost, Store, now
 
@@ -61,7 +61,7 @@ class StanceShiftResearch:
         self._ctx = SimpleNamespace(store=self.store, demo_mode=False, demo_model_id="",
                                     injected_model_call=model_call is not None)
 
-    def collect(self, ticker, analysis_date, *, refresh=False, use_finbert=False, progress=None):
+    def collect(self, ticker, analysis_date, *, refresh=False, use_finbert=False, progress=None, design="quarterly"):
         """Build or reuse the four-domain dataset for a case; returns its id and agent report."""
         if self.demo_mode:
             from .demo import DEMO_ANALYSIS_DATE, demo_dataset
@@ -72,7 +72,7 @@ class StanceShiftResearch:
             return {"id": self.store.add_dataset(demo), "analysis_date": analysis_date, "reused": True,
                     "limitations": demo.get("limitations", []), "agents": {}}
         return collect_dataset(self.store, ticker.upper(), analysis_date, refresh=refresh,
-                               use_finbert=use_finbert, progress=_forward(progress, "collect"))
+                               use_finbert=use_finbert, progress=_forward(progress, "collect"), design=design)
 
     def start(self, ticker, analysis_date, *, model=None, dataset_id=None, use_finbert=False,
               refresh=False, progress=None, **options):
@@ -141,7 +141,7 @@ class StanceShiftResearch:
             return job, None
         if job["status"] == "cancelled":
             raise ValueError("此實驗已取消，不能繼續；請建立新實驗")
-        if job["config"]["protocol"].get("version") != StudyProtocol().version:
+        if not protocol_is_current(job["config"]["protocol"]):
             raise ValueError("舊版協議的實驗不能用新版引擎繼續；請在網頁用「複製至新版重新執行」")
         owner = f"cli:{uuid4().hex}"
         stale_before = (datetime.now(timezone.utc) - STALE_LEASE).isoformat()

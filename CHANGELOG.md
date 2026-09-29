@@ -2,6 +2,18 @@
 
 研究台可以用 `stance-shift` CLI、Python API 或網頁研究台（Docker、pip、Codespaces）操作，三者共用同一套流程與資料庫。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## v3-0929.2（2026-09-29）— 月度設計：每月一次分析日、20 日預測期間、30 天新聞窗口
+
+- 新增研究設計欄位 `design`（`quarterly`／`monthly`）。月度設計把季度設計按比例縮小：分析日為 2021-01 至 2025-12 的 60 個月底（九檔共 540 個案例）、主要預測期間 20 個交易日（相鄰案例不重疊）、穩健性期間 10 與 30 日、新聞回看窗口 30 天。其餘（四組決策機制、呼叫預算、提示詞架構、統計方法）不變。
+- 月度協議固定為 `v3-0929.2`（`StudyProtocol.monthly()`）；季度協議預設值與 protocol hash 不變（`design` 為預設值時不納入雜湊），既有實驗與 `v3-0927.2`／`v3-0929.1` 的紀錄不受影響。
+- 新聞窗口參數化：`fetch_sentiment` 與三個新聞來源讀取函式接受 `window_days`（預設 90）。月度資料集在 `collection_rules` 記錄 `design` 與 `news_window_days`；建立工作時，資料集設計與實驗設計不符會被拒絕（`design_mismatch`）。同一個月底若同時是季末，兩種設計各有自己的資料集快照。
+- 覆蓋率／就緒判定、基準率窗口、統計報告的主要期間、知識截止日分段的結果期間，都改為依設計取值，不再寫死 60 日；報告新增 `primary_horizon` 與 `design` 欄位。
+- 「是否為目前協議」改為依各設計的目前版本判定，季度與月度工作不會互相被視為舊版而暫停。
+- API：`JobInput`、`DownloadInput` 新增 `design`（預設 `quarterly`）；批次與事前登記上限由 200 提高到 600。`scripts/collect_ticker_quarters.py --design monthly` 可蒐集月底資料集。
+- 網頁介面、CLI 與互動模式仍只提供季度設計；月度實驗以 API 執行。
+- 測試：`test_monthly_design.py`（協議、日期、新聞窗口、就緒判定、完整月度工作流程、API 與設計不符）。
+- 實驗架構與前置工作見 `docs/experiment-architecture.md`（E3）。
+
 ## v3-0929.1（2026-09-29）— 數字驗證不再中止工作：最後一次重試改為移除未支持的數字
 
 - 三次重試後模型仍寫出來源未支持的數字時，原本會整個工作中止。現在若這是唯一的錯誤，會把這些數字在 `summary`、`rationale`、`strongest_counterpoint`、`risks` 中替換為 `[數值已移除]`，其餘檢查（action、預期報酬、信心、引用 ID、辯論立場）全部照常重跑，任一不過仍中止。

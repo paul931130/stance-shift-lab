@@ -5,7 +5,7 @@ from datetime import date, timedelta
 from .data import (download_prices, fetch_fundamental, fetch_macro, fetch_sentiment,
                    score_sentiment_finbert, validate_dataset)
 from .logging_config import get_logger
-from .protocol import validate_case
+from .protocol import DESIGNS, validate_case
 
 logger = get_logger(__name__)
 
@@ -50,10 +50,16 @@ def refresh_fundamentals(store, key, requester=None):
     return {"id": store.add_dataset(validate_dataset(data)), "parent_dataset_id": key, "items": len(fetched)}
 
 
-def reusable_snapshot(store, ticker, analysis_date):
-    """The newest complete historical snapshot for this case, if any."""
+def reusable_snapshot(store, ticker, analysis_date, design="quarterly"):
+    """The newest complete historical snapshot for this case and study design, if any.
+
+    A month-end that is also a quarter-end has two snapshots (90-day and 30-day
+    news windows); the design keeps them apart.
+    """
     for existing in store.datasets():
+        rules = existing.get("collection_rules") or {}
         if (existing.get("ticker") == ticker and existing.get("kind") == "historical"
+                and rules.get("design", "quarterly") == design
                 and existing.get("requested_analysis_date") == analysis_date
                 and existing.get("coverage", {}).get("research_ready")):
             return existing
@@ -61,15 +67,16 @@ def reusable_snapshot(store, ticker, analysis_date):
 
 
 def collect_dataset(store, ticker, analysis_date, *, refresh=False, use_finbert=False,
-                    offline_news_only=False, progress=None, apply_finbert=None):
+                    offline_news_only=False, progress=None, apply_finbert=None, design="quarterly"):
     """Build (or reuse) one dataset snapshot for a case.
 
     Shared by the web API, its background tasks, the CLI and the Python API.
     ``progress(**values)`` receives ``stage`` and per-domain ``agents`` updates.
     """
     report = progress or (lambda **_: None)
-    validate_case(ticker, analysis_date)
-    existing = None if refresh else reusable_snapshot(store, ticker, analysis_date)
+    validate_case(ticker, analysis_date, design)
+    news_window_days = DESIGNS[design]["news_window_days"]
+    existing = None if refresh else reusable_snapshot(store, ticker, analysis_date, design)
     if existing:
         result_id = ((apply_finbert(existing["id"]) if apply_finbert else finbert_version(store, existing["id"]))["id"]
                      if use_finbert else existing["id"])
@@ -84,7 +91,7 @@ def collect_dataset(store, ticker, analysis_date, *, refresh=False, use_finbert=
             pool.submit(download_prices, ticker, analysis_date): "technical",
             pool.submit(fetch_fundamental, ticker, analysis_date): "fundamental",
             pool.submit(fetch_sentiment, ticker, analysis_date,
-                        allow_live=not offline_news_only): "sentiment",
+                        allow_live=not offline_news_only, window_days=news_window_days): "sentiment",
             pool.submit(fetch_macro, cutoff): "macro",
         }
         # Report each domain as soon as its agent finishes so the UI can
@@ -114,6 +121,9 @@ def collect_dataset(store, ticker, analysis_date, *, refresh=False, use_finbert=
                     agents[domain] = {"status": "error", "records": 0,
                         "message": f"{name} 下載失敗：{type(error).__name__}"}
             report(agents={key: dict(value) for key, value in agents.items()})
+    if design != "quarterly":  # Quarterly datasets keep their original rules (and content hash).
+        data["collection_rules"] = {**data["collection_rules"], "design": design,
+                                    "news_window_days": news_window_days}
     for domain in ("fundamental", "sentiment", "macro"):
         evidence, notes = collected[domain]
         data["evidence"].extend(evidence)

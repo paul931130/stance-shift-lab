@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from .protocol import QUARTER_DATES, TICKERS
+from .protocol import MONTH_END_DATES, QUARTER_DATES, TICKERS
 
 
 SPLIT_SCHEMA = "stance-shift-temporal-split/v1"
@@ -42,7 +42,7 @@ def classify_analysis_date(analysis_date: str) -> str:
         parsed = date.fromisoformat(str(analysis_date))
     except (TypeError, ValueError):
         return "live"
-    if str(analysis_date) not in QUARTER_DATES:
+    if str(analysis_date) not in QUARTER_DATES and str(analysis_date) not in MONTH_END_DATES:
         return "live"
     for name, definition in SPLIT_DEFINITIONS.items():
         if parsed.year in definition["years"]:

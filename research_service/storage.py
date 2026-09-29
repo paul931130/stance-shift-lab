@@ -226,8 +226,8 @@ class Store:
             job = self.unpack(db.execute("SELECT * FROM jobs WHERE id=?", (key,)).fetchone())
             if job["status"] in ("complete", "cancelled"):
                 raise ValueError("已完成或取消的實驗不能變更；可建立新實驗")
-            from .protocol import StudyProtocol
-            if command == "resume" and job["config"]["protocol"].get("version") != StudyProtocol().version:
+            from .protocol import protocol_is_current
+            if command == "resume" and not protocol_is_current(job["config"]["protocol"]):
                 raise ValueError("舊版實驗不能混用新版引擎；請使用複製至新版，原始紀錄會保留")
             wanted = int(command == "resume")
             # A pause request must be visible to the worker even when the job
@@ -278,8 +278,8 @@ class Store:
                 return None
             db.execute("UPDATE jobs SET status='running',owner=?,updated_at=? WHERE id=?", (owner, now(), row["id"]))
             job = self.unpack(row)
-            from .protocol import StudyProtocol
-            if job["config"]["protocol"].get("version") != StudyProtocol().version:
+            from .protocol import protocol_is_current
+            if not protocol_is_current(job["config"]["protocol"]):
                 db.execute("UPDATE jobs SET status='paused',wants_run=0,error=? WHERE id=?",
                            ("舊版實驗已隔離；請複製至新版重新執行", row["id"]))
                 return None

@@ -1,4 +1,5 @@
-"""Collect one ticker's quarterly datasets by calling the service's own download API.
+"""Collect one ticker's quarterly (or, with --design monthly, month-end) datasets by calling the
+service's own download API.
 
 This adds no collection logic: each quarter is one ``POST /api/datasets/download``,
 exactly what the web form and ``research.ps1 collect`` send.  News is read only
@@ -13,12 +14,12 @@ import sys
 import urllib.error
 import urllib.request
 
-from research_service.protocol import QUARTER_DATES, TICKERS
+from research_service.protocol import DESIGNS, TICKERS
 
 
-def collect(base_url, ticker, analysis_date, refresh=False, use_finbert=False, timeout=1800):
+def collect(base_url, ticker, analysis_date, refresh=False, use_finbert=False, timeout=1800, design="quarterly"):
     body = json.dumps({"ticker": ticker, "analysis_date": analysis_date, "refresh": refresh,
-                       "use_finbert": use_finbert, "offline_news_only": True}).encode()
+                       "use_finbert": use_finbert, "offline_news_only": True, "design": design}).encode()
     request = urllib.request.Request(base_url.rstrip("/") + "/api/datasets/download", data=body,
                                      headers={"Content-Type": "application/json"}, method="POST")
     with urllib.request.urlopen(request, timeout=timeout) as response:
@@ -35,22 +36,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("ticker")
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
-    parser.add_argument("--dates", nargs="+", default=list(QUARTER_DATES))
+    parser.add_argument("--design", choices=sorted(DESIGNS), default="quarterly",
+                        help="monthly collects month-end snapshots with a 30-day news window")
+    parser.add_argument("--dates", nargs="+", help="analysis dates (default: every anchor of the design)")
     parser.add_argument("--refresh", action="store_true", help="build new snapshots even if a complete one exists")
     parser.add_argument("--finbert", action="store_true", help="score headlines with FinBERT after collecting")
     args = parser.parse_args()
     ticker = args.ticker.upper()
     if ticker not in TICKERS:
         raise SystemExit("ticker must be in the approved study universe")
+    dates = args.dates or list(DESIGNS[args.design]["dates"])
     failures = 0
-    for analysis_date in args.dates:
+    for analysis_date in dates:
         try:
-            result = collect(args.base_url, ticker, analysis_date, args.refresh, args.finbert)
+            result = collect(args.base_url, ticker, analysis_date, args.refresh, args.finbert, design=args.design)
             print(f"{ticker} {analysis_date}: {summarize(result)}", flush=True)
         except (urllib.error.URLError, TimeoutError, ValueError) as error:
             failures += 1
             print(f"{ticker} {analysis_date}: FAILED {type(error).__name__}: {error}", flush=True)
-    print(f"done: {len(args.dates) - failures}/{len(args.dates)} quarters collected", flush=True)
+    print(f"done: {len(dates) - failures}/{len(dates)} {args.design} snapshots collected", flush=True)
     return 1 if failures else 0
 
 

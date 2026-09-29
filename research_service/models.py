@@ -9,7 +9,7 @@ import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import SWITCH_ROUND, StudyProtocol, visible_history
+from .protocol import DESIGNS, SWITCH_ROUND, visible_history
 
 _gputw_opener = None
 _gputw_lock = threading.Lock()
@@ -46,7 +46,7 @@ def gputw_urlopen(request, timeout):
     return opener.open(request, timeout=timeout)
 
 
-BACKTEST_HORIZONS = StudyProtocol().horizons
+BACKTEST_HORIZONS = tuple(sorted({n for design in DESIGNS.values() for n in design["horizons"]}))
 
 
 DEFAULT_MODEL_TIMEOUT_SECONDS = 240

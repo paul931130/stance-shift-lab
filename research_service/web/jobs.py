@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from ..data import research_inputs
 from ..errors import NotFoundError, PreflightError
 from ..protocol import (DEFAULT_RESEARCH_MODEL, FORMAL_SMALL_MODEL_ALLOWLIST, SMALL_MODEL_PATTERN,
-                        StudyProtocol, validate_case)
+                        StudyProtocol, protocol_is_current, validate_case)
 from ..readiness import coverage
 from ..reporting import export_job, study_report
 from ..splits import classify_analysis_date
@@ -28,13 +28,18 @@ def prepare(ctx, payload, model_probe=None):
     PreflightError with a reason code the UI maps to an override checkbox.
     """
     data = ctx.store.dataset(payload.dataset_id)
-    validate_case(data["ticker"], payload.analysis_date)
+    validate_case(data["ticker"], payload.analysis_date, payload.design)
+    rules = data.get("collection_rules") or {}
+    if data.get("kind") == "historical" and rules.get("design", "quarterly") != payload.design:
+        raise PreflightError("design_mismatch", f"資料集是 {rules.get('design', 'quarterly')} 設計（新聞窗口 {rules.get('news_window_days', 90)} 天），"
+                             f"不能用於 {payload.design} 設計的實驗；請以該設計重新蒐集資料")
     requested_date = data.get("requested_analysis_date")
     if data.get("kind") == "historical" and requested_date != payload.analysis_date:
         shown = requested_date or "未記錄"
         raise PreflightError("date_mismatch", f"資料集研究日是 {shown}，不能用於 {payload.analysis_date}；請選擇日期完全相同的資料集")
     effective_model = ctx.demo_model_id if ctx.demo_mode else payload.model
-    protocol = StudyProtocol(model=effective_model, voting_samples=payload.voting_samples, study=payload.study,
+    build_protocol = StudyProtocol.monthly if payload.design == "monthly" else StudyProtocol
+    protocol = build_protocol(model=effective_model, voting_samples=payload.voting_samples, study=payload.study,
         anonymize_ticker=payload.anonymize_ticker, dataset_kind=data["kind"],
         missing_data_policy=payload.missing_data_policy,
         allow_point_fundamental=payload.allow_point_fundamental,
@@ -101,7 +106,7 @@ def clone_request(ctx, original):
     """Rebuild a job request under the current protocol, keeping legacy exceptions auditable."""
     old = original["config"]
     p = old["protocol"]
-    legacy = p.get("version") != StudyProtocol().version
+    legacy = not protocol_is_current(p)
     model = p.get("model", DEFAULT_RESEARCH_MODEL)
     old_quality = coverage(ctx.store.dataset(old["dataset_id"]), old["analysis_date"]).get("sentiment_quality", {})
     # A user pressing the explicit migration action asks to reproduce a
@@ -120,7 +125,7 @@ def clone_request(ctx, original):
                                or legacy)
     payload = JobInput(dataset_id=old["dataset_id"], analysis_date=old["analysis_date"],
         model=model, study=p.get("study", "study1"), voting_samples=p.get("voting_samples", 7),
-        anonymize_ticker=p.get("anonymize_ticker", False),
+        anonymize_ticker=p.get("anonymize_ticker", False), design=p.get("design", "quarterly"),
         missing_data_policy=p.get("missing_data_policy", "allow_decision"),
         allow_point_fundamental=allow_point_fundamental,
         allow_small_model=allow_small, allow_low_quality_sentiment=allow_low_quality)
