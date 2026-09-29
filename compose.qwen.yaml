@@ -1,14 +1,12 @@
-# Second research service for the qwen3:32b cross-model study (protocol v3-0929.1).
-# Shares the database with the Gemini service on :8000, which keeps its own image
-# so the locked v3-0927.2 batch can still be resumed there.
-#   docker compose -p stance-shift-lab -f compose.qwen.yaml up -d --build
+# Experiment E2: qwen3:32b, quarterly design, protocol v3-0929.1 (finished; 180/180 complete).
+# Sealed: pinned image, its own copy of the database (taken 2026-09-29, sha256 verified),
+# so the results in the report can be re-opened without touching any other experiment.
+# Start it only to inspect results; new GPU work for this experiment is not planned.
+#   docker compose -p stance-shift-lab -f compose.qwen.yaml up -d
 services:
   research-qwen:
-    build:
-      context: .
-      dockerfile: Dockerfile.research
-    image: stance-shift-lab-research-qwen
-    restart: unless-stopped
+    image: stance-shift-lab-research-qwen:v3-0929.1
+    restart: "no"
     init: true
     ports:
       - "127.0.0.1:8001:8000"
@@ -17,14 +15,14 @@ services:
         required: false
     environment:
       RESEARCH_CONTAINER_LOCAL: "true"
-      RESEARCH_ENABLE_LIVE: "${RESEARCH_ENABLE_LIVE:-false}"
+      RESEARCH_ENABLE_LIVE: "false"
       RESEARCH_DATA_DIR: /data
       RESEARCH_MODEL: ollama/qwen3:32b
       RESEARCH_MODEL_TIMEOUT_SECONDS: "600"
-      # The shared /data/private/settings.json holds the older qwen3:14b tunnel.
-      RESEARCH_SETTINGS_PINNED: RESEARCH_MODEL,GPUTW_OLLAMA_BASE_URL,GPUTW_OLLAMA_API_KEY,GPUTW_INSTANCE_ID,RESEARCH_MODEL_TIMEOUT_SECONDS
     volumes:
-      - research-data:/data
+      - research-data-qwen:/data
       - ./research-inputs:/app/research-inputs
 volumes:
-  research-data:
+  research-data-qwen:
+    external: true
+    name: stance-shift-lab_research-data-qwen

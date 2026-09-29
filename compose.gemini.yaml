@@ -1,0 +1,29 @@
+# Experiment E1 (Pro batch): Gemini 3.1 Pro, quarterly design, protocol v3-0927.2 (locked, preregistered).
+# Stopped at 13/180 cases and kept as exploratory data: the cross-model comparator is a Flash-class
+# model close to qwen3:32b (see docs/experiment-architecture.md), not this one.
+# Pinned to the image the batch has been running on, so rebuilding the working tree
+# (which carries newer protocol versions) can never change the code under this experiment.
+#   docker compose -p stance-shift-lab -f compose.gemini.yaml up -d
+# One experiment = one protocol version = one image = one database volume = one port.
+services:
+  research-gemini:
+    image: stance-shift-lab-research:gemini-v3-0927.2
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8000:8000"
+    env_file:
+      - path: .env.research
+        required: false
+    environment:
+      RESEARCH_CONTAINER_LOCAL: "true"
+      RESEARCH_ENABLE_LIVE: "${RESEARCH_ENABLE_LIVE:-false}"
+      RESEARCH_DATA_DIR: /data
+      RESEARCH_MODEL: gemini/gemini-3.1-pro-preview
+    volumes:
+      - research-data:/data
+      - ./research-inputs:/app/research-inputs
+volumes:
+  research-data:
+    external: true
+    name: stance-shift-lab_research-data
