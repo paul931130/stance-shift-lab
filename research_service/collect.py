@@ -2,7 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
-from .data import (download_prices, fetch_fundamental, fetch_macro, fetch_sentiment,
+from .data import (NEWS_WINDOW_DAYS, download_prices, fetch_fundamental, fetch_macro, fetch_sentiment,
                    score_sentiment_finbert, validate_dataset)
 from .logging_config import get_logger
 from .protocol import DESIGNS, validate_case
@@ -48,6 +48,44 @@ def refresh_fundamentals(store, key, requester=None):
         data["_collection"]["fundamental"] = {"status": "complete", "records": len(fetched),
                                               "message": f"已重建 {len(fetched)} 筆 SEC 基本面證據"}
     return {"id": store.add_dataset(validate_dataset(data)), "parent_dataset_id": key, "items": len(fetched)}
+
+
+def refresh_news(store, key, allow_live=False, progress=None):
+    """Rebuild only the sentiment evidence of a snapshot under the uncapped news rule, as a new version.
+
+    Prices, fundamentals and macro data are kept byte for byte, so an
+    experiment rerun on the new snapshot differs from the old one only in its
+    news. Every headline of the window is kept and FinBERT-scored. By default
+    only local news files are read (no Alpha Vantage quota).
+    """
+    data = store.dataset(key)
+    analysis_date = data.get("requested_analysis_date")
+    if data.get("kind") != "historical" or not analysis_date:
+        raise ValueError("只能重建有研究分析日的歷史資料集")
+    rules = data.get("collection_rules") or {}
+    window_days = rules.get("news_window_days", NEWS_WINDOW_DAYS)
+    fetched, note = fetch_sentiment(data["ticker"], analysis_date, allow_live=allow_live,
+                                    window_days=window_days, item_limit=None)
+    by_domain = {domain: [item for item in data["evidence"] if item.get("domain") == domain] for domain in DOMAINS}
+    previous = len(by_domain["sentiment"])
+    by_domain["sentiment"] = fetched
+    data["evidence"] = [item for domain in DOMAINS for item in by_domain[domain]]
+    data["parent_dataset_id"] = key
+    data["collection_rules"] = {**rules, "news_item_limit": "uncapped"}
+    if note:
+        data["limitations"] = [*data.get("limitations", []), note]
+    data.setdefault("processing", {}).pop("sentiment", None)
+    data["processing"]["news_refresh"] = {"refreshed_from": key, "previous_items": previous,
+                                          "items": len(fetched), "window_days": window_days,
+                                          "live_sources": bool(allow_live)}
+    if fetched:
+        data = score_sentiment_finbert(data, progress=progress)
+    if isinstance(data.get("_collection"), dict):
+        data["_collection"]["sentiment"] = {"status": "complete" if fetched else "needs_input",
+                                            "records": len(fetched),
+                                            "message": f"已依不截斷規則重建 {len(fetched)} 則新聞並以 FinBERT 評分"}
+    return {"id": store.add_dataset(validate_dataset(data)), "parent_dataset_id": key,
+            "items": len(fetched), "previous_items": previous}
 
 
 def reusable_snapshot(store, ticker, analysis_date, design="quarterly"):

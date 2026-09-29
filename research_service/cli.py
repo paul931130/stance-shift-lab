@@ -50,6 +50,37 @@ def _run(args):
     return 0
 
 
+def _refresh_news(args):
+    from .collect import refresh_news
+    from .interactive import load_env_files
+    from .storage import Store
+
+    load_env_files()
+    store = Store(os.getenv("RESEARCH_DATA_DIR", "research-data"))
+    registration = store.preregistration(args.preregistered)
+    if not registration:
+        print(f"找不到協議 {args.preregistered} 的事前登記", file=sys.stderr)
+        return 2
+    results, failures = [], 0
+    for index, key in enumerate(registration["dataset_ids"], 1):
+        data = store.dataset(key)
+        label = f"[{index}/{len(registration['dataset_ids'])}] {data['ticker']} {data.get('requested_analysis_date')}"
+        try:
+            result = refresh_news(store, key, allow_live=args.allow_live)
+        except Exception as error:  # one case must not stop the batch
+            print(f"{label}: 失敗 {type(error).__name__}: {error}", flush=True)
+            failures += 1
+            continue
+        results.append({"ticker": data["ticker"], "analysis_date": data.get("requested_analysis_date"),
+                        "old_dataset_id": key, "dataset_id": result["id"],
+                        "previous_items": result["previous_items"], "items": result["items"]})
+        print(f"{label}: 新聞 {result['previous_items']} -> {result['items']} 則，{key[:12]} -> {result['id'][:12]}", flush=True)
+    with open(args.output, "w", encoding="utf-8") as handle:
+        json.dump({"source_protocol_hash": args.preregistered, "datasets": results}, handle, ensure_ascii=False, indent=2)
+    print(f"完成 {len(results)} 個，失敗 {failures} 個；對照表：{args.output}")
+    return 1 if failures else 0
+
+
 def _refresh_fundamentals(args):
     from .collect import refresh_fundamentals, reusable_snapshot
     from .interactive import load_env_files
@@ -135,6 +166,12 @@ def main(argv=None):
                                     help="只重建資料集的 SEC 基本面證據（另存新版本，不重抓新聞與行情）")
     refresh.add_argument("cases", nargs="*", help="TICKER:分析日，例如 NVDA:2024-12-31")
     refresh.add_argument("--all", action="store_true", help="研究範圍內所有股票 × 季末")
+    news = subparsers.add_parser("refresh-news",
+                                 help="只重建資料集的新聞（不截斷、全部以 FinBERT 評分；另存新版本，行情、財報、總經不變）")
+    news.add_argument("--preregistered", required=True, metavar="PROTOCOL_HASH",
+                      help="重建這個協議事前登記的所有資料集")
+    news.add_argument("--output", default="refreshed-news.json", help="寫出舊→新資料集對照（JSON）")
+    news.add_argument("--allow-live", action="store_true", help="本機新聞檔不足時呼叫 Alpha Vantage（會用掉額度）")
     subparsers.add_parser("version")
     subparsers.add_parser("doctor")
     power = subparsers.add_parser("power-plan", help="simulation-based design planning")
@@ -173,6 +210,8 @@ def main(argv=None):
         return 0 if result["status"] == "pass" else 1
     if args.command in ("run", "resume"):
         return _run(args)
+    if args.command == "refresh-news":
+        return _refresh_news(args)
     if args.command == "refresh-fundamentals":
         return _refresh_fundamentals(args)
     if args.command == "jobs":

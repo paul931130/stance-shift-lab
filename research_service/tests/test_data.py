@@ -147,6 +147,36 @@ class SecFundamentalTests(unittest.TestCase):
         revenue = next(item for item in items if item["metric"] == "Revenue")
         self.assertEqual(revenue["current_period"], "2024-09-30")
 
+    def test_refresh_news_replaces_only_sentiment_and_marks_uncapped(self):
+        import tempfile
+        from research_service.collect import refresh_news
+        from research_service.demo import demo_dataset
+        from research_service.storage import Store
+
+        base = {**demo_dataset(), "kind": "historical", "requested_analysis_date": "2024-12-31"}
+        headlines = [{"evidence_id": f"news-{i}", "domain": "sentiment", "claim": f"Headline {i}",
+                      "headline": f"Headline {i}", "available_at": "2024-12-01", "source": "https://example.com/",
+                      "evidence_scope": "target"} for i in range(60)]
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            old_id = store.add_dataset(base)
+            with patch("research_service.collect.fetch_sentiment", return_value=(headlines, "")) as fetch,                  patch("research_service.collect.score_sentiment_finbert", side_effect=lambda data, progress=None: data):
+                result = refresh_news(store, old_id)
+            fresh = store.dataset(result["id"])
+        self.assertEqual(fetch.call_args.kwargs["item_limit"], None)
+        self.assertFalse(fetch.call_args.kwargs["allow_live"])
+        self.assertEqual(result["items"], 60)
+        self.assertEqual(fresh["parent_dataset_id"], old_id)
+        self.assertEqual(fresh["collection_rules"]["news_item_limit"], "uncapped")
+        self.assertEqual([item["evidence_id"] for item in fresh["evidence"] if item["domain"] == "sentiment"],
+                         [item["evidence_id"] for item in headlines])
+
+        def others(data):
+            return [item for item in data["evidence"] if item["domain"] != "sentiment"]
+
+        self.assertEqual(others(fresh), others(base))
+        self.assertEqual(fresh["prices"], base["prices"])
+
     def test_refresh_fundamentals_keeps_other_domains_and_links_parent(self):
         import tempfile
         from research_service.collect import refresh_fundamentals
