@@ -73,8 +73,10 @@ def _refresh_news(args):
             continue
         results.append({"ticker": data["ticker"], "analysis_date": data.get("requested_analysis_date"),
                         "old_dataset_id": key, "dataset_id": result["id"],
-                        "previous_items": result["previous_items"], "items": result["items"]})
-        print(f"{label}: 新聞 {result['previous_items']} -> {result['items']} 則，{key[:12]} -> {result['id'][:12]}", flush=True)
+                        "previous_items": result["previous_items"], "items": result["items"],
+                        "local_items": result["local_items"], "carried_live_items": result["carried_live_items"]})
+        print(f"{label}: 新聞 {result['previous_items']} -> {result['items']} 則（本機 {result['local_items']}、"
+              f"沿用即時抓取 {result['carried_live_items']}），{key[:12]} -> {result['id'][:12]}", flush=True)
     with open(args.output, "w", encoding="utf-8") as handle:
         json.dump({"source_protocol_hash": args.preregistered, "datasets": results}, handle, ensure_ascii=False, indent=2)
     print(f"完成 {len(results)} 個，失敗 {failures} 個；對照表：{args.output}")

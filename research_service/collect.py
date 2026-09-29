@@ -2,7 +2,7 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
-from .data import (NEWS_WINDOW_DAYS, download_prices, fetch_fundamental, fetch_macro, fetch_sentiment,
+from .data import (NEWS_WINDOW_DAYS, _deduplicate_news, download_prices, fetch_fundamental, fetch_macro, fetch_sentiment,
                    score_sentiment_finbert, validate_dataset)
 from .logging_config import get_logger
 from .protocol import DESIGNS, validate_case
@@ -50,7 +50,12 @@ def refresh_fundamentals(store, key, requester=None):
     return {"id": store.add_dataset(validate_dataset(data)), "parent_dataset_id": key, "items": len(fetched)}
 
 
-def refresh_news(store, key, allow_live=False, progress=None):
+# Headlines fetched from the live Alpha Vantage API when a snapshot was collected
+# were never written to the local archive; refresh_news carries them over.
+LIVE_NEWS_SOURCE_TYPES = ("alpha_vantage_news_sentiment",)
+
+
+def refresh_news(store, key, allow_live=False, progress=None, carry_live=True):
     """Rebuild only the sentiment evidence of a snapshot under the uncapped news rule, as a new version.
 
     Prices, fundamentals and macro data are kept byte for byte, so an
@@ -68,6 +73,12 @@ def refresh_news(store, key, allow_live=False, progress=None):
                                     window_days=window_days, item_limit=None)
     by_domain = {domain: [item for item in data["evidence"] if item.get("domain") == domain] for domain in DOMAINS}
     previous = len(by_domain["sentiment"])
+    local_items = len(fetched)
+    carried = [item for item in by_domain["sentiment"]
+               if item.get("source_type") in LIVE_NEWS_SOURCE_TYPES] if carry_live else []
+    if carried:
+        # Same cross-source de-duplication as a fresh collection, with no cap.
+        fetched, _ = _deduplicate_news([*fetched, *carried], limit=None)
     by_domain["sentiment"] = fetched
     data["evidence"] = [item for domain in DOMAINS for item in by_domain[domain]]
     data["parent_dataset_id"] = key
@@ -76,7 +87,8 @@ def refresh_news(store, key, allow_live=False, progress=None):
         data["limitations"] = [*data.get("limitations", []), note]
     data.setdefault("processing", {}).pop("sentiment", None)
     data["processing"]["news_refresh"] = {"refreshed_from": key, "previous_items": previous,
-                                          "items": len(fetched), "window_days": window_days,
+                                          "items": len(fetched), "local_items": local_items,
+                                          "carried_live_items": len(carried), "window_days": window_days,
                                           "live_sources": bool(allow_live)}
     if fetched:
         data = score_sentiment_finbert(data, progress=progress)
@@ -85,7 +97,8 @@ def refresh_news(store, key, allow_live=False, progress=None):
                                             "records": len(fetched),
                                             "message": f"已依不截斷規則重建 {len(fetched)} 則新聞並以 FinBERT 評分"}
     return {"id": store.add_dataset(validate_dataset(data)), "parent_dataset_id": key,
-            "items": len(fetched), "previous_items": previous}
+            "items": len(fetched), "previous_items": previous,
+            "local_items": local_items, "carried_live_items": len(carried)}
 
 
 def reusable_snapshot(store, ticker, analysis_date, design="quarterly"):

@@ -164,6 +164,29 @@ class SecFundamentalTests(unittest.TestCase):
         self.assertEqual(len(sentiment), 150)
         self.assertTrue(all(item.get("sentiment_score") is not None for item in sentiment))
 
+    def test_refresh_news_carries_live_api_headlines_missing_from_local_files(self):
+        import tempfile
+        from research_service.collect import refresh_news
+        from research_service.demo import demo_dataset
+        from research_service.storage import Store
+
+        live = [{"evidence_id": f"av-{i}", "domain": "sentiment", "claim": f"Live {i}", "headline": f"Live {i}",
+                 "available_at": "2024-12-01", "source": f"https://example.com/live{i}",
+                 "source_type": "alpha_vantage_news_sentiment"} for i in range(5)]
+        local = [{"evidence_id": "fn-1", "domain": "sentiment", "claim": "Local", "headline": "Local",
+                  "available_at": "2024-12-02", "source": "https://example.com/local", "source_type": "FNSPID"},
+                 {**live[0], "evidence_id": "dup-of-live-0", "source_type": "alpha_vantage_news_cache"}]
+        base = {**demo_dataset(), "kind": "historical", "requested_analysis_date": "2024-12-31"}
+        base["evidence"] = [item for item in base["evidence"] if item["domain"] != "sentiment"] + live
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            old_id = store.add_dataset(base)
+            with patch("research_service.collect.fetch_sentiment", return_value=(local, "")), \
+                 patch("research_service.collect.score_sentiment_finbert", side_effect=lambda data, progress=None: data):
+                result = refresh_news(store, old_id)
+        self.assertEqual((result["local_items"], result["carried_live_items"]), (2, 5))
+        self.assertEqual(result["items"], 6)  # live-0 and its local copy are one article
+
     def test_uncapped_news_keeps_every_headline_after_deduplication(self):
         from research_service.data import fetch_sentiment
 
