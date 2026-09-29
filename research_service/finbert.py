@@ -90,11 +90,14 @@ def score(data, requester=None, progress=None):
     # Never mutate the caller's dataset, even when the last inference fails.
     enriched = deepcopy(data)
     items = [item for item in enriched.get("evidence", []) if item.get("domain") == "sentiment"]
-    if not 1 <= len(items) <= 100:
-        raise ValueError("FinBERT 每次須包含 1–100 則新聞標題")
+    # Scoring runs in batches below; the uncapped news rule keeps every headline of
+    # the window (hundreds to ~2,000), bounded only by the dataset evidence limit.
+    if not 1 <= len(items) <= 10000:
+        raise ValueError("FinBERT 每次須包含 1–10,000 則新聞標題")
     texts = [headline(item) if requester is None else str(item.get("headline") or item["claim"]).strip() for item in items]
     signature = {"model": MODEL, "revision": REVISION, "parameters": PARAMETERS, "version": PROCESSING_VERSION}
     keys = [digest({**signature, "text": text}) for text in texts]
+    text_by_key = dict(zip(keys, texts))
     completed = 0
 
     def update(**values):
@@ -120,7 +123,7 @@ def score(data, requester=None, progress=None):
                 tokenizer, model = prepare_model(update)
             for offset in range(0, len(pending), 1 if requester else PARAMETERS["batch_size"]):
                 batch_keys = pending[offset:offset + (1 if requester else PARAMETERS["batch_size"])]
-                batch_texts = [texts[keys.index(key)] for key in batch_keys]
+                batch_texts = [text_by_key[key] for key in batch_keys]
                 update(stage="scoring", message="在本機分析新聞標題")
                 if requester:
                     batch_results = [requester(text) for text in batch_texts]

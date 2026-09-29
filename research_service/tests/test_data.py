@@ -147,6 +147,23 @@ class SecFundamentalTests(unittest.TestCase):
         revenue = next(item for item in items if item["metric"] == "Revenue")
         self.assertEqual(revenue["current_period"], "2024-09-30")
 
+    def test_finbert_scores_more_than_one_hundred_headlines(self):
+        import tempfile
+        from research_service.data import score_sentiment_finbert
+        from research_service.demo import demo_dataset
+
+        data = demo_dataset()
+        data["evidence"] = [item for item in data["evidence"] if item["domain"] != "sentiment"] + [
+            {"evidence_id": f"n{i}", "domain": "sentiment", "claim": f"Headline {i}", "headline": f"Headline {i}",
+             "available_at": "2024-12-01", "source": f"https://example.com/{i}"} for i in range(150)]
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"RESEARCH_DATA_DIR": directory}):
+            scored = score_sentiment_finbert(
+                data, requester=lambda text: [{"label": "positive", "score": 0.6}, {"label": "negative", "score": 0.1},
+                                              {"label": "neutral", "score": 0.3}])
+        sentiment = [item for item in scored["evidence"] if item["domain"] == "sentiment"]
+        self.assertEqual(len(sentiment), 150)
+        self.assertTrue(all(item.get("sentiment_score") is not None for item in sentiment))
+
     def test_uncapped_news_keeps_every_headline_after_deduplication(self):
         from research_service.data import fetch_sentiment
 
