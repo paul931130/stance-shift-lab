@@ -1,0 +1,513 @@
+%% =====================================================================
+%% 多代理人立場交換辯論機制應用於投資決策
+%% 編譯：pdfLaTeX + BibTeX（Overleaf：Menu → Compiler → pdfLaTeX）
+%% 需同時上傳 references.bib
+%% =====================================================================
+
+\documentclass[12pt,a4paper]{article}
+
+%% ---------- 套件 ----------
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext}                  % 英文：Times
+\usepackage{amsmath}
+\usepackage[left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm]{geometry}
+\usepackage{CJKutf8}                    % 中文：楷體（bkai）
+\usepackage{graphicx,array,tabularx,booktabs,float}
+\usepackage{setspace,enumitem,footmisc}
+\usepackage[explicit]{titlesec}
+\usepackage{caption}
+\usepackage{natbib}
+\usepackage{tikz}
+\usetikzlibrary{positioning,arrows.meta,calc}
+\usepackage[bookmarks=false,hidelinks]{hyperref}
+
+%% ---------- 行距與段落 ----------
+\setstretch{1.5}                        % 內文 1.5 倍行距
+\setlength{\parindent}{2em}             % 首行縮排兩字
+\setlength{\parskip}{0pt}
+\setlist{itemsep=2pt,topsep=4pt,leftmargin=2.5em}
+\renewcommand{\arraystretch}{1.3}
+\setlength{\footnotesep}{8pt}
+
+%% ---------- 中文數字編號 ----------
+\newcommand{\chnum}[1]{\ifcase#1\or 一\or 二\or 三\or 四\or 五\or 六\or 七\or 八\or 九\or 十\fi}
+\renewcommand{\thesection}{\chnum{\value{section}}}
+\renewcommand{\thesubsection}{（\chnum{\value{subsection}}）}
+
+%% ---------- 標題：大小與間距（全黑） ----------
+\titleformat{\section}{\fontsize{16}{24}\selectfont}{\thesection、}{0em}{#1}
+\titleformat{\subsection}{\fontsize{14}{21}\selectfont}{\thesubsection}{0em}{#1}
+\titleformat{\paragraph}[runin]{\fontsize{12}{18}\selectfont}{}{0em}{#1}
+\titleformat{name=\section,numberless}{\fontsize{16}{24}\selectfont}{}{0em}{#1}
+\titlespacing*{\section}{0pt}{18pt}{12pt}
+\titlespacing*{\subsection}{0pt}{12pt}{6pt}
+\titlespacing*{\paragraph}{2em}{6pt}{0.5em}
+
+%% ---------- 圖表說明 ----------
+\captionsetup{font={small,stretch=1.2},labelsep=quad,skip=6pt}
+\captionsetup[table]{position=top}
+
+%% ---------- 頁碼 ----------
+\pagestyle{plain}
+
+%% ---------- 表格線條 ----------
+\setlength{\heavyrulewidth}{0.8pt}
+\setlength{\lightrulewidth}{0.4pt}
+
+\newcommand{\grp}[1]{\textsf{#1}}
+\newcolumntype{Y}{>{\raggedright\arraybackslash}X}
+
+\begin{document}
+\begin{CJK}{UTF8}{bkai}
+
+\renewcommand{\refname}{參考文獻}
+\renewcommand{\tablename}{表}
+\renewcommand{\figurename}{圖}
+
+%% =====================================================================
+%% 封面
+%% =====================================================================
+\begin{titlepage}
+\centering
+\setstretch{1.6}
+\vspace*{2cm}
+{\fontsize{18}{27}\selectfont 國立陽明交通大學管理科學系\par}
+\vspace{0.3cm}
+{\fontsize{16}{24}\selectfont 專題研究報告\par}
+\vspace{3.5cm}
+{\fontsize{20}{32}\selectfont 多代理人立場交換辯論機制\\ 應用於投資決策\par}
+\vspace{0.8cm}
+{\fontsize{14}{21}\selectfont Multi-Agent Role-Switching Debate\\ for Investment Decision-Making\par}
+\vfill
+{\fontsize{14}{24}\selectfont
+\begin{tabular}{r@{\hspace{1.5em}}l}
+學\hspace{2em}生： & 黃岳振 \\
+指導教授： & 林斯寅\ 教授 \\
+\end{tabular}\par}
+\vspace{2.5cm}
+{\fontsize{14}{21}\selectfont 中華民國一一五年九月\par}
+\vspace{1.5cm}
+\end{titlepage}
+
+%% =====================================================================
+%% 摘要
+%% =====================================================================
+\pagenumbering{roman}
+\begin{center}
+{\fontsize{16}{24}\selectfont 摘\quad 要\par}
+\end{center}
+\vspace{0.3cm}
+
+多代理人辯論被認為能改善大型語言模型（LLM）的推理，但在投資決策中，被指派立場的辯論者常持續強化原立場，未必真正回應相反證據。本研究提出「立場交換辯論」：看多與看空代理人在第二輪互換立場、親自反駁自己先前的主張，第三輪再換回原立場，最後由裁決者依原始證據決策。
+
+為公平比較，本研究建立具時間邊界的多代理人回測框架：資料代理人只使用分析日前可取得的技術面、基本面、情緒面與總經面資料建立不可變快照；單次判斷、獨立投票、固定立場辯論與立場交換辯論四種決策機制，在相同快照與相同模型呼叫預算下比較，並以 60 個交易日、扣除交易成本之報酬與配對檢定評估。
+
+研究過程中發現，雲端模型 Gemini 3.1 Pro 在未提供任何資料時，即能相當準確地回想其知識截止日前的個股走勢，且匿名化公司名稱無法阻止模型辨識公司，使回測結果可能反映記憶而非推理。因此本研究之主要實驗改採可本地部署之開源模型 qwen3:32b：該模型經同樣測試未顯示結果記憶，180 個案例得以整體分析。結果顯示，在 qwen3:32b 下，立場交換辯論之方向準確率與 Sharpe 比率與固定立場辯論、獨立投票及單次判斷皆無顯著差異，且均未勝過同期買進持有，此結論在 30 與 90 個交易日之預測期間同樣成立；立場交換雖使辯論產生大量新論點，卻多未改變最終決策。以 Gemini 3.1 Pro 進行之實驗將於後續補齊，並依知識截止日分段報告。
+
+\vspace{0.6cm}
+\noindent 關鍵詞：大型語言模型、多代理人辯論、立場交換、投資決策、回測、前視偏差
+
+\vspace{0.2cm}
+\noindent Keywords: large language models, multi-agent debate, role switching, investment decision-making, backtesting, look-ahead bias
+
+\vspace{0.2cm}
+\noindent JEL 分類代碼：G11、G17、C45、C63\footnote{依 JEL 分類系統自行選定：G11（投資組合選擇與投資決策）、G17（金融預測與模擬）、C45（神經網路與相關方法）、C63（計算方法與模擬）。}
+
+\clearpage
+\pagenumbering{arabic}
+
+%% =====================================================================
+\section{研究動機}
+\label{sec:motivation}
+%% =====================================================================
+
+大型語言模型已被用於財報解讀、新聞情緒分析與交易決策。近期研究讓多個代理人扮演研究團隊中的不同角色，例如 \citet{xiao2024tradingagents} 以分析師、研究員、交易員與風險管理者組成交易團隊。多代理人辯論在一般推理任務上已能提升事實正確性 \citep{du2023debate}，但辯論也可能退化為各說各話：代理人被指派立場後，傾向持續強化原立場，而非真正回應對方的證據 \citep{liang2023divergent}。
+
+在投資決策中，此現象對應到確認偏誤：分析者一旦形成看法，便傾向尋找支持的證據而忽略反證。若辯論者只是輪流陳述既定立場，辯論未必能產生比單次判斷更好的決策。
+
+\subsection{立場交換之動機}
+
+本研究的構想是讓辯論者在中途「成為自己的對手」。第二輪中，看多者改為看空、看空者改為看多，且只能看到自己第一輪的論述，必須指出並反駁自己先前的主張；第三輪再換回原立場，整合換位時發現的反證。若此過程能迫使代理人檢驗自身論點的弱點，最終裁決應更貼近證據。
+
+\subsection{研究問題}
+
+\begin{enumerate}[label=RQ\arabic*：,leftmargin=4em]
+  \item 同一模型內之組間比較：在相同資料與相同模型呼叫預算下，立場交換辯論（\grp{D}）之方向準確率與風險調整後報酬是否優於固定立場辯論（\grp{C}）？並以獨立投票（\grp{B}）與單次判斷（\grp{A}）檢驗此差異是否僅來自呼叫次數增加或辯論本身。
+  \item 跨時間尺度比較：RQ1 所得之四組結果與排序，在以季為單位（每季一次分析日、60 個交易日預測期間）與以月為單位（每月一次分析日、20 個交易日預測期間）之設計下是否一致？
+  \item 跨模型比較：RQ1 所得之四組結果與排序，在不同模型（具結果記憶之 Gemini 3.1 Pro 與無結果記憶之 qwen3:32b）之間是否一致？
+\end{enumerate}
+
+\noindent RQ1 為機制效果之檢驗，核心比較為 \grp{D} 對 \grp{C}，因兩者僅差在立場交換；\grp{B} 用以排除「呼叫次數較多」之解釋，\grp{A} 為基準。RQ2 與 RQ3 皆為 RQ1 結論之穩健性檢驗，分別改變分析頻率與模型。由於模型可能記得研究期間之報酬，使跨模型之差異無法歸因於決策機制，本研究另以無資料回想與匿名化辨識檢驗各模型之記憶汙染，作為 RQ3 之補充分析，並不視為獨立之研究問題。三個研究問題不限定模型，每個受測模型皆依相同程序回答。本報告以 qwen3:32b 之季度實驗回答 RQ1；RQ2 之月度實驗與 RQ3 之跨模型比較（待 Gemini 3.1 Pro 實驗補齊）留待後續，報告中標示為待補。
+
+\subsection{研究貢獻}
+
+\begin{enumerate}[label=\arabic*.]
+  \item 提出立場交換辯論機制，並設計在呼叫次數上對齊之四組比較實驗，使組間差異只來自決策機制。
+  \item 建立具時間邊界、可追溯之多代理人回測框架：所有決策機制使用同一份不可變資料快照，模型輸出經逐項引用與數字驗證，研究樣本於執行前事前登記。
+  \item 以無資料回想與匿名化辨識兩項測試量化模型之記憶汙染，並提出依知識截止日分段報告之分析設計。
+\end{enumerate}
+
+\subsection{文獻回顧}
+\label{sec:related}
+
+\paragraph{多代理人辯論與自我一致性。}
+\citet{du2023debate} 讓多個模型實例進行多輪辯論後收斂答案，改善推理與事實正確性；\citet{liang2023divergent} 指出辯論者容易陷入思想退化，因而引入立場對立與裁判機制。自我一致性方法 \citep{wang2023selfconsistency} 以多次取樣投票提升穩定性，為比較辯論效果時必要之對照組。
+
+\paragraph{大型語言模型之金融決策。}
+\citet{xiao2024tradingagents} 以多角色代理人進行交易決策，並以模型知識截止日之後的期間回測。金融文本方面，FinBERT \citep{araci2019finbert} 常用於新聞情緒分析，FNSPID \citep{dong2024fnspid} 則提供具時間戳記之金融新聞資料。
+
+\paragraph{前視偏差與記憶汙染。}
+\citet{glasserman2023lookahead} 指出以 GPT 產生之情緒訊號預測報酬時，模型可能透過對公司的既有知識引入前視偏差，並嘗試以匿名化緩解。本研究進一步直接量測模型是否能在無資料下回想後續報酬，並檢驗匿名化是否足以隱藏公司身分。
+
+%% =====================================================================
+\section{研究資料}
+\label{sec:data}
+%% =====================================================================
+
+研究範圍為九檔美國大型股（AAPL、NVDA、GOOGL、MSFT、AMZN、JPM、MCD、INTC、GE），分析日為 2021 至 2025 年共二十個季末，合計 180 個案例。每個案例於分析日建立一份資料快照，所有證據皆記錄可取得時間，僅分析日前已公開者得進入研究輸入。資料來源與時間處理方式如表~\ref{tab:data}。
+
+\begin{table}[H]
+\centering\small
+\caption{資料來源與時間邊界處理}
+\label{tab:data}
+\begin{tabularx}{\textwidth}{@{}l l Y@{}}
+\toprule
+面向 & 來源 & 內容與時間處理 \\
+\midrule
+技術面 & 調整後日行情 & 近 20 日報酬、20 日與 60 日均線相對位置、年化波動度；僅使用分析日前之價格。 \\
+基本面 & SEC XBRL 財報 & 營收、淨利、營業現金流與前一年同期比較，以及負債對資產比率；依申報日期篩選，僅保留分析日前已公開者。 \\
+情緒面 & 金融新聞標題 & 分析日前 90 天內與目標公司相關之新聞標題，並以 FinBERT 評分。 \\
+總經面 & FRED／ALFRED & 使用歷史版本資料，僅採用分析日當時實際已發布之數值，排除事後修正。 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+\subsection{變數定義}
+
+反應變數為 60 日報酬（RET60）：於分析日後第一個交易日開盤進場，持有 60 個交易日後於開盤出場，並扣除 Corwin--Schultz 價差估計之交易成本 \citep{corwin2012spread}；30 與 90 個交易日作為穩健性檢查，方向準確率以 RET60 之正負判定。解釋資訊為表~\ref{tab:data} 之四個面向，不以數值特徵輸入模型，而是整理為附有識別碼之證據，由研究代理人彙整為中立研究報告，供決策代理人引用。
+
+\subsection{資料品質處理}
+
+為確保快照僅反映分析日當時可得之資訊，本研究採取三項處理：其一，財報依申報日期而非會計期末篩選，並以相同會計科目、相同期間長度與前一年同期比較，避免混用不同期間；其二，年增率以前期絕對值為分母，使負數基期惡化時呈現負值，避免符號誤導；其三，快照以內容雜湊為識別碼，四組決策機制與所有重跑皆讀取同一份快照。
+
+%% =====================================================================
+\section{研究方法}
+\label{sec:methods}
+%% =====================================================================
+
+\subsection{研究架構}
+
+圖~\ref{fig:flow} 為自原始資料至報告結果之流程。協調者依股票與分析日派發任務；資料代理人建立快照；四個研究代理人分別整理一個面向，合併為中立研究報告後鎖定；四組決策機制讀取同一份報告；守門員檢查引用與風險門檻；回測模組計算實際報酬並寫入長期記憶，最後進行統計檢定。
+
+\begin{figure}[H]
+\centering
+\begin{tikzpicture}[
+  node distance=5mm and 7mm,
+  box/.style={draw=black, align=center, font=\small, minimum height=9mm, inner sep=4pt, line width=0.5pt},
+  arm/.style={box, fill=gray!12, minimum width=25mm},
+  arr/.style={-{Stealth[length=2mm]}, line width=0.5pt}
+]
+\node[box] (in) {股票、分析日};
+\node[box, right=of in] (snap) {資料快照\\（分析日前資料）};
+\node[box, right=of snap] (res) {研究代理人\\中立研究報告};
+\node[arm, below=11mm of snap, xshift=-44mm] (a) {\grp{A}\ 單次判斷};
+\node[arm, right=3mm of a] (b) {\grp{B}\ 獨立投票};
+\node[arm, right=3mm of b] (c) {\grp{C}\ 固定立場};
+\node[arm, right=3mm of c] (d) {\grp{D}\ 立場交換};
+\node[box, below=10mm of $(b)!0.5!(c)$] (gate) {守門員：引用驗證、資料覆蓋、風險門檻};
+\node[box, below=of gate] (bt) {回測：開盤對開盤、扣除交易成本};
+\node[box, below=of bt] (st) {統計檢定：配對檢定、Holm 校正、知識截止日分段};
+\draw[arr] (in) -- (snap);
+\draw[arr] (snap) -- (res);
+\foreach \g in {a,b,c,d} \draw[arr] (res.south) -- (\g.north);
+\foreach \g in {a,b,c,d} \draw[arr] (\g.south) -- (gate.north);
+\draw[arr] (gate) -- (bt);
+\draw[arr] (bt) -- (st);
+\end{tikzpicture}
+\caption{研究流程。四組決策機制讀取同一份鎖定之研究報告，差異僅在決策方式。}
+\label{fig:flow}
+\end{figure}
+
+\subsection{對照組}
+
+\paragraph{單次判斷（\grp{A}）。}
+讀取研究報告後直接做出一次決策，代表不使用任何集成或辯論之基準。
+
+\paragraph{獨立投票（\grp{B}）。}
+同一提示詞以較高溫度獨立取樣七次，採多數決；平手時取信心度最高者。此組對應自我一致性方法 \citep{wang2023selfconsistency}，用以檢驗辯論之效果是否僅來自增加呼叫次數。
+
+\paragraph{固定立場辯論（\grp{C}）。}
+看多與看空代理人辯論三輪，每輪兩次呼叫，最後由中立裁決者決策，共七次呼叫。
+
+\subsection{實驗組：立場交換辯論}
+
+立場交換辯論（\grp{D}）與 \grp{C} 完全相同，唯一差異為第二輪兩位代理人互換立場、第三輪換回原立場。換位時代理人僅能看到自己第一輪之論述，看不到對手內容，以避免僅改寫對方說法；代理人須引用自己要推翻之主張、說明其為何不成立，並回報信心之變化。維持其餘結構不變，使 \grp{D} 與 \grp{C} 之差異只來自立場交換本身。
+
+裁決者須逐一核對雙方引用之證據是否確實支持其主張，未有證據支持之主張不予採計。長期記憶僅提供予辯論組之裁決者，且僅包含分析日前已到期之同股票案例。
+
+\subsection{實驗設計}
+
+四組在模型呼叫次數上對齊（表~\ref{tab:arms}），以排除「呼叫次數較多因而表現較佳」之解釋。
+
+\begin{table}[H]
+\centering\small
+\caption{四組決策機制與模型呼叫次數}
+\label{tab:arms}
+\begin{tabularx}{\textwidth}{@{}c l c Y@{}}
+\toprule
+組別 & 名稱 & 呼叫次數 & 流程 \\
+\midrule
+\grp{A} & 單次判斷 & 1 & 讀取研究報告後做出一次決策 \\
+\grp{B} & 獨立投票 & 7 & 七次獨立取樣，多數決 \\
+\grp{C} & 固定立場辯論 & 7 & 看多與看空辯論三輪，再由裁決者決策 \\
+\grp{D} & 立場交換辯論 & 7 & 同 \grp{C}，但第二輪互換立場、第三輪換回 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+每次決策輸出 60 個交易日之預期報酬、信心度、理由、引用證據與風險。最終之買進、持有或賣出由預期報酬相對於中性帶推導，中性帶為該股歷史 60 日報酬標準差之一半，以避免模型以「持有」迴避判斷。所有輸出寫入前皆經驗證：引用之證據必須存在，理由中之數字必須能在提供予模型之內容中找到原樣。
+
+研究樣本於執行前以批次方式事前登記，僅登記後建立之實驗計入正式結果。分析日另依年份分為訓練（2021--2023）、驗證（2024）與測試（2025）三段。
+
+主要實驗使用 qwen3:32b，所有組別使用同一模型與同一協議版本；Gemini 3.1 Pro 之實驗使用相同之 180 個案例、資料快照與實驗參數，另行事前登記，於後續補齊（表~\ref{tab:models}）。兩者各自檢定，不合併統計。選擇 qwen3:32b 為主要模型之理由見第~\ref{sec:results} 節之 RQ3 補充分析（記憶汙染檢驗）。
+
+\begin{table}[H]
+\centering\small
+\caption{主要實驗與後續實驗}
+\label{tab:models}
+\begin{tabularx}{\textwidth}{@{}l Y Y@{}}
+\toprule
+ & 主要實驗 & 後續實驗（待補） \\
+\midrule
+模型 & qwen3:32b（開源，Ollama 部署於 RTX 5090） & Gemini 3.1 Pro（雲端 API） \\
+知識截止日 & 未公布；實測無結果記憶 & 2025 年 1 月（官方公布） \\
+協議版本 & v3-0929.1 & v3-0927.2 \\
+結果分析 & 180 個案例整體分析 & 依知識截止日分三段 \\
+\bottomrule
+\end{tabularx}
+\end{table}
+
+兩者之協議僅在驗證失敗之處理上不同：模型重試三次後仍於理由中寫出提示內容未出現之數字時，Gemini 實驗中止該案例；主要實驗則將該數字自敘述文字中移除並記錄，決策欄位（方向、預期報酬、信心）不作任何修改，以免少數敘述錯誤使整個案例遺失。
+
+\subsection{績效衡量與統計檢定}
+
+主要指標為 60 日方向準確率與 Sharpe 比率。持有視為棄權，另以覆蓋率（下注比例）、條件準確率（有下注時之準確率）與持有機會成本呈現。組間以 \grp{D} 對 \grp{A}、\grp{B}、\grp{C} 進行配對檢定：方向準確率採 McNemar 檢定 \citep{mcnemar1947}，Sharpe 比率採 Jobson--Korkie \citep{jobson1981sharpe} 與 Ledoit--Wolf \citep{ledoit2008sharpe} 檢定，並以 Holm 法 \citep{holm1979} 校正多重比較；自助法以日期區塊重抽樣，保留同一日期不同股票間之相關性。正式檢定需至少 30 個完成案例。
+
+各研究問題之分析方式如下。RQ1 以 60 日為事前指定之主要期間，於同一模型內比較四組；30 與 90 個交易日為期間穩健性檢查，檢定與 Holm 校正於各期間內進行。RQ2 以每月一次之分析日搭配 20 個交易日之預測期間（相鄰案例之期間互不重疊）重做 RQ1 之全部比較，並與以季為單位之結果對照；此為後續實驗，需另行修訂協議、補齊新聞資料並重新事前登記。RQ3 待兩個模型皆完成後，就相同之 180 個案例配對，比較同一組別在兩模型下之方向準確率（McNemar 檢定）與 Sharpe 比率（Jobson--Korkie 與 Ledoit--Wolf 檢定），並以 Holm 法校正；補充分析則以無資料回想與匿名化辨識兩項測試（第~\ref{sec:memory} 節），記錄各模型能否回想研究期間之報酬、能否由匿名化後之證據辨識公司，用以判斷模型間之差異是否可能來自結果記憶，並對具結果記憶之模型依其知識截止日分段報告。
+
+%% =====================================================================
+\section{實驗結果}
+\label{sec:results}
+%% =====================================================================
+
+\subsection{同一模型內之組間比較（RQ1）}
+\label{sec:mainresults}
+
+qwen3:32b 之 180 個事前登記案例全數完成，無重複、未完成或研究代理人降級而排除之案例。以下為主要分析設定：候選決策層、60 個交易日、扣除 Corwin--Schultz 交易成本、四組等權重。
+
+\begin{table}[H]
+\centering\small
+\caption{主要實驗結果（qwen3:32b，180 個案例，60 日，扣除交易成本）}
+\label{tab:main}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+組別 & 覆蓋率 & 條件準確率 & 持有機會成本 & 總報酬 & 最大回撤 & 年化 Sharpe \\
+\midrule
+\grp{A}\ 單次判斷 & 75.0\% & 57.8\% & 7.34 & 3.09\% & $-1.67\%$ & 0.80 \\
+\grp{B}\ 獨立投票 & 80.0\% & 55.6\% & 8.00 & 2.66\% & $-1.71\%$ & 0.64 \\
+\grp{C}\ 固定立場辯論 & 81.1\% & 59.6\% & 9.93 & 3.57\% & $-1.52\%$ & 0.92 \\
+\grp{D}\ 立場交換辯論 & 79.4\% & 55.9\% & 7.66 & 2.79\% & $-1.26\%$ & 0.79 \\
+\midrule
+買進持有（相同期間） & -- & -- & -- & 5.60\% & $-1.58\%$ & 1.02 \\
+\bottomrule
+\end{tabular}
+\par\smallskip
+\raggedright\footnotesize 覆蓋率為買進或賣出（非持有）之案例比例；條件準確率為有下注案例之方向準確率；持有機會成本為選擇持有時錯失之平均絕對報酬（百分點）。報酬為 180 個案例等權重組合於 1,200 個交易日之結果，未作槓桿。
+\end{table}
+
+\paragraph{組間檢定。}
+表~\ref{tab:tests} 為 \grp{D} 對其餘三組之配對檢定。三項比較之方向準確率差異均在 1 個百分點以內，McNemar 檢定之 $p$ 值皆為 1；兩組皆有下注之案例中，決策方向不一致者僅 6 至 10 個。Sharpe 比率方面，\grp{D} 略低於 \grp{C}（年化差 $-0.13$），略高於 \grp{B}（$+0.15$），與 \grp{A} 幾乎相同，Ledoit--Wolf 區塊自助檢定之 $p$ 值介於 0.45 至 0.93，經 Holm 校正後皆為 1。
+
+\begin{table}[H]
+\centering\small
+\caption{立場交換辯論（\grp{D}）與其餘三組之配對檢定（60 日）}
+\label{tab:tests}
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+比較 & 配對案例 & 不一致 & 準確率差 & McNemar $p$ & 年化 Sharpe 差 & Ledoit--Wolf $p$（Holm） \\
+\midrule
+\grp{D} 對 \grp{C} & 129 & 10 & 0.0 & 1.00 & $-0.13$ & 0.45（1.00） \\
+\grp{D} 對 \grp{B} & 126 & 9 & $+0.8$ & 1.00 & $+0.15$ & 0.53（1.00） \\
+\grp{D} 對 \grp{A} & 119 & 6 & 0.0 & 1.00 & $-0.01$ & 0.93（1.00） \\
+\bottomrule
+\end{tabular}
+\par\smallskip
+\raggedright\footnotesize 準確率差單位為百分點，以兩組皆下注之案例計算。
+\end{table}
+
+其他預測期間之結果見下節之期間穩健性檢查。
+
+\paragraph{決策分布與一致性。}
+180 個案例中，114 個（63\%）四組做出完全相同之決策，57 個出現兩種決策，僅 9 個出現三種。四組皆以買進為主（\grp{A} 114、\grp{B} 116、\grp{C} 131、\grp{D} 120 個案例），賣出僅 15 至 28 個，模型整體呈現偏多傾向。然而立場交換確實改變了辯論內容：以文字重疊衡量之論點新穎度，\grp{D} 平均為 0.42，\grp{C} 僅 0.01，顯示換位輪次產生了大量新論點，只是這些論點多未改變裁決者之最終方向。
+
+\paragraph{年度分布。}
+表~\ref{tab:years} 為各年度之條件準確率。2022 年市場下跌、多數案例之 60 日報酬為負，四組準確率皆低，其中 \grp{D} 為 36\%，高於 \grp{C} 之 14\%；2023 與 2024 年則 \grp{D} 低於 \grp{C}。各年度下注案例僅約 20 至 33 個，此為描述性結果，未作檢定。
+
+\begin{table}[H]
+\centering\small
+\caption{各年度條件準確率（60 日，括號內為下注案例數）}
+\label{tab:years}
+\begin{tabular}{@{}lcccc@{}}
+\toprule
+年度 & \grp{A} & \grp{B} & \grp{C} & \grp{D} \\
+\midrule
+2021 & 63\%（30） & 61\%（31） & 71\%（31） & 67\%（33） \\
+2022 & 21\%（19） & 22\%（23） & 14\%（22） & 36\%（25） \\
+2023 & 74\%（27） & 71\%（28） & 76\%（29） & 61\%（28） \\
+2024 & 53\%（30） & 50\%（32） & 56\%（32） & 41\%（29） \\
+2025 & 66\%（29） & 67\%（30） & 69\%（32） & 71\%（28） \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{驗證與數字移除。}
+3,960 次模型呼叫中，1,351 次（34\%）至少重試一次後通過驗證；重試三次後仍含提示內容未出現之數字而移除者共 122 次，分布於 75 個案例。移除僅影響敘述文字，不改變任何決策欄位，但顯示此規模之開源模型常自行計算或改寫數字。
+
+\paragraph{對 RQ1 之回答。}
+在 qwen3:32b 下，立場交換辯論並未優於固定立場辯論，亦未優於獨立投票與單次判斷；四組之方向準確率與 Sharpe 比率皆無統計上可區分之差異，且均未勝過同期買進持有。立場交換使辯論產生新論點，但未轉化為更好之決策。
+
+\subsection{RQ1 穩健性檢查：預測期間}
+\label{sec:horizon}
+
+本節將 RQ1 之四組比較於 30、60、90 個交易日三種預測期間重複，60 日為主要期間，用以檢查 RQ1 之結論是否依賴特定的預測期間；分析日仍為每季一次，與 RQ2 之月度設計不同。表~\ref{tab:horizon} 為 qwen3:32b 之條件準確率與 Sharpe 比率，表~\ref{tab:horizontests} 為 30 與 90 日之配對檢定（60 日見表~\ref{tab:tests}）。
+
+\begin{table}[H]
+\centering\small
+\caption{不同預測期間之表現（qwen3:32b，扣除交易成本）}
+\label{tab:horizon}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+預測期間 & \grp{A} & \grp{B} & \grp{C} & \grp{D} & 買進持有 \\
+\midrule
+\multicolumn{6}{@{}l}{條件準確率（\%）} \\
+30 個交易日 & 57.0 & 55.6 & 61.0 & 57.3 & -- \\
+60 個交易日 & 57.8 & 55.6 & 59.6 & 55.9 & -- \\
+90 個交易日 & 61.5 & 59.7 & 63.0 & 60.1 & -- \\
+\midrule
+\multicolumn{6}{@{}l}{年化 Sharpe 比率} \\
+30 個交易日 & 0.26 & $-0.06$ & 0.75 & 0.41 & 1.40 \\
+60 個交易日 & 0.80 & 0.64 & 0.92 & 0.79 & 1.02 \\
+90 個交易日 & 0.84 & 0.53 & 1.06 & 0.94 & 1.11 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering\small
+\caption{立場交換辯論（\grp{D}）與其餘三組之配對檢定（30 與 90 日）}
+\label{tab:horizontests}
+\begin{tabular}{@{}llcccc@{}}
+\toprule
+期間 & 比較 & 準確率差 & McNemar $p$ & 年化 Sharpe 差 & Ledoit--Wolf $p$（Holm） \\
+\midrule
+30 日 & \grp{D} 對 \grp{C} & $-1.6$ & 0.75 & $-0.35$ & 0.19（0.56） \\
+30 日 & \grp{D} 對 \grp{B} & $+2.4$ & 0.51 & $+0.47$ & 0.23（0.56） \\
+30 日 & \grp{D} 對 \grp{A} & 0.0 & 1.00 & $+0.14$ & 0.64（0.64） \\
+\midrule
+90 日 & \grp{D} 對 \grp{C} & 0.0 & 1.00 & $-0.12$ & 0.43（0.87） \\
+90 日 & \grp{D} 對 \grp{B} & $-0.8$ & 1.00 & $+0.41$ & 0.17（0.50） \\
+90 日 & \grp{D} 對 \grp{A} & 0.0 & 1.00 & $+0.10$ & 0.60（0.87） \\
+\bottomrule
+\end{tabular}
+\par\smallskip
+\raggedright\footnotesize 準確率差單位為百分點，以兩組皆下注之案例計算。
+\end{table}
+
+三種期間呈現一致的模式。第一，條件準確率以 90 日最高，30 與 60 日相近，四組皆然。第二，Sharpe 比率大致隨期間拉長而上升（\grp{B} 在 90 日略低於 60 日除外）；\grp{C} 在三種期間皆最高（0.75、0.92、1.06），\grp{B} 皆最低，\grp{D} 在 30 與 90 日居第二、60 日居第三。第三，\grp{D} 與 \grp{C} 之年化 Sharpe 差在三個期間皆為負（$-0.35$、$-0.13$、$-0.12$），且隨期間拉長而縮小，但沒有任何比較達統計顯著；未校正之最小 $p$ 值為 0.11（90 日 \grp{D} 對 \grp{B} 之 Jobson--Korkie 檢定），Holm 校正後最小為 0.50。第四，四組在三種期間皆未勝過同期買進持有，30 日差距最大（四組最高之 Sharpe 為 0.75，買進持有為 1.40），90 日差距最小（\grp{C} 為 1.06，買進持有為 1.11）。
+
+90 日預測期間長於季度分析日之間隔（約 63 個交易日），同一檔股票相鄰兩季之持有期重疊，觀察值並非獨立。Ledoit--Wolf 區塊自助法處理日期間之相依，但 McNemar 檢定未處理，故 90 日之 $p$ 值宜保守解讀。
+
+\paragraph{小結。}
+在 qwen3:32b 下，四組之相對表現在三種預測期間大致一致：固定立場辯論最佳、獨立投票最差，立場交換辯論居中，且組間差異在任何期間皆未達統計顯著；RQ1 之結論不因預測期間而改變。
+
+\subsection{跨時間尺度比較（RQ2）}
+\label{sec:timescale}
+
+RQ2 需要以每月一次之分析日重做實驗，目前尚未執行，列為待補。以季為單位時，60 個交易日之預測期間與季度分析日之間隔（約 63 個交易日）相當，案例彼此不重疊，但 2021 至 2025 年僅有 180 個案例，Gemini 知識截止日後之案例更只有 36 個。改以月為單位並搭配 20 個交易日之預測期間，案例約增為 540 個（九檔 $\times$ 六十個月），預測期間仍互不重疊，可提高檢定力，並使 Gemini 知識截止日後之案例增至約 108 個。此項實驗需修訂協議之主要預測期間與分析日規則，補齊每個月底前 90 天之新聞資料，並重新事前登記，故留待後續進行。
+
+\subsection{跨模型比較（RQ3）}
+\label{sec:crossmodel}
+
+RQ3 需要同一組別在兩個模型下之完整結果。qwen3:32b 之 180 個案例已完成；Gemini 3.1 Pro 之 180 個案例同樣已事前登記，受限於 API 每日呼叫額度，目前僅完成 13 個（2021 年第一、二季），全數位於知識截止日前，尚未達正式檢定所需之 30 個，故現階段僅作初步觀察，不對 RQ3 下結論。
+
+已完成之 13 個案例中，11 個案例四組決策方向完全一致，2 個出現分歧。四組高度一致之現象與記憶汙染之解釋相符：若模型能回想結果，各決策機制容易收斂至同一答案，組間差異因而被壓縮。跨模型比較與知識截止日分段結果將於實驗補齊後報告；兩個模型在結果記憶上的差異見下節之補充分析，為解讀該比較之依據。
+
+\subsection{RQ3 補充分析：記憶汙染檢驗}
+\label{sec:memory}
+
+本節並非獨立之研究問題，而是為判斷 RQ3 中模型間之差異是否可能來自結果記憶：若某模型能回想研究期間之報酬，其決策機制之差異便可能被壓縮或扭曲。
+
+在不提供任何資料之情況下，本研究詢問模型「某股票於某日之後 60 個交易日之漲跌方向與幅度」，並與實際報酬比較。Gemini 3.1 Pro 之官方知識截止日為 2025 年 1 月，結果如表~\ref{tab:memory}。
+
+\begin{table}[H]
+\centering\small
+\caption{無資料回想測試：Gemini 3.1 Pro（九檔研究股票）}
+\label{tab:memory}
+\begin{tabular}{@{}lccc@{}}
+\toprule
+分析日 & 方向正確率 & 一律猜多數方向之基準 & 模型自報信心 \\
+\midrule
+2022--2024（截止日前） & 89\% & 59\% & 中至高 \\
+2025（截止日後） & 70\% & 70\% & 皆為 0 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+截止日前，模型之方向判斷明顯優於基準，預測幅度常與實際報酬僅差一至兩個百分點；截止日後，模型自承不知，對每一檔股票皆給出相同之小幅上漲猜測，正確率與基準相同。另將研究報告中之股票代號、公司名稱與經營者姓名替換為代稱後交予模型辨識，九家公司全數被正確辨識，線索包括特定新聞事件與財報規模。由此可知，單純匿名化無法阻止模型連結其記憶。
+
+據此，本研究依每個案例 60 日結果期間相對於知識截止日之位置，將案例分為截止日前、跨越截止日與截止日後三段，分別計算四組結果。主要結論須在截止日後之樣本外期間同樣成立；僅在截止日前成立之組間差異，視為可能由記憶造成。
+
+qwen3:32b 未公布知識截止日，本研究以相同方式實測（表~\ref{tab:memoryqwen}）。每一年之方向正確率皆不高於一律猜多數方向之基準；模型幾乎一律回答小幅上漲（約 $+12.5\%$ 至 $+15\%$），與實際報酬無關，例如 INTC 於 2024 年 6 月底之後實際下跌 25.8\%，模型回答上漲 15\%。2022 年模型自報信心雖達 0.64，誤差卻最大，屬於自信之虛構而非回想。
+
+\begin{table}[H]
+\centering\small
+\caption{無資料回想測試：qwen3:32b}
+\label{tab:memoryqwen}
+\begin{tabular}{@{}lccccc@{}}
+\toprule
+分析日 & 題數 & 方向正確率 & 基準 & 自報信心 & 平均絕對誤差 \\
+\midrule
+2022 年 6 月底 & 9 & 33\% & 67\% & 0.64 & 35.9 個百分點 \\
+2023 年 6 月底 & 9 & 33\% & 67\% & 0 & 19.8 個百分點 \\
+2024 年 6 月底 & 9 & 56\% & 56\% & 0 & 14.6 個百分點 \\
+2025 年四季 & 36 & 72\% & 72\% & 0 & 14.5 個百分點 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+匿名化辨識方面，將決策代理人所讀取之證據匿名化後交予 qwen3:32b，18 個案例（2023 與 2024 年 6 月底各九檔）中僅 6 個被正確辨識（33\%，Gemini 為 9 個中 9 個）。辨識成功時之線索為具體產品名稱或財報規模，例如麥當勞之限定飲品與 Microsoft 之 Dynamics 365；辨識失敗時，模型多半誤認新聞中出現之其他公司，或僅猜中同產業公司，且自報信心仍達 0.6 至 0.95。由於此模型即使辨識出公司亦無法回想後續報酬，本研究以 qwen3:32b 為主要實驗模型，180 個案例整體分析，不依截止日分段。
+
+\subsection{研究限制}
+
+第一，qwen3:32b 之記憶測試每年僅九題，且只以溫度 0 詢問一次；未能回想結果不代表模型對這些公司毫無先驗知識，匿名化辨識仍有三分之一被認出。第二，Gemini 實驗以季為單位時，知識截止日後之案例僅 36 個（九檔 $\times$ 四季），檢定力較弱，且 2025 年之市場環境與先前年度不同，截止日前後之差異不能完全歸因於記憶；雲端模型亦可能於實驗期間更新，本研究記錄每次回應之模型版本以供檢查。第三，研究範圍為九檔美國大型股，結果未必能推廣至其他市場或小型股。第四，qwen3:32b 呈現明顯之偏多傾向，且 75 個案例曾因數字驗證而移除敘述中之數字，模型能力可能限制了辯論機制之發揮空間；本研究未對每個案例重複執行，無法評估同一案例重跑之變異。第五，90 日預測期間長於季度間隔，相鄰季之持有期重疊，觀察值非獨立，該期間之 McNemar 檢定宜保守解讀。
+
+%% =====================================================================
+\section{結論與未來研究}
+\label{sec:conclusion}
+%% =====================================================================
+
+本研究提出立場交換辯論機制，並建立具時間邊界、證據驗證與事前登記之多代理人回測框架，使四種決策機制得以在相同資料與相同呼叫預算下公平比較。研究過程揭露一項對大型語言模型回測研究至關重要之問題：模型能回想其知識截止日前之市場走勢，且匿名化無法消除此影響。因此本研究以經測試未顯示結果記憶之 qwen3:32b 作為主要實驗模型，並將有記憶之 Gemini 3.1 Pro 實驗改為依知識截止日分段報告。主要實驗中，四種決策機制之表現無顯著差異，立場交換並未帶來可測得之決策改善，且此結果在 30、60、90 個交易日三種預測期間一致；此一結果提醒，辯論內容之多樣化不必然轉化為決策品質，未來研究應檢驗裁決者如何整合換位論點。
+
+未來研究方向包括：其一，補齊 Gemini 3.1 Pro 已登記之 180 個案例，報告組間檢定與知識截止日分段結果，並回答 RQ3 之跨模型比較；其二，完成 RQ2 之月度實驗：將分析頻率改為每月，並搭配 20 個交易日之預測期間，在期間不重疊之前提下增加樣本，特別是 Gemini 知識截止日後之樣本；其三，以更多開源與雲端模型重複實驗，檢驗立場交換之效果是否普遍成立。
+
+\vspace{0.8cm}
+\noindent\small 本文為國立陽明交通大學管理科學系專題研究之成果，僅供學術研究與教學使用，不構成任何投資建議。
+\normalsize
+
+\clearpage
+\bibliographystyle{chicago}
+\bibliography{references}
+
+\clearpage
+\end{CJK}
+\end{document}
