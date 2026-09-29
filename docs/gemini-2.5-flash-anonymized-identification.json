@@ -1,0 +1,173 @@
+{
+  "model": "gemini/gemini-2.5-flash",
+  "mode": "identify",
+  "summary": {
+    "n": 18,
+    "identified": 6,
+    "rate": 0.333
+  },
+  "rows": [
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "AAPL",
+      "answer_ticker": "AAPL",
+      "answer_company": "Apple Inc.",
+      "confidence": 0.9,
+      "clues": "The company's financials, including assets of $332.16 billion, liabilities of $270.002 billion, revenue of $94.836 billion, net income of $24.16 billion, and operating cash flow of $62.565 billion, for the period ending April 1, 2023, are highly consistent with Apple Inc.'s reported financials for i",
+      "identified": true
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "AMZN",
+      "answer_ticker": "AMZN",
+      "answer_company": "Amazon.com, Inc.",
+      "confidence": 0.9,
+      "clues": "The revenue, net income, and operating cash flow figures for Q1 2023 and Q1 2022, as well as the filing date of April 28, 2023, are highly consistent with Amazon's reported financials for those periods. Specifically, the significant increase in net income and operating cash flow from negative to pos",
+      "identified": true
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "GE",
+      "answer_ticker": "AAPL",
+      "answer_company": "Apple Inc.",
+      "confidence": 0.8,
+      "clues": "The company reported a net income of $7.506 billion for the quarter ending March 31, 2023, with a significant year-over-year increase of 760.74%. Revenue for the same period was $14.486 billion, up 14.29% year-over-year. These figures, particularly the substantial net income and revenue, are charact",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "GOOGL",
+      "answer_ticker": "AAPL",
+      "answer_company": "Apple Inc.",
+      "confidence": 0.9,
+      "clues": "The company reported Assets of $369.491 billion and Liabilities of $108.597 billion as of March 31, 2023 (E1). Revenue for Q1 2023 was $69.787 billion (E2), Net Income was $15.051 billion (E3), and Operating Cash Flow was $23.509 billion (E4). These financial figures are consistent with Apple Inc.'s",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "INTC",
+      "answer_ticker": "AMZN",
+      "answer_company": "Amazon.com, Inc.",
+      "confidence": 0.7,
+      "clues": "The financial data (Revenue, NetIncomeLoss, OperatingCashFlow) from the 10-Q filed on 2023-04-28 shows significant year-over-year declines. Specifically, Revenue decreased by 36.17%, Net Income Loss by 133.99%, and Operating Cash Flow by 130.30%. These figures align with Amazon's Q1 2023 earnings re",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "JPM",
+      "answer_ticker": "BRK.A",
+      "answer_company": "Berkshire Hathaway Inc.",
+      "confidence": 0.7,
+      "clues": "The company has extremely large assets and liabilities, with assets of $3.74 trillion and liabilities of $3.44 trillion as of March 31, 2023. This scale is characteristic of a major financial conglomerate like Berkshire Hathaway. The liabilities to assets ratio is 91.9%, which is also consistent wit",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "MCD",
+      "answer_ticker": "JPM",
+      "answer_company": "JPMorgan Chase & Co.",
+      "confidence": 0.7,
+      "clues": "The revenue, net income, and operating cash flow figures for the period 2023-01-01 to 2023-03-31, as reported in a 10-Q filed on 2023-05-04, are consistent with JPMorgan Chase & Co.'s financial reports for that quarter.",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "MSFT",
+      "answer_ticker": "AAPL",
+      "answer_company": "Apple Inc.",
+      "confidence": 0.9,
+      "clues": "The company reported revenue of $52.86 billion and net income of $18.30 billion for the quarter ended March 31, 2023. These figures are consistent with Apple's Q2 2023 earnings report. The liabilities to assets ratio of 48.78% is also in line with Apple's financial structure.",
+      "identified": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "NVDA",
+      "answer_ticker": "WMT",
+      "answer_company": "Walmart Inc.",
+      "confidence": 0.6,
+      "clues": "The company's fiscal quarter ends in April, with a 10-Q filed in May. Revenue for the quarter was $7.192 billion, with a year-over-year decline of 13.22%. Net income increased by 26.27% year-over-year to $2.043 billion. Operating cash flow increased by 68.17% year-over-year to $2.911 billion. These ",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "AAPL",
+      "answer_ticker": "AAPL",
+      "answer_company": "Apple Inc.",
+      "confidence": 0.8,
+      "clues": "The company has very large assets (337.41 billion USD) and liabilities (263.217 billion USD), with a liabilities to assets ratio of 78.01%. It also reports very high revenue (90.753 billion USD) and net income (23.636 billion USD) for a quarter ending March 30, 2024. These figures are characteristic",
+      "identified": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "AMZN",
+      "answer_ticker": "GOOG",
+      "answer_company": "Alphabet Inc.",
+      "confidence": 0.8,
+      "clues": "The revenue, net income, and operating cash flow figures for the quarter ending March 31, 2024, as reported in the 10-Q filed on May 1, 2024, are very similar to Alphabet's reported financials for that period. Specifically, the revenue of $143.313 billion, net income of $10.431 billion, and operatin",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "GE",
+      "answer_ticker": "BAC",
+      "answer_company": "Bank of America Corporation",
+      "confidence": 0.7,
+      "clues": "The company's financial data from the 10-Q filed on 2024-04-23 shows significant figures. Specifically, the LiabilitiesToAssets ratio is 81.03%, with Assets at $163.942 billion and Liabilities at $132.838 billion. Revenue for Q1 2024 was $16.053 billion, with a 10.82% YoY increase. Net Income Loss f",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "GOOGL",
+      "answer_ticker": "MSFT",
+      "answer_company": "Microsoft Corp",
+      "confidence": 0.9,
+      "clues": "The company reported assets of $407.35 billion and liabilities of $114.51 billion as of March 31, 2024. Revenue for the quarter ending March 31, 2024, was $80.54 billion, up 15.4% year-over-year. Net income for the same period was $23.66 billion, a 57.2% increase year-over-year. Operating cash flow ",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "INTC",
+      "answer_ticker": "TSLA",
+      "answer_company": "Tesla Inc",
+      "confidence": 0.6,
+      "clues": "The company reported revenue of $12.724 billion and a net loss of $381 million for the quarter ending March 30, 2024. These figures are consistent with Tesla's Q1 2024 earnings report, which showed revenue of $21.30 billion (not $12.724 billion) and a net income of $1.13 billion (not a net loss of $",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "JPM",
+      "answer_ticker": "JPM",
+      "answer_company": "JPMorgan Chase & Co.",
+      "confidence": 0.9,
+      "clues": "The company has very large assets and liabilities, with assets over 4 trillion USD and liabilities over 3.7 trillion USD. The liabilities to assets ratio is 91.77%. Revenue for Q1 2024 was 41.934 billion USD, with net income of 13.419 billion USD. Operating cash flow was negative 154.158 billion USD",
+      "identified": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "MCD",
+      "answer_ticker": "MSFT",
+      "answer_company": "Microsoft Corp",
+      "confidence": 0.2,
+      "clues": "The revenue, net income, and operating cash flow figures are in the billions, suggesting a large-cap company. The filing date of 2024-05-08 for the 10-Q form is also a clue. However, without more specific details or industry information, it's difficult to pinpoint the exact company. Microsoft is a l",
+      "identified": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "MSFT",
+      "answer_ticker": "MSFT",
+      "answer_company": "Microsoft Corp",
+      "confidence": 0.8,
+      "clues": "The company reported Q1 2024 revenue of $61.86 billion, net income of $21.94 billion, and operating cash flow of $31.92 billion. These figures are consistent with Microsoft's reported earnings for the quarter ending March 31, 2024.",
+      "identified": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "NVDA",
+      "answer_ticker": "NVDA",
+      "answer_company": "NVIDIA Corporation",
+      "confidence": 0.9,
+      "clues": "The evidence shows extremely high year-over-year growth in Revenue (262.12%), Net Income (628.39%), and Operating Cash Flow (427.14%) for the quarter ending April 28, 2024. These figures are consistent with NVIDIA's recent financial performance, particularly its explosive growth driven by AI demand.",
+      "identified": true
+    }
+  ]
+}

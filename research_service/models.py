@@ -9,7 +9,7 @@ import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import SWITCH_ROUND, StudyProtocol, visible_history
+from .protocol import DESIGNS, SWITCH_ROUND, visible_history
 
 _gputw_opener = None
 _gputw_lock = threading.Lock()
@@ -46,7 +46,7 @@ def gputw_urlopen(request, timeout):
     return opener.open(request, timeout=timeout)
 
 
-BACKTEST_HORIZONS = StudyProtocol().horizons
+BACKTEST_HORIZONS = tuple(sorted({n for design in DESIGNS.values() for n in design["horizons"]}))
 
 
 DEFAULT_MODEL_TIMEOUT_SECONDS = 240
@@ -103,7 +103,10 @@ def _compact_evidence_item(item, *, sentiment_headline_limit=240, include_sentim
     compact = {"evidence_id": item.get("evidence_id"), "domain": domain}
     if not decision_view:
         compact["available_at"] = item.get("available_at")
-    if domain == "sentiment":
+    if domain == "sentiment" and item.get("source_type") == "finbert_indicator":
+        compact.update({"claim": item.get("claim"), "value": item.get("value"),
+                        "evidence_scope": item.get("evidence_scope")})
+    elif domain == "sentiment":
         compact.update({
             "headline": _short_text(item.get("headline") or item.get("claim"), sentiment_headline_limit),
             "evidence_scope": item.get("evidence_scope"),
@@ -234,14 +237,19 @@ def _compact_calibration(calibration):
     """Keep deterministic directional inputs, not explanatory text repeated in the system prompt."""
     technical = calibration.get("technical", {})
     sentiment = calibration.get("sentiment", {}).get("target", {})
-    return {
+    compact = {
         "technical": {key: technical.get(key) for key in
                       ("return20", "mean20_vs_mean60", "annual_volatility", "direction", "strength")
                       if technical.get(key) is not None},
         "sentiment_target": {key: sentiment.get(key) for key in
-                              ("count", "scored_count", "mean_score", "direction")
+                              ("count", "scored_count", "mean_score", "positive_share", "negative_share", "direction")
                               if sentiment.get(key) is not None},
     }
+    if calibration.get("rules_version") == "finbert-indicators-v1":
+        context = calibration.get("sentiment", {}).get("context", {})
+        if context.get("mean_score") is not None:
+            compact["sentiment_context"] = {"mean_score": context["mean_score"]}
+    return compact
 
 
 def _compact_base_rates(base_rates):
@@ -308,10 +316,14 @@ def _decision_evidence(report):
     non_sentiment = [item for item in evidence
                      if item.get("domain") != "sentiment"
                      and (item.get("domain") != "fundamental" or item.get("comparative") is True)]
+    indicators = [item for item in evidence
+                  if item.get("domain") == "sentiment" and item.get("source_type") == "finbert_indicator"]
     direct_sentiment = [item for item in evidence
-                        if item.get("domain") == "sentiment" and item.get("evidence_scope") == "target"]
+                        if item.get("domain") == "sentiment" and item.get("evidence_scope") == "target"
+                        and item.get("source_type") != "finbert_indicator"]
     return [
         *[_compact_evidence_item(item, decision_view=True) for item in non_sentiment],
+        *[_compact_evidence_item(item, decision_view=True) for item in indicators],
         *[_compact_evidence_item(item, sentiment_headline_limit=80, include_sentiment_labels=False,
                                  decision_view=True) for item in direct_sentiment[:4]],
     ]

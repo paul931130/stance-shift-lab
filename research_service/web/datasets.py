@@ -73,7 +73,8 @@ def build_router(ctx):
             raise ValueError("股票不在研究名單")
         data = validate_dataset(data)
         if data["kind"] == "historical":
-            validate_case(data["ticker"], data.get("requested_analysis_date", ""))
+            validate_case(data["ticker"], data.get("requested_analysis_date", ""),
+                          (data.get("collection_rules") or {}).get("design", "quarterly"))
         if use_finbert:
             data = validate_dataset(score_sentiment_finbert(data))
         return {"id": store.add_dataset(data), "finbert_applied": use_finbert}
@@ -128,7 +129,7 @@ def build_router(ctx):
     def collect_dataset(payload, progress=None):
         return collect_snapshot(store, payload.ticker, payload.analysis_date, refresh=payload.refresh,
                                 use_finbert=payload.use_finbert, offline_news_only=payload.offline_news_only,
-                                progress=progress, apply_finbert=apply_finbert)
+                                progress=progress, apply_finbert=apply_finbert, design=payload.design)
 
     # Terminal scripts keep the synchronous call; the web UI uses the
     # background task below so a slow source never trips the browser timeout.
@@ -138,7 +139,7 @@ def build_router(ctx):
 
     @router.post("/api/collections", status_code=202)
     def start_collection(payload: DownloadInput):
-        validate_case(payload.ticker, payload.analysis_date)
+        validate_case(payload.ticker, payload.analysis_date, payload.design)
         case = f"{payload.ticker}:{payload.analysis_date}"
         # Sync routes run on a thread pool: check and register atomically so two
         # simultaneous clicks cannot start two collections for the same case.
@@ -175,7 +176,7 @@ def build_router(ctx):
     # ---------- News sources ----------
     @router.post("/api/sources/check")
     def source_check(payload: DownloadInput):
-        validate_case(payload.ticker, payload.analysis_date)
+        validate_case(payload.ticker, payload.analysis_date, payload.design)
         return check_sentiment_sources(payload.ticker, payload.analysis_date)
 
     @router.get("/api/sources/alpha-vantage-archive")

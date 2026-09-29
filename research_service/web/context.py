@@ -66,6 +66,7 @@ class DownloadInput(BaseModel):
     refresh: bool = False
     use_finbert: bool = False
     offline_news_only: bool = False
+    design: str = "quarterly"
 
 
 class JobInput(BaseModel):
@@ -79,7 +80,8 @@ class JobInput(BaseModel):
     allow_point_fundamental: bool = False
     allow_small_model: bool = False
     allow_low_quality_sentiment: bool = False
+    design: str = "quarterly"
 
 
 class BatchInput(BaseModel):
-    cases: list[JobInput] = Field(min_length=1, max_length=200)
+    cases: list[JobInput] = Field(min_length=1, max_length=600)

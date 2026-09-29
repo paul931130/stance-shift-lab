@@ -26,8 +26,12 @@ KNOWLEDGE_CUTOFFS = {
 }
 
 SEGMENTS = ("before_cutoff", "straddles_cutoff", "after_cutoff")
-# 60 trading sessions span about three calendar months.
+# 60 trading sessions span about three calendar months (92 days); scale with the horizon.
 OUTCOME_WINDOW_FALLBACK = timedelta(days=92)
+
+
+def outcome_window(horizon):
+    return timedelta(days=round(92 * horizon / 60))
 
 
 def cutoff_for(model):
@@ -51,7 +55,7 @@ def knowledge_segment(job, horizon=60):
         return "after_cutoff"
     maturities = [row.get("maturity_date") for row in job.get("state", {}).get("cases", [])
                   if row.get("horizon") == horizon and row.get("maturity_date")]
-    maturity = date.fromisoformat(max(maturities)) if maturities else analysis + OUTCOME_WINDOW_FALLBACK
+    maturity = date.fromisoformat(max(maturities)) if maturities else analysis + outcome_window(horizon)
     return "before_cutoff" if maturity <= cutoff else "straddles_cutoff"
 
 

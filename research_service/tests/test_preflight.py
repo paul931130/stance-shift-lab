@@ -29,7 +29,7 @@ class PreflightTests(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.store = Store(self.tmp.name)
         historical = validate_dataset(fixture())
-        historical.update(kind="historical", requested_analysis_date="2024-12-31")
+        historical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, requested_analysis_date="2024-12-31")
         self.historical_id = self.store.add_dataset(historical)
         self.synthetic_id = self.store.add_dataset(validate_dataset(fixture()))
 
