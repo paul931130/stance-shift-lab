@@ -17,7 +17,7 @@
 
 固定事實
 - 實驗 E2′：qwen3:32b、季度、協議 v3-0930.3，protocol_hash a3d65c6d056155d75c83536ab5106d826477b3f8c9d36913c49902e3884a2609，180 個資料集，已於 2026-09-30T03:42:09Z 事前登記。先讀 docs/e2prime-preregistration.md 與 docs/running-experiments.md。
-- 服務：容器 stance-shift-lab-research-qwen-v2-1，http://127.0.0.1:8003（compose.qwen-v2.yaml）。GET /health 應回 "version":"v3-0930.3"。
+- 服務：容器 stance-shift-lab-research-qwen-v2-1，http://127.0.0.1:8003（experiments/e2prime-qwen.yaml）。GET /health 應回 "version":"v3-0930.3"。
 - 批次檔：docs/e2prime-batch-payload.json。
 - GPU：GPUtw 執行個體 61159cf5-ae75-4995-b917-de46564a7722（RTX 5090，約 $0.75／小時，開機才計費），自帶映像 ollama/ollama:0.35.0，模型在 /vault，開機後約 10 分鐘可用。服務用 .env.research 的設定連線；不要讀取、印出或複製 .env.research 的任何值。
 
@@ -29,7 +29,7 @@
 - 任何原因停下時，先確認 GPU 已關機再回報。
 
 步驟
-1. 唯讀檢查：docker ps；確認 :8003 在跑且版本正確（沒跑就 docker compose -p stance-shift-lab -f compose.qwen-v2.yaml up -d）。GET /api/studies/a3d65c6d056155d75c83536ab5106d826477b3f8c9d36913c49902e3884a2609/progress：total 180、not_created 180 才繼續；若已有工作，停下回報。
+1. 唯讀檢查：docker ps；確認 :8003 在跑且版本正確（沒跑就 docker compose -p stance-shift-lab -f experiments/e2prime-qwen.yaml up -d）。GET /api/studies/a3d65c6d056155d75c83536ab5106d826477b3f8c9d36913c49902e3884a2609/progress：total 180、not_created 180 才繼續；若已有工作，停下回報。
 2. 開 GPU：GPUtw 重啟執行個體（mode "same"），等 RUNNING。
 3. 等模型：每 60 秒查一次 GET http://127.0.0.1:8003/api/models，直到 ready 為 true 且列出 ollama/qwen3:32b、digest 為 030ee887880fc378860c2dd35101da424377520441ae4bfe7be6deff8ade7840（約 10 分鐘）。20 分鐘仍不行，或 digest 不同：關機、回報。
 4. 排入：POST http://127.0.0.1:8003/api/studies/a3d65c6d056155d75c83536ab5106d826477b3f8c9d36913c49902e3884a2609/enqueue，內容為批次檔。應回 created 180。可以重送：已建立的案例會略過。

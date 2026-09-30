@@ -14,6 +14,8 @@
 | `docs/` | 操作、研究口徑與部署文件 | 是 |
 | Docker volume `research-data` | SQLite、工作進度與結果 | 否；需另行備份 |
 | `CHANGELOG.md` | 各協議版本的行為變更紀錄 | 是 |
+| `compose.research.yaml`、`compose.ollama*.yaml`、`compose.production.yaml` | 框架服務：主服務、選用的 Ollama 容器（CPU／NVIDIA）、遠端部署附加設定 | 是 |
+| `experiments/` | 本專題各實驗（E1–E3）固定映像、資料庫與連接埠的 compose 檔，見其 README | 是 |
 | `.github/workflows/ci.yml` | ruff、Python 測試、前端語法檢查、瀏覽器端對端測試、Docker build | 是 |
 | `ruff.toml` | Python lint 規則（正確性導向：語法錯誤、未使用 import/變數） | 是 |
 

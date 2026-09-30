@@ -26,11 +26,11 @@
 
 | 批次 | Compose | 連接埠 | 資料庫 volume | 建議處理 |
 |---|---|---:|---|---|
-| Gemini Pro 舊版 | `compose.gemini.yaml` | 8000 | `stance-shift-lab_research-data` | 僅封存／檢視；不得載入新協議 |
-| Qwen 舊版 | `compose.qwen.yaml` | 8001 | `stance-shift-lab_research-data-qwen` | 唯讀封存 |
+| Gemini Pro 舊版 | `experiments/e1-gemini.yaml` | 8000 | `stance-shift-lab_research-data` | 僅封存／檢視；不得載入新協議 |
+| Qwen 舊版 | `experiments/e2-qwen.yaml` | 8001 | `stance-shift-lab_research-data-qwen` | 唯讀封存 |
 | Qwen 新版季度 | 新增固定版映像與獨立 DB | 未分配 | 新建 | 先執行 |
 | Gemini Flash 新版季度 | 固定模型身分與獨立 DB | 未分配 | 新建 | Qwen 季度與月度分析後配對重跑 |
-| Qwen 月度 | `compose.monthly.yaml` | 8002 | `stance-shift-lab_research-data-monthly` | 季度報告完成後執行；映像需固定版本 |
+| Qwen 月度 | `experiments/e3-monthly.yaml` | 8002 | `stance-shift-lab_research-data-monthly` | 季度報告完成後執行；映像需固定版本 |
 
 季度新版共同設定：FinBERT 窗口內全量指標、至少 3 則已評分標題才產生指標、相同證據快照、v3-0930.3 數字主張驗證、同一提示與推理政策（Flash 關閉思考；Qwen `think: false`）、溫度／取樣與輸出上限完全一致。模型不同使 protocol hash 必然不同；不得直接合併兩份 `study_report`，須按 ticker × 日期 × dataset ID 配對，再由專用跨模型分析呈現。
 

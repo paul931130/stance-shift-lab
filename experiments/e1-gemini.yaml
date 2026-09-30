@@ -2,7 +2,7 @@
 # Cross-model comparator for the qwen3:32b study; 13/180 cases done, continued day by day within the API quota.
 # Pinned to the image the batch has been running on, so rebuilding the working tree
 # (which carries newer protocol versions) can never change the code under this experiment.
-#   docker compose -p stance-shift-lab -f compose.gemini.yaml up -d
+#   docker compose -p stance-shift-lab -f experiments/e1-gemini.yaml up -d
 # One experiment = one protocol version = one image = one database volume = one port.
 services:
   research-gemini:
@@ -12,7 +12,7 @@ services:
     ports:
       - "127.0.0.1:8000:8000"
     env_file:
-      - path: .env.research
+      - path: ../.env.research
         required: false
     environment:
       RESEARCH_CONTAINER_LOCAL: "true"
@@ -21,7 +21,7 @@ services:
       RESEARCH_MODEL: gemini/gemini-3.1-pro-preview
     volumes:
       - research-data:/data
-      - ./research-inputs:/app/research-inputs
+      - ../research-inputs:/app/research-inputs
 volumes:
   research-data:
     external: true

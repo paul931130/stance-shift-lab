@@ -1,10 +1,10 @@
 """Small GPUtw API client used by the local research service.
 
 GPUtw manages GPU containers; it is not a model provider by itself.  Status
-and resources use the read key (GPUTW_API_KEY).  The only write operation is
-``stop_instance``, and it needs a separate GPUTW_MANAGE_API_KEY, so nothing
-here can ever start billable compute.  Model traffic is sent separately to the
-configured Ollama endpoint running in a GPUtw instance.
+and resources use GPUTW_API_KEY.  The only write operation is ``stop_instance``
+(GPUTW_MANAGE_API_KEY if set, else GPUTW_API_KEY, which then needs the
+instances:manage scope); nothing here can ever start billable compute.  Model
+traffic is sent separately to the configured Ollama endpoint.
 """
 from __future__ import annotations
 
@@ -43,7 +43,12 @@ def instance_id() -> str:
 
 
 def manage_api_key() -> str:
-    return os.getenv("GPUTW_MANAGE_API_KEY", "").strip()
+    """Key used to stop an idle instance: the dedicated manage key, else the main key.
+
+    A key without the instances:manage scope simply gets a 403, which the
+    auto-stop status shows, so one key with both scopes is enough.
+    """
+    return os.getenv("GPUTW_MANAGE_API_KEY", "").strip() or api_key()
 
 
 def configured() -> bool:
@@ -168,14 +173,18 @@ def instance_state(requester=None) -> str | None:
 def stop_instance(requester=None) -> dict:
     """Stop the configured instance (ends compute billing). Needs GPUTW_MANAGE_API_KEY."""
     if not manage_api_key():
-        return {"status": "not_configured", "message": "尚未設定 GPUTW_MANAGE_API_KEY，無法自動關機"}
+        return {"status": "not_configured", "message": "尚未設定 GPUtw 金鑰，無法自動關機"}
     if not instance_id():
         return {"status": "needs_instance", "message": "尚未設定 GPUTW_INSTANCE_ID"}
     try:
         value = _request("instances/stop", requester=requester, body={"instanceId": instance_id()},
                          key=manage_api_key())
     except GpuTwError as error:
-        return _result_error(error)
+        result = _result_error(error)
+        if error.code == "forbidden":
+            result["message"] = ("GPUtw 金鑰缺少 instances:manage 權限，無法自動關機；"
+                                 "請建立有此權限的金鑰並填入 GPUTW_MANAGE_API_KEY")
+        return result
     return {"status": "stopped", "instance_id": instance_id(),
             "instance_status": value.get("status") if isinstance(value, dict) else None}
 

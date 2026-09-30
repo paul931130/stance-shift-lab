@@ -2,7 +2,7 @@
 # FinBERT indicators over every headline, structured numeric claims). Not yet run.
 # Own pinned image, own database volume (copy of E2 plus rebuilt news and the FinBERT model), own port.
 #   git archive HEAD | docker build -f Dockerfile.research -t stance-shift-lab-research-qwen:v3-0930.3 -
-#   docker compose -p stance-shift-lab -f compose.qwen-v2.yaml up -d
+#   docker compose -p stance-shift-lab -f experiments/e2prime-qwen.yaml up -d
 # Never run this together with the sealed E2 service (:8001) or E1 (:8000).
 services:
   research-qwen-v2:
@@ -12,7 +12,7 @@ services:
     ports:
       - "127.0.0.1:8003:8000"
     env_file:
-      - path: .env.research
+      - path: ../.env.research
         required: false
     environment:
       RESEARCH_CONTAINER_LOCAL: "true"
@@ -22,11 +22,11 @@ services:
       RESEARCH_MODEL_TIMEOUT_SECONDS: "600"
       # One call at a time, as in E2 (see docs/e2prime-preregistration.md).
       RESEARCH_OLLAMA_PARALLEL: "1"
-      # Stops the GPUtw instance 15 min after the queue empties when .env.research has GPUTW_MANAGE_API_KEY.
+      # Stops the GPUtw instance 15 min after the queue empties (needs a key with instances:manage).
       RESEARCH_GPUTW_AUTOSTOP_MINUTES: "15"
     volumes:
       - research-data-qwen-v2:/data
-      - ./research-inputs:/app/research-inputs
+      - ../research-inputs:/app/research-inputs
 volumes:
   research-data-qwen-v2:
     external: true

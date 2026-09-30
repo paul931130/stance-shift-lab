@@ -77,8 +77,20 @@ class GpuTwTests(unittest.TestCase):
         self.assertEqual(result["status"], "stopped")
         self.assertNotIn("manage_key", json.dumps(result))
 
-    def test_stop_without_manage_key_does_not_call_the_api(self):
-        env = {"GPUTW_API_KEY": "read_key", "GPUTW_MANAGE_API_KEY": "", "GPUTW_INSTANCE_ID": "i-1"}
+    def test_stop_falls_back_to_the_main_key_and_explains_a_missing_scope(self):
+        from urllib.error import HTTPError
+        env = {"GPUTW_API_KEY": "main_key", "GPUTW_MANAGE_API_KEY": "", "GPUTW_INSTANCE_ID": "i-1"}
+        error = HTTPError("https://gputw.ai/api/instances/stop", 403, "forbidden", {}, io.BytesIO())
+        with patch.dict(os.environ, env, clear=False), \
+             patch("research_service.gputw.urlopen", side_effect=error) as opener:
+            result = gputw.stop_instance()
+        self.assertEqual(opener.call_args.args[0].get_header("Authorization"), "Bearer main_key")
+        self.assertEqual(result["code"], "forbidden")
+        self.assertIn("instances:manage", result["message"])
+        self.assertNotIn("main_key", json.dumps(result))
+
+    def test_stop_without_any_key_does_not_call_the_api(self):
+        env = {"GPUTW_API_KEY": "", "GPUTW_MANAGE_API_KEY": "", "GPUTW_INSTANCE_ID": "i-1"}
         with patch.dict(os.environ, env, clear=False), patch("research_service.gputw.urlopen") as opener:
             result = gputw.stop_instance()
         opener.assert_not_called()
@@ -135,7 +147,8 @@ class AutoStopTests(unittest.TestCase):
         self.assertEqual(self.stops, [])
 
     def test_inert_without_a_manage_key_or_when_disabled(self):
-        for env in ({**self.ENV, "GPUTW_MANAGE_API_KEY": ""}, {**self.ENV, "RESEARCH_GPUTW_AUTOSTOP_MINUTES": "0"}):
+        for env in ({**self.ENV, "GPUTW_MANAGE_API_KEY": "", "GPUTW_API_KEY": ""},
+                    {**self.ENV, "RESEARCH_GPUTW_AUTOSTOP_MINUTES": "0"}):
             with patch.dict(os.environ, env, clear=False):
                 dog = self.watchdog([0])
                 dog.tick()

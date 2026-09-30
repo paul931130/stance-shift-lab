@@ -10,7 +10,7 @@
 | 協議版本 | v3-0930.3（季度；FinBERT 全量指標、結構化數字主張） |
 | 程式碼 | git `f41a7fb`（分支 protocol/monthly-v3-0929.2） |
 | 映像 | `stance-shift-lab-research-qwen:v3-0930.3`，id `sha256:5993009ed3d29ec8f340a7cd4005167d4f7b98332c91abc6575159fe0bce2eb0` |
-| 服務／資料庫 | `compose.qwen-v2.yaml`，:8003，volume `stance-shift-lab_research-data-qwen-v2` |
+| 服務／資料庫 | `experiments/e2prime-qwen.yaml`，:8003，volume `stance-shift-lab_research-data-qwen-v2` |
 | 模型 | `ollama/qwen3:32b`，digest `030ee887880f…de7840`（與 E2 相同） |
 | 樣本 | 9 檔 × 20 個季末（2021-03-31 至 2025-12-31）＝180 個資料集 |
 | 資料集 ID 清單雜湊 | 排序後以換行串接的 sha256 ＝ `402660f04ec7a538219679bd00e8fc3426aa1bbb16469796ae8120ebef72a035` |

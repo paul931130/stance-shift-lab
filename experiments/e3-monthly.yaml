@@ -1,14 +1,14 @@
 # Experiment E3: qwen3:32b, monthly design (planned; protocol version not yet defined).
 # Own image, own database volume, own port, so it can run while E1 (Gemini) does.
 # Build from the branch that implements the monthly protocol, then pin the tag:
-#   docker compose -p stance-shift-lab -f compose.monthly.yaml build
-#   docker compose -p stance-shift-lab -f compose.monthly.yaml up -d
+#   docker compose -p stance-shift-lab -f experiments/e3-monthly.yaml build
+#   docker compose -p stance-shift-lab -f experiments/e3-monthly.yaml up -d
 # The database starts empty: datasets are collected for the 540 month-end cases
 # (30-day news window) and the sample is preregistered before any case runs.
 services:
   research-monthly:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile.research
     image: stance-shift-lab-research-monthly:dev
     restart: unless-stopped
@@ -16,7 +16,7 @@ services:
     ports:
       - "127.0.0.1:8002:8000"
     env_file:
-      - path: .env.research
+      - path: ../.env.research
         required: false
     environment:
       RESEARCH_CONTAINER_LOCAL: "true"
@@ -26,6 +26,6 @@ services:
       RESEARCH_MODEL_TIMEOUT_SECONDS: "600"
     volumes:
       - research-data-monthly:/data
-      - ./research-inputs:/app/research-inputs
+      - ../research-inputs:/app/research-inputs
 volumes:
   research-data-monthly:
