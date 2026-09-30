@@ -1,0 +1,29 @@
+# Experiment E2': qwen3:32b, quarterly design, protocol v3-0930.3 (new uncapped news rule,
+# FinBERT indicators over every headline, structured numeric claims). Not yet run.
+# Own pinned image, own database volume (copy of E2 plus rebuilt news and the FinBERT model), own port.
+#   git archive HEAD | docker build -f Dockerfile.research -t stance-shift-lab-research-qwen:v3-0930.3 -
+#   docker compose -p stance-shift-lab -f compose.qwen-v2.yaml up -d
+# Never run this together with the sealed E2 service (:8001) or E1 (:8000).
+services:
+  research-qwen-v2:
+    image: stance-shift-lab-research-qwen:v3-0930.3
+    restart: "no"
+    init: true
+    ports:
+      - "127.0.0.1:8003:8000"
+    env_file:
+      - path: .env.research
+        required: false
+    environment:
+      RESEARCH_CONTAINER_LOCAL: "true"
+      RESEARCH_ENABLE_LIVE: "false"
+      RESEARCH_DATA_DIR: /data
+      RESEARCH_MODEL: ollama/qwen3:32b
+      RESEARCH_MODEL_TIMEOUT_SECONDS: "600"
+    volumes:
+      - research-data-qwen-v2:/data
+      - ./research-inputs:/app/research-inputs
+volumes:
+  research-data-qwen-v2:
+    external: true
+    name: stance-shift-lab_research-data-qwen-v2
