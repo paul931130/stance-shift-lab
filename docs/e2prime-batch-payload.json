@@ -1,0 +1,904 @@
+{
+ "cases": [
+  {
+   "dataset_id": "ff053bc7f356d4f9f2450d66575a52fe5c2a1e427af902f70b4a6761fbace9c4",
+   "analysis_date": "2024-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "73f133992bdfcf573ca7dbce6c7ab8dec7ed3783b57f6c40d0ec6584533da2b7",
+   "analysis_date": "2021-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "f3abdf9c229e869aedd7e4d938eb7b1583f81edf88ea00e63f3abc84d5d23ba2",
+   "analysis_date": "2021-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "7ad9b46500d8caf6ba21750b65cad061e729e23bfa62d5654d616f508df249e4",
+   "analysis_date": "2024-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "48092c3cd49027a4e17e03e0968c070679ca5420aec72c59e17adb21a465637d",
+   "analysis_date": "2023-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "20b1b8e1fe04130b0e56a560caeab97e88ccab4dfb4403bcb88ef8c82a39a98f",
+   "analysis_date": "2023-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "d0e9762a2558e3575f1ee6e0aa7877135e51091278da3d4163cd686d13aca135",
+   "analysis_date": "2025-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "d1f17c33eb621147190d0c838cfdb0d81f531f93001e9de3f4ccd5de9a7c828b",
+   "analysis_date": "2022-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "f1da1b6abb55098b6c0e90fffad14977d82f28556727b312533798b4b0725ee4",
+   "analysis_date": "2025-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "ab0abc38b07bf4df9d92f67ecddfa62a7b5010967e5e16acba8f5e74db5b7656",
+   "analysis_date": "2022-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "998bfef92cce9f3814a1372c11520f3caf4c8d753745057b7944db0f462fdebe",
+   "analysis_date": "2023-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "165b155b277d2a35e2fabbd2e3b78ef581deda4cf4b190cc51e410f9de815831",
+   "analysis_date": "2025-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "fd845bf35c32ab9ab02db1d1021f1c9c18798e7a35294a9f0e1be37b57438b9f",
+   "analysis_date": "2021-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "d9d75761a8dcab10c60ad1afcbc1e51bfc838b2a83ce6fba56b1158e7d3d2d7a",
+   "analysis_date": "2023-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "ec1e23c1edb720102f420f8e95e06dddb4d00ccf8c2eeed6464fdeac6564e65a",
+   "analysis_date": "2025-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "877336c88564f5b25ae8fe0e38c27dbc1c7a274549f0a0ce318e20a1283ead32",
+   "analysis_date": "2022-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "9385e5d751dbec68c1a795476723677b9ad7e66e6c0a88f44cb2a050f4f7ae93",
+   "analysis_date": "2023-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "6706216f9e053e4e5bae85d2e9cfbfac7ac33d319b8022586a721168c1a36d5f",
+   "analysis_date": "2022-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "823fe899b24ef82b3ee3a9afb1eef5bd1b6eeb6e2fc7391b93217e69dc04e3cb",
+   "analysis_date": "2021-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "921031a3bea7f38adb44aada34ba7e1217d44bb7caa4df94b89f729585a76c05",
+   "analysis_date": "2025-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "f21e35df0d184ac01790129adc38cd2d96355c354dab32e1254d046087201d79",
+   "analysis_date": "2021-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "79f49c62fde43199e58ad7d03c31256ed4dcb474fbf67b6ab2b578ef520943ee",
+   "analysis_date": "2025-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b4b5e139dd25b23261061ea771febc2b824b1d96eafe00a61fd3230b779972bb",
+   "analysis_date": "2023-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "739f959d6d3c607a0adea6f0a69ad115d6a5b303431b72e7b613124611d534f7",
+   "analysis_date": "2022-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b7d53e980deda639ecbb561fb3d9c77a683754e106d908b3304be3e599d36eb2",
+   "analysis_date": "2023-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b3757f48f456bce19897423bd555273b304735cbdbb8bce7295d66aa82002593",
+   "analysis_date": "2025-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "1dbe8545f760313b84db921a7c06e3f98b5702e175c74dad9d6e9d80164ff065",
+   "analysis_date": "2024-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "56a93ae937d617e2f0f8e68d51cda50badbd9749a3274bd3699fd764489f5f8e",
+   "analysis_date": "2022-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "8624249541d24fa133acec0526f36909ed4367401ca43d5e6c828bab5b375f7c",
+   "analysis_date": "2024-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "9eb25d570b653bc1455895f9b24528baa3a0f7f1cbf6dc66809723ea08b450f8",
+   "analysis_date": "2021-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "79c6414fdf92295592d819185d76a8091fdbf13715385ea4a971958608abd009",
+   "analysis_date": "2021-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "37c05fe0e72e6ef6499d21fde20d1091569ad97ef3208f820f65d4ac3de2ef9a",
+   "analysis_date": "2025-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "679737e9110ff8df71f9a7d5283872039e40213b5fb4609cf008738485379afc",
+   "analysis_date": "2022-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "7310613c9a9cd9123f3d7af1d880b5a2c76cc45b6971929d56e00e882f3d548c",
+   "analysis_date": "2021-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "086979e7f01ba995d7ab35f701b5eb0aa3121237320f482b7fd5fd9e83972c11",
+   "analysis_date": "2023-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "05f0e5a1e085dfa1c17d46d5c2e5554a7a92166a892bc36feb23c4f8bd63034d",
+   "analysis_date": "2024-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "d191d671a9a28eea05f0e90877fc3696bb5b44538a8b0c4f29e9c41a242725b4",
+   "analysis_date": "2022-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "2cc34c13334a8f8797692e8d03381c10f171db4fd0116683840976157bc0148e",
+   "analysis_date": "2021-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "ac9de5b30b2be21751dca1b0d68379d3098c6be9347afdfef19e12b900f1a1b6",
+   "analysis_date": "2024-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "a039fcee43d2aa66eae7195d43629fb9d2fffca5e0132dc737a966ffc7761ecb",
+   "analysis_date": "2021-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "bcdb0df51673aed270b28a824ef4f3260797c0f070c390b30686d708ad162204",
+   "analysis_date": "2021-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "301a047143836ad3040b61c91189148940494bf7da9cdb7b9c19d7fe0d135b51",
+   "analysis_date": "2021-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "4a8cdae32ea089c0a87aec78c5cf36c2949c3774aa10dd31a657f3bd5ace8f7f",
+   "analysis_date": "2023-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "3e8a097a62d11f417a41ae811504dfacde0038a29890776b7068ff391a86dc98",
+   "analysis_date": "2025-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b445df1a2cdde63575b88c0fbe9328f1394f2ca91109b69a9aaf851a407b1a42",
+   "analysis_date": "2023-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "1bb5b145d04beae1a582b14dca475067a42ef1ab2083bb05f4bf7c28f451ba00",
+   "analysis_date": "2022-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "7622eb12bb440a41ff98e257ee0f4bd91d898cb8e7654e5122e8f45f47cb617a",
+   "analysis_date": "2024-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "020bb4160fda402527e4b15d398ebe538245dd92bf9ccd6ee98c4ddf998ada3b",
+   "analysis_date": "2022-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "8a361a5996c8d20777905e8191e7fa18c4dfad7befa402ca61331f8ec4b8f308",
+   "analysis_date": "2022-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "f407a85113c523255abd03bfeca665c501c2fa409b667974df7804f97e16f6a8",
+   "analysis_date": "2021-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "31cfb827933fc29cd2ab0ab5687d943272274417b7cf5a12049619c3308390d6",
+   "analysis_date": "2025-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "c180a0e650993f8dd55677fc6851f4153d7bafaa4ec1ea25af30bb24f639c9c1",
+   "analysis_date": "2022-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "855bac3f0cafec482ce979b21e93b7f4f8b1fb42cbb6582917b2aa1dc9c9fa29",
+   "analysis_date": "2023-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b6d00140808e4dd02e0ea628b31de20cdc31e9022bb6e45d0ef7fe5be4f670af",
+   "analysis_date": "2023-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "3efe4630bfc9b3bc6f5557e1a2551728c8eef6230ec1cdf151df1f7dc4c84050",
+   "analysis_date": "2021-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "72b599a8d4abadaac56abbcaca03428b5b1ba8fd2c08306e22499b422a97905f",
+   "analysis_date": "2023-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "9bfb3104812cba5280ba1e204b55fe517c1e9f28773f21256c062c4eb4d626be",
+   "analysis_date": "2024-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "547d8280cbc91c1abebbb4c0dc35452fc01687f39568dfca386ac2b6ad8a57f0",
+   "analysis_date": "2024-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "013acd74c27d34aaa8b3278d8777679d854ad359a174a9cc74eebad09f0791bf",
+   "analysis_date": "2021-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "53cc32416b620af775e964f9b66e41bdfc8f0e01e5f701ddd20255ead8df3d14",
+   "analysis_date": "2022-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b3894bc423614fc0d9c87b300468f0ae3ba0df56aa3e1bd92ee8cc663cf55230",
+   "analysis_date": "2024-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "89fe249024e69a46cdf44f90ef37f22073f941c67eafa878d653cad38365530a",
+   "analysis_date": "2025-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "874a147dae450afbae6d0f5c04387dc8d9e63339317920c85580590d3137c273",
+   "analysis_date": "2021-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "73db586d666102802451ea5633684fce058d3a8f47b7862d02686b01124ae2f7",
+   "analysis_date": "2021-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "58b4c461191d60c878994f6780425cb4ce1bdfee91bb48ed9400a8a026e4b987",
+   "analysis_date": "2021-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "412d36654d503efb0892bba3b6f9a156afb0518db01e4146e1a695b237437103",
+   "analysis_date": "2022-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "6448755d57fd4fe82870a9930ed7e7fd3ebedf75887cb7741e1e1757bcc7cc87",
+   "analysis_date": "2023-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "94c86c1c0a46a293a70c1eb362939a723eda85a779bf4ce5b3387418da2637dd",
+   "analysis_date": "2025-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "e477e9a0b8d0691fac5f54c88d50ae6077e6e478d662b1dbb98e4a454085fcd5",
+   "analysis_date": "2023-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "56b6b90637adb5f703de1658f437078dd7700d198bc1a16d23e792d22bbea904",
+   "analysis_date": "2024-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "ff50dbfd4879b21501f77bca51caf20fd349a5c53d515374fbe9bb09f5d282c5",
+   "analysis_date": "2022-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "cd0e901ee9c803ffdc2c7d7c666e1984fd0e134864f39eac19407a549135fcb1",
+   "analysis_date": "2022-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b70c4e6ecf6e301d2f9fbb4db1fce9a311d1dab7551c9882712384e0cc481f04",
+   "analysis_date": "2024-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "966f8e00ac1db843843757c219fa6977bb4c46e681c15342a219322333044f0e",
+   "analysis_date": "2022-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "5434448bd4408899abcf1e06aafce35c556a7e525156a5f1de9fb9871ed2ede6",
+   "analysis_date": "2025-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b236be2031fbfe7023cebb25d3117b6413f7cfaf6bad07de659a4781d800003a",
+   "analysis_date": "2021-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "e70f24244b9daf94372f212da7997b507418998ef778e515e0f00a3d29ed86d6",
+   "analysis_date": "2022-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "a28ec7aa065481243e8fabf7ae3178b476f564d2d3e26b70a4bdca90ce7bd6ed",
+   "analysis_date": "2024-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "1f3ee73d91f2881e3455ee0d7f463faef0520c3e4ed329c79851fa74bbb67915",
+   "analysis_date": "2023-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "d17096d1220b5c6db2f01495c31ffe6a01c135e40d66e78f138ca2b945f88276",
+   "analysis_date": "2021-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "85d84767ecb070e9587d329b871099f406ef883b6caa96f5bbf5afca63e235e1",
+   "analysis_date": "2024-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "199f15593cd1ab4611a20b1db42bb604eb1ca6939834dc33e2bd43dc15a4521c",
+   "analysis_date": "2025-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "c855d8e38444417fb786a37625b8120b4102db94b5a3c406fa30568765f7b16c",
+   "analysis_date": "2025-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "5c39055d09315ca8e8034115be31af73356c5e75f3797f47a000be31fb1fdadd",
+   "analysis_date": "2021-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "9d57d0bb93c3cf6cb2bee9c212c761e35f69530fceea106d0ab3f47f484bc6a8",
+   "analysis_date": "2025-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "0a15e3016384370ca8b306fd1418ac0fbad18ebb3ff36d9a96cc6e8fc264fba2",
+   "analysis_date": "2022-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "01ac11540a9a706e0bab61962c20321191421a876355f4a98fe40a1d83527b5e",
+   "analysis_date": "2024-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "49d11bb226704ab744698b9e60f315501d7100c87b7924773f5b908d4510bc58",
+   "analysis_date": "2024-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "bd8bb2eb86f0f4e3037594132d24558c231cd6ab443f2907718c148c0b3bf541",
+   "analysis_date": "2022-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "d9f13b14d88b45337f63828c67401e1ccab9d020392e9dec2b76768a43bcdfb1",
+   "analysis_date": "2021-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "9e06d62d0dd5689f9360662fcee10fa8e7765a42a9fa2175100e1101705b4bc9",
+   "analysis_date": "2023-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "2fc710f368bea11492a31bd3f4c03f2b2b418d621403f31cf8c52e93b32b3f5d",
+   "analysis_date": "2021-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "bb361a6059fe7915417fb1f5b3e198d7a8f31bae41922783c3d050dfb2bed183",
+   "analysis_date": "2022-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "a73791cfd2fc0f14ba57e10061cde990126b06b3e691b9928b48bad7176be78c",
+   "analysis_date": "2024-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "78b3ee8803a3cb03dfa6af491ddf59df2171fccf7746d3e2803e99248d096220",
+   "analysis_date": "2025-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "0c174f42d25634d400232c109a95c1b2bd74ecbaea29f2cd5e9c9456ea0eaf64",
+   "analysis_date": "2022-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "763f1b4e2efd4eeeca9377829fe8a0864ad87a0d0a0a722b1c76b828518bbb89",
+   "analysis_date": "2022-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "2650e0533153b8a044654f5aca2da1c35c989805d0855133ceb024acba5c414d",
+   "analysis_date": "2023-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "8a63e4d94424d54ba234cf425a3c42994476ebad924f1cb2c22c96eda011f367",
+   "analysis_date": "2024-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "7e84b5d37e9a4777053caebd5d9bce9373558e37971c23bcbb57d45907b51713",
+   "analysis_date": "2023-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "67ad8bf2f93b58737c15d4406d6ca35e9f8775f59f3999fc693e63de73d15d46",
+   "analysis_date": "2023-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "e1dec312efbb12c4a5eb2c134802d287e42ace962c4236aecf1cc0272c0068c9",
+   "analysis_date": "2025-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "caa64ee073513f1d480f17b2a1ff6895579c2b55f869ee213937e8ba28b946a3",
+   "analysis_date": "2021-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "88f22cdea65ce74d15e52e2f5e7f0814863516da24d12e0f9bc1a64cf8af6670",
+   "analysis_date": "2022-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "0550465f010aad4ff404b90ddcbc9c1c026b3e3bd1f2ef6213e7e1334c852257",
+   "analysis_date": "2025-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b276f33b772babef0ddd87d275387fad601793dbc43df04fbc4ea565a736412e",
+   "analysis_date": "2021-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "03ce636d0235d697868ee491b9ebd016150aa0f7b18312c4846c445b301aff6b",
+   "analysis_date": "2025-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "d40d9f1944ff00d9367adc245d2d69d02ba9aa0a1a42896ebf981f39e7df6b48",
+   "analysis_date": "2024-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "203c0ccf8d6eb7a1e1c45e16a71dd827e0153b2a10f25e3891554c5f61895cc9",
+   "analysis_date": "2024-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "ce9b83f7e569477e4a7565a4a1a2f23cca092994fb3abad45b35676254106fa3",
+   "analysis_date": "2025-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "f33e7a8e923742c3d9a361cf45cc82b3f44716ab33cf420ec5b237082af83bda",
+   "analysis_date": "2021-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "c02aa5c206c7176e3feb6f7393359e7a6b0367b5e383b67cf77a74bde065700d",
+   "analysis_date": "2023-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "287a3ff4f450fc870d615bd903d3e3baff06b12e2f78e7ee986016defe9c246a",
+   "analysis_date": "2022-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "727039bbcbf12b40189ae9c7ab30652e224c4bc36956f5670af0c384eb719b9f",
+   "analysis_date": "2023-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "daaebd4c75713710052a41ad4080f4f24768c31061e980f7703f26e739d9f294",
+   "analysis_date": "2021-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "1d18279ebffc7e61b44decd5c96ea35e85db299e4ef5834fa096cb10d6878314",
+   "analysis_date": "2024-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "81b0cfc9033fad74deeb54a97e77c15d5e10ce988d8eea4af231ec658002766a",
+   "analysis_date": "2024-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "92e560840c79c8275ab1c880c5d61cff6f32fc613a1d9f65a19939796d94af46",
+   "analysis_date": "2022-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "878e28bd4d2d9f0a2d5befdd136ddcbf228519512f4dfc30cb4c2c3d3e52c842",
+   "analysis_date": "2021-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "0d519198f2398e01430ad00f4dac2bace55f6dd79422448dfe7b84386084c388",
+   "analysis_date": "2023-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "524604dd14adf38bd05671f5adffa88ce58733cd0846f798bf5c4c00f3c6196a",
+   "analysis_date": "2025-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "f49b265bcf0758c9835650fb653f32eac916d1a0daeddfa8c664382ba704fc86",
+   "analysis_date": "2021-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "e1ee048ff620a17940c5d9e92ee28ace9632919de32fedab07e679d58d501ea2",
+   "analysis_date": "2021-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "c826c75bdc335688832060fa53ced7962540bfc4d6e040093ea3558b77754f20",
+   "analysis_date": "2023-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "6041ad475ede2c327852701187fec3fd8f77655cdc2781a8ad778c266ac3eaf5",
+   "analysis_date": "2023-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "fefe33d7f816cef7dca76a852a8eabd1a00f3555c9f044fcd9e4fb2566ff55c3",
+   "analysis_date": "2021-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "f0c9207fad6e7c527a481dbed6724e61a0c9040b73e58915a5bbc9d545919094",
+   "analysis_date": "2025-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "0d8ab4177c517224b8c9df169e89674aac758154e42c820caa16eed31b64ef16",
+   "analysis_date": "2021-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "d91ca729e64fa180b19ea6b592d93436fdc4a47e51ae784ab7ee129f1f1bae6f",
+   "analysis_date": "2025-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "0470e044d88d17e9008a1784f6521cb7a38a9c3dfc5335f8de9d9ee433f7a696",
+   "analysis_date": "2022-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "ed3827361b21f1060338cdcc9984286f71fe4e7d0481a6ab3327526be6ebf9e5",
+   "analysis_date": "2023-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "82abcb6fc2da203481f3427fc6b886ea1081bc8c3c9051334e8ca0e76604a65f",
+   "analysis_date": "2022-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "08d1342ce04dcafb9cf2aaaff4517c6c02eacda26e20261e7e6676dc8ed93643",
+   "analysis_date": "2023-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "91ed7ee40c9b84512ea9ee256f655c23df22032d496e923bf8e1619718a14598",
+   "analysis_date": "2021-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "662d992a90536baa285172b6e14e4e9541cd9e7b4dbc6d26d15712995b6f5e5e",
+   "analysis_date": "2024-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "c8aaee48e0ef3f81c973778ef68df773c3cbf0dc4d48897a9daf4b534ea98f74",
+   "analysis_date": "2022-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "6357122a43e31b2f4f7207c8fe03517b234ddb32ea982941a4c36676c9b7eb49",
+   "analysis_date": "2025-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "cd010efda5d828bd84b9481b80ff4ce7178bb762816e9a1a5df8769f4794c9c2",
+   "analysis_date": "2025-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "7ff0d07a75ac488e0c11c310aec2907447c64212ca79744dc8974c2680af785b",
+   "analysis_date": "2023-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "142869b97b5c161713c4fecd1472f59a9f1a6d73e74e490caaa2e5893ca43450",
+   "analysis_date": "2025-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "10a5fd4df1c7d8dae8ba8525200d07692e8d94cb1b3f8dd378a761a74deb637d",
+   "analysis_date": "2022-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "41926c698b27a83ba88bc9502ac6e12a50143d6109698c3a9873c815e47bb37c",
+   "analysis_date": "2021-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "4307406e7e2a35a915f5546aed0bba0b843fe2a64513c48ad8ab9a4ff7d5c336",
+   "analysis_date": "2023-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "3d2498da5fe0de6d07fd0002ae1c0169fa9ddf62200efeaa8520409920817fc6",
+   "analysis_date": "2022-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "f120dde3c3132c5d3a9615b69232571d22448d0813021ef0dde8d154392a492b",
+   "analysis_date": "2025-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "bd379126f82c61b18b8212db506fb89649ca89e3105f3aa34c447d9655cd6e47",
+   "analysis_date": "2021-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "fdb0ed24f097b62fae768289e6c140f7a1e5d0bde920597e150f7b283e41c190",
+   "analysis_date": "2025-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "61504854162a08b0052388c404542e218fca38c8a495d49cc94f85923eaecb3b",
+   "analysis_date": "2025-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "beeecc11eb0aed5d19eaf7cb64200c67adf7200340048ee1d1d6d36c2ed51125",
+   "analysis_date": "2024-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "2523a3dbef161b931fe5bdf27a1edadcb36897e6a2ce8c4af47dc51b7ffa5dd9",
+   "analysis_date": "2023-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b6532daf0fe5c598092b33aff15e13237175779f3115ce52930c12887233a1ee",
+   "analysis_date": "2021-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "e3ea491b90ed79bcaf0c8a4520150bf88affc4ab077d872c4e69f61241315471",
+   "analysis_date": "2024-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "84356bc162e5ac2b84540a3326bb21bda1378c82f14affa2c5e8ddc3d1dde52b",
+   "analysis_date": "2023-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "ed483abbce03dbfbb29413eb3e050d1970e4736683885f8a315742eb88da2b95",
+   "analysis_date": "2024-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "110a6068946f725811506a990d48332a12b2f4e893c9d217b9818da8ef7ca7ba",
+   "analysis_date": "2023-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "36f6174976c9940f35067ca369aab27f7e5147ef8af89a723e2cef98b4a17977",
+   "analysis_date": "2023-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "6adfa0b4bff97c41c572dc5b14bf640b3399bab4af8fae49c10456c2c9602ecd",
+   "analysis_date": "2024-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "9dab222e9050a783a1502f2d873981b4ed725a4d4b19cefe4829a7cbc4e6118d",
+   "analysis_date": "2024-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "165586ced176a12d88c834d42b6dbe7ab1366a71001ec44aa1d27d590fe65681",
+   "analysis_date": "2024-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "2104b3d6dc851c4c1612c68d5c2afb88c47280dee56564f2aff4abd3cc714364",
+   "analysis_date": "2025-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "7a206e0109650bac856f9865794909f6cc5c8d043147c0e2ff7725cccb6ae9e9",
+   "analysis_date": "2025-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "9ef7c260a7e3c70aa563d4ffce6d3cdaa0f88ab4d492fb9a3895c6c886cbbc79",
+   "analysis_date": "2025-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "90718429c1d7dc9aa99b21173c9b4119cdb542caa92c9ed4f2458af0721d9dfc",
+   "analysis_date": "2024-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "1b3710e4acdce3f82085906a4f81dcf0bffdf47f4bdc976497328d505f549f38",
+   "analysis_date": "2025-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "4b752af7574d0b49fbc9d9b63c2ad3045d736851941d05834fcc3c1bf8ca0a71",
+   "analysis_date": "2022-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "ae5e35c9da7eb3400a97d50a7f82a7a895f290f9b39f26bdb5a716ae16363cf3",
+   "analysis_date": "2024-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "4bd6669780a58b7a4a0279f56a9b42d335d25127c6ba99cc871a2d8f9f647aa0",
+   "analysis_date": "2025-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "2bc76631aa148798a792510e96a8154a8039c137383e700c59f3444b6bed8e48",
+   "analysis_date": "2025-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "9bd095c7025720a7264f2241d7b7edbe033455a7bc908978bbd8b204a3343dbe",
+   "analysis_date": "2022-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "15b97378322121f7ae688d69ce8ce545be3dd742752bcecea86dec34f808a2a2",
+   "analysis_date": "2024-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "78419c06f712dc1727c10e0d3fbe5e96f1a4f5fc4344a90410b1e6a24edd9abb",
+   "analysis_date": "2022-03-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "6a5e9f40c9f98ad5288641d7dc158dd54846869c25ac7d53e255290807d4eb68",
+   "analysis_date": "2024-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "0e1f305f9a931f4f1fb6a7ea678cef4d76a0bdce21a5b979e785aeb04c6ea890",
+   "analysis_date": "2022-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "3b4277490b18e1c058f880c59cb1881217e985e82fe35350f1930d7513c5659d",
+   "analysis_date": "2023-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "925cb77e9da9a36ee5d3846aa3c554298c6dbc16d5b381eec7c4a79ecba8ced6",
+   "analysis_date": "2022-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "3b4d106d715cc5a298f4a381364a7f4eed3497f93aae3610ff21bf412e29456e",
+   "analysis_date": "2024-06-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "b3650f7c9aa1f3ce21dab094faa04ab90f4fcdecb818a99117d694e2176d05d8",
+   "analysis_date": "2024-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "010be114850a7f9adea0770b57edc9fad8a93a4e8b3d1ed46fcd891f6b9677b9",
+   "analysis_date": "2024-09-30",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "e2db43dbb14c286572b25018e54b5025d719c86f5cc82cc8cd9a90e5cad54728",
+   "analysis_date": "2023-12-31",
+   "model": "ollama/qwen3:32b"
+  },
+  {
+   "dataset_id": "d5fd5ccb65c659db40941dac4d0a179466ec963b1e7ccf3c25bb9eb809a1d225",
+   "analysis_date": "2023-06-30",
+   "model": "ollama/qwen3:32b"
+  }
+ ]
+}
