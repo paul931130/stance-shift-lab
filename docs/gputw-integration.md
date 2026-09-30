@@ -1,41 +1,66 @@
-# GPUtw 雲端 GPU 整合
+# GPUtw 雲端 GPU
 
-GPUtw 在這個研究台中扮演「遠端 GPU 執行個體」的角色。研究協議、資料集與結果仍由本機研究服務管理；GPUtw 的 Ollama／Open WebUI 範本提供較快的模型推論。研究服務目前只呼叫 GPUtw 的唯讀狀態 API，不會自動建立、停止、重啟或刪除執行個體。
+GPUtw 出租獨佔 GPU 的容器，開機（RUNNING）就計費，不論有沒有在用。研究台只把模型請求送到它上面的 Ollama；研究協議、資料集與結果都留在本機。
 
-## 建議的第一次設定
+## 一次性設定
 
-1. 在 [GPUtw Templates](https://gputw.ai/dashboard/templates) 建立 Ollama 範本執行個體，選擇足以載入研究模型的 GPU。
-2. 在容器內確認 Ollama 已啟動並下載模型，例如 `qwen3:14b`。模型權重、資料集和輸出放在 `/vault`；`/workspace` 會隨執行個體生命週期消失。
-3. 只開放必要的 HTTP 連接埠。把 Ollama 端點設成受保護、未公開或透過安全 tunnel 使用；不要把沒有驗證的 `11434` 直接暴露到網際網路。
-4. 在研究台的「設定資料來源與模型」填入：
+### 1. 用固定版本的 Ollama 映像開機器
 
-   - `GPUTW_API_URL`：保留 `https://gputw.ai`。
-   - `GPUTW_API_KEY`：GPUtw API 金鑰。只需 `instances:read` 就能檢查狀態與資源。
-   - `GPUTW_INSTANCE_ID`：GPUtw 執行個體 ID；不填時狀態按鈕會列出 active 執行個體。
-   - `GPUTW_OLLAMA_BASE_URL`：遠端 Ollama 的 HTTP 位址，例如 `https://<受保護端點>`。
-   - `GPUTW_OLLAMA_API_KEY`：只有遠端 Ollama 端點另外要求 Bearer key 時才填。
+**不要用 GPUtw 的「Ollama + Open WebUI」範本。** 範本把模型存在容器自己的磁碟，不讀 `/vault`，每次重開機模型清單都是空的，只能重新下載約 20 GB；範本的 Ollama 也是 `latest`，版本會變。
 
-   也可以在本機終端執行 ` .\research.ps1 setup `，逐項按 Enter 略過不使用的欄位。
-5. 重啟研究服務後，在網頁設定區按「檢查 GPUtw 狀態」，再按「模型」重新整理。若遠端 Ollama 回傳模型清單，模型欄位會顯示 `ollama/qwen3:14b`，研究流程不需要修改。
-6. 先只跑一個既有完整案例。確認 `/api/models` 有模型、研究終端出現模型回應、結果可匯出後，再開始批次實驗。
+改用「自帶映像」（GPUtw 控制台 → 部署 → Custom image，或 API `customImage`）：
+
+| 欄位 | 值 |
+|---|---|
+| 映像 | `ollama/ollama:0.35.0`（固定版本，不要用 `latest`） |
+| 環境變數 | `OLLAMA_MODELS=/vault/ollama/models`、`OLLAMA_HOST=0.0.0.0:11434`、`OLLAMA_KEEP_ALIVE=24h`、`OLLAMA_NUM_PARALLEL=4` |
+| Web UI | 開啟，連接埠 `11434` |
+| SSH | **關閉**（Ollama 映像開 SSH 會讓部署直接失敗） |
+| GPU | RTX 5090 32GB 可跑 `qwen3:32b` |
+
+模型存在 `/vault`，跨執行個體保留；第一次開機後在研究台以外執行一次 `ollama pull qwen3:32b`（或透過 API `POST /api/pull`），之後任何一台用同樣設定的機器都讀得到。
+
+### 2. 保護連接埠
+
+在執行個體的連接埠設定把 `11434` 設為 **unlisted（未公開＋密碼）**。不要設成 public：Ollama 本身沒有驗證。
+
+### 3. 填入 `.env.research`
+
+```text
+GPUTW_API_KEY=...            # instances:read，只查狀態
+GPUTW_INSTANCE_ID=<執行個體 ID>
+GPUTW_OLLAMA_BASE_URL=https://11434-<執行個體 ID>.gputw.ai
+GPUTW_OLLAMA_PASSWORD=...    # 上一步設定的連接埠密碼
+GPUTW_MANAGE_API_KEY=...     # 選填，instances:manage，讓研究台在佇列閒置時自動關機
+RESEARCH_GPUTW_AUTOSTOP_MINUTES=15
+```
+
+改完重新啟動研究服務。金鑰與密碼只放在 `.env.research`（Git 忽略），不要貼到聊天或 issue。
+
+## 每次跑實驗
+
+1. 在 GPUtw 控制台開機（「重新啟動」選原機器）。
+2. 等約 **10 分鐘**：Ollama 要從 `/vault` 讀 20 GB 的模型進顯示卡記憶體。研究台右上角的模型狀態變綠後才能排入工作；關機時它會直接說「遠端 GPU 目前連不上」。
+3. 確認模型版本：`/api/models` 列出的 `qwen3:32b` digest 應為 `030ee887880f…`（E2 與 E2′ 使用的版本）。
+4. 在網頁最上方「正式實驗」排入批次、看進度。
+5. 佇列清空 15 分鐘後，若設定了 `GPUTW_MANAGE_API_KEY`，研究台會自動關機；否則請自己在控制台停止。
+
+## 費用參考（RTX 5090，2026-10）
+
+| 項目 | 時間 | 約略費用 |
+|---|---|---|
+| 開機到模型可用 | 10 分鐘 | $0.13 |
+| 季度 180 案（逐一處理） | 6.5 小時 | $5 |
+| 季度 180 案（`RESEARCH_OLLAMA_PARALLEL=4`） | 約 3 小時 | $2.4 |
+
+價格以 GPUtw 當時的報價為準。
 
 ## 終端檢查
 
 ```powershell
 .\research.ps1 gputw-status
 .\research.ps1 gputw-resources
-.\research.ps1 gputw-active
 .\research.ps1 models
 ```
 
-`gputw-status`、`gputw-resources` 和 `gputw-active` 都是唯讀操作。沒有設定 key 時會清楚顯示「尚未設定」，不會把連線錯誤誤報為就緒，也不會把 API key 回傳到畫面或工作紀錄。
-
-## 金鑰與額度
-
-建議另外簽發一把只含 `instances:read` 的狀態金鑰；若只需要把資料推送到 Vault，使用只含 `vault:write` 的上傳權杖。部署與停止執行個體才需要 `instances:create`／`instances:manage`，而 `instances:exec` 會以 root 身分執行指令，應保留給你自己的專用金鑰。研究完成後在 GPUtw 控制台停止執行個體，避免持續計費。
-
-大型資料（例如新聞 CSV）請放進 `/vault` 或使用可續傳上傳，不要把它放在 `/workspace`。本機研究台的 SQLite、研究快照與 API key 仍是另一套資料，不會因 GPUtw 狀態查詢而自動上傳。
-
-## 這次整合的邊界
-
-本版本不從研究台自動部署 GPUtw，也不自動上傳本機資料，避免在沒有明確確認時產生運算或儲存費用。若日後要做「按一下就建立 GPU、跑完自動停止」的工作流，需要另外加入明確的成本上限、執行個體範本 ID、佇列、逾時和 `instances:create`／`instances:manage` 金鑰。
+這些都是唯讀操作。唯一會改變執行個體狀態的是自動關機，而且只會「停止」，從不開機。

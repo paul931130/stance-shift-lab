@@ -2,6 +2,21 @@
 
 研究台可以用 `stance-shift` CLI、Python API 或網頁研究台（Docker、pip、Codespaces）操作，三者共用同一套流程與資料庫。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## 未發布（2026-10-01）— 正式實驗總覽、GPU 自動關機、固定版本的 GPU（不改協議）
+
+- 網頁最上方新增「正式實驗」：每個事前登記的研究顯示完成度、錯誤案例、依最近一小時產能估算的剩餘時間與 GPU 狀態，並提供「排入批次檔」「全部繼續」「全部暫停」。排入可重複按：已有工作的案例會略過，不在登記樣本內或協議不同的案例整批拒絕。舊版協議的研究只能查看。
+- API：`GET /api/studies`、`GET /api/studies/{hash}/progress`、`POST /api/studies/{hash}/enqueue`、`POST /api/studies/{hash}/pause-all`、`POST /api/studies/{hash}/resume-all`。
+- GPU 自動關機：設定 `GPUTW_MANAGE_API_KEY`（`instances:manage`）與 `GPUTW_INSTANCE_ID` 後，佇列沒有等待或執行中的工作超過 `RESEARCH_GPUTW_AUTOSTOP_MINUTES`（預設 15）分鐘，就停止 GPUtw 執行個體。工作出錯會自動暫停，所以卡住的批次也會觸發關機。原本的 `GPUTW_API_KEY` 仍只用來查詢。
+- `RESEARCH_OLLAMA_PARALLEL`（預設 1，行為不變）：GPU 上的 Ollama 可同時處理同一案例的多個呼叫。RTX 5090 實測約快 2.1 倍；32 個提示詞中決策 31/32 相同，但文字與部分預期報酬和逐一處理不同，因此只建議用於不需要與逐一處理結果比對的新實驗。
+- GPUtw 改用自帶映像 `ollama/ollama:0.35.0`，`OLLAMA_MODELS=/vault/ollama/models`：模型與 Ollama 版本固定，重開機不必重新下載。GPUtw 的 Ollama 範本不讀 `/vault`，重開機後模型清單會是空的。見 `docs/gputw-integration.md`。
+- 修正：`stats-panel.js` 的語法錯誤讓整個網頁無法載入（CI 的 `node --check` 以 CommonJS 解析而沒有抓到，現改以 ES module 檢查）；GPU 關機時的錯誤訊息改為直接說明。
+
+## v3-0930.3／v3-0930.4（2026-09-30）— 結構化數字主張
+
+- 決策與研究代理人寫在文字（rationale、risks、strongest_counterpoint、rebutted_claim、summary）裡的每個數字，都必須有一筆 `numeric_claims`，綁定引用的 `evidence_id`、`metric`、`period`、`unit`、`value`，並附上原文 `quote`。數值須與來源相同，或依四捨五入取到最多 3 位有效數字。來源證據提供型別化的 `numeric_fields`。未綁定的數字比照 v3-0929.1：重試後仍不符就移除並記入稽核。
+- 情緒新聞只取協議的新聞窗口內（季度 90 天、月度 30 天），並記錄每個範圍的標題數、已評分數與來源組成（`sentiment_coverage`）。
+- 版本：季度 `v3-0930.3`、月度 `v3-0930.4`；`v3-0930.1`／`v3-0930.2` 視為舊版。E2′（qwen3:32b 季度 180 案）以 `v3-0930.3` 事前登記，見 `docs/e2prime-preregistration.md`。
+
 ## v3-0930.1（2026-09-29）— 情緒面改為 FinBERT 指標：用窗口內全部標題，不再放標題文字
 
 - 問題：舊規則對每則標題都做了 FinBERT 評分，但進入提示詞的只有被選出的 12 則（決策代理人只看到 4 則、80 字的標題，加上由被選出標題算的彙總）；資料集讀入時每來源只留最近 50 筆，180 個季度資料集中 146 個碰到上限，一季裡越早的月份被擠掉越多。

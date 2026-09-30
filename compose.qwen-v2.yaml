@@ -20,6 +20,10 @@ services:
       RESEARCH_DATA_DIR: /data
       RESEARCH_MODEL: ollama/qwen3:32b
       RESEARCH_MODEL_TIMEOUT_SECONDS: "600"
+      # One call at a time, as in E2 (see docs/e2prime-preregistration.md).
+      RESEARCH_OLLAMA_PARALLEL: "1"
+      # Stops the GPUtw instance 15 min after the queue empties when .env.research has GPUTW_MANAGE_API_KEY.
+      RESEARCH_GPUTW_AUTOSTOP_MINUTES: "15"
     volumes:
       - research-data-qwen-v2:/data
       - ./research-inputs:/app/research-inputs
