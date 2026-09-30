@@ -216,6 +216,13 @@ class Engine:
         self.parallel_workers = int(parallel_workers or os.getenv("RESEARCH_PARALLEL_WORKERS", "4"))
         if not 1 <= self.parallel_workers <= 8:
             raise ValueError("RESEARCH_PARALLEL_WORKERS must be between 1 and 8")
+        # Ollama requests are sent one at a time unless the server has spare
+        # slots (OLLAMA_NUM_PARALLEL on a GPU). Parallel requests are ~2x faster
+        # on an RTX 5090 but change wording and sometimes the expected return,
+        # so keep 1 for runs that must match earlier sequential experiments.
+        self.ollama_parallel = int(os.getenv("RESEARCH_OLLAMA_PARALLEL", "1"))
+        if not 1 <= self.ollama_parallel <= 8:
+            raise ValueError("RESEARCH_OLLAMA_PARALLEL must be between 1 and 8")
         builder = StateGraph(GraphState)
         builder.add_node("coordinator_step", self.step)
         builder.add_edge(START, "coordinator_step")
@@ -436,7 +443,7 @@ class Engine:
                 # Keep source collection and cloud inference parallel, but
                 # serialize local inference just as decision waves already do.
                 if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
-                    research_workers = 1
+                    research_workers = min(research_workers, self.ollama_parallel)
                 effective_workers = research_workers
                 with ThreadPoolExecutor(max_workers=research_workers, thread_name_prefix="research-agent") as pool:
                     futures = {pool.submit(run_research, domain, *value): domain for domain, value in tasks.items()}
@@ -478,7 +485,7 @@ class Engine:
             # Advance one decision at a time so the worker can checkpoint it
             # before a later provider error or process interruption occurs.
             if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
-                calls = calls[:1]
+                calls = calls[:self.ollama_parallel]
             snapshot = list(state["records"])
             prepared = {call.key: (call, messages_for(call, state["report"], snapshot, state["memory"][call.group], protocol)) for call in calls}
             completed, failures = {}, []
@@ -494,7 +501,7 @@ class Engine:
             # parallel worker count.
             decision_workers = min(self.parallel_workers, len(prepared))
             if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
-                decision_workers = 1
+                decision_workers = min(decision_workers, self.ollama_parallel)
             effective_workers = decision_workers
             with ThreadPoolExecutor(max_workers=decision_workers, thread_name_prefix="decision-group") as pool:
                 futures = {pool.submit(run_decision, call, messages): key for key, (call, messages) in prepared.items()}

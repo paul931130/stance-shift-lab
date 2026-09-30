@@ -75,8 +75,12 @@ def prepare(ctx, payload, model_probe=None):
                              "或在「資料品質例外」勾選舊版 SEC 基本面例外（只算敏感性測試）")
     if effective_model.startswith("ollama/") and not ctx.injected_model_call:
         installed = (model_probe or (lambda: probe_models(ctx)))()
-        if not installed.get("ready") or effective_model not in installed.get("models", []):
-            raise PreflightError("model_not_installed", f"Ollama 模型 {effective_model} 尚未安裝，或 Ollama 目前連不上；請先執行 ollama pull，或改用其他模型來源")
+        if not installed.get("ready"):
+            # Say why (e.g. the GPUtw instance is off) instead of implying the model is missing.
+            raise PreflightError("model_not_installed", installed.get("message")
+                                 or f"Ollama 目前連不上，無法使用 {effective_model}")
+        if effective_model not in installed.get("models", []):
+            raise PreflightError("model_not_installed", f"Ollama 模型 {effective_model} 尚未安裝；請先執行 ollama pull，或改用其他模型來源")
         model_identity = next(item for item in installed["details"] if item["id"] == effective_model)
         parameter_count = parameter_billions(model_identity.get("parameter_size"))
         if (parameter_count is not None and parameter_count < 14

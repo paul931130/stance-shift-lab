@@ -15,6 +15,7 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from .autostop import AutoStop
 from .engine import Engine
 from .errors import NotFoundError
 from .logging_config import get_logger
@@ -28,7 +29,8 @@ logger = get_logger(__name__)
 
 # Provider credentials that must never appear in a persisted job error.
 REDACTED_ENV = ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "FRED_API_KEY",
-                "ALPHA_VANTAGE_API_KEY", "GPUTW_API_KEY", "GPUTW_OLLAMA_API_KEY", "HF_TOKEN",
+                "ALPHA_VANTAGE_API_KEY", "GPUTW_API_KEY", "GPUTW_MANAGE_API_KEY", "GPUTW_OLLAMA_API_KEY",
+                "GPUTW_OLLAMA_PASSWORD", "HF_TOKEN",
                 # A contact string, not a secret, but still someone's identifying info.
                 "SEC_USER_AGENT")
 SECURITY_HEADERS = {
@@ -80,7 +82,8 @@ def create_app(store=None, model_call=None, start_worker=True):
         auth=SessionAuth(access_key), access_key=access_key, remote=remote,
         demo_mode=demo_mode, demo_model_id=demo_model_id, demo_dataset_id=demo_dataset_id,
         injected_model_call=model_call is not None,
-        trusted_proxies=_env_list("RESEARCH_TRUSTED_PROXIES"))
+        trusted_proxies=_env_list("RESEARCH_TRUSTED_PROXIES"),
+        autostop=AutoStop(store.active_job_count))
     container_local = os.getenv("RESEARCH_CONTAINER_LOCAL", "false") == "true"
     public_origin = os.getenv("RESEARCH_PUBLIC_ORIGIN", "").rstrip("/")
     allowed_hosts = _env_list("RESEARCH_ALLOWED_HOSTS", "localhost,127.0.0.1,::1,testserver")
@@ -105,6 +108,10 @@ def create_app(store=None, model_call=None, start_worker=True):
                 recover_orphans()
             except Exception:
                 logger.exception("service heartbeat failed; retrying")
+            try:
+                ctx.autostop.tick()
+            except Exception:
+                logger.exception("GPU auto-stop check failed; retrying")
 
     def work():
         # One worker advances one checkpointed step at a time; see Store.claim for ordering.

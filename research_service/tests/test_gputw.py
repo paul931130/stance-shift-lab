@@ -65,6 +65,85 @@ class GpuTwTests(unittest.TestCase):
         self.assertEqual(status.json()["status"], "not_configured")
         self.assertEqual(resources.json()["status"], "not_configured")
 
+    def test_stop_uses_the_separate_manage_key_and_never_the_read_key(self):
+        env = {"GPUTW_API_KEY": "read_key", "GPUTW_MANAGE_API_KEY": "manage_key", "GPUTW_INSTANCE_ID": "i-1"}
+        with patch.dict(os.environ, env, clear=False), \
+             patch("research_service.gputw.urlopen", return_value=response_for({"data": {"status": "STOPPED"}})) as opener:
+            result = gputw.stop_instance()
+        request = opener.call_args.args[0]
+        self.assertEqual((request.get_method(), request.full_url), ("POST", "https://gputw.ai/api/instances/stop"))
+        self.assertEqual(json.loads(request.data), {"instanceId": "i-1"})
+        self.assertEqual(request.get_header("Authorization"), "Bearer manage_key")
+        self.assertEqual(result["status"], "stopped")
+        self.assertNotIn("manage_key", json.dumps(result))
+
+    def test_stop_without_manage_key_does_not_call_the_api(self):
+        env = {"GPUTW_API_KEY": "read_key", "GPUTW_MANAGE_API_KEY": "", "GPUTW_INSTANCE_ID": "i-1"}
+        with patch.dict(os.environ, env, clear=False), patch("research_service.gputw.urlopen") as opener:
+            result = gputw.stop_instance()
+        opener.assert_not_called()
+        self.assertEqual(result["status"], "not_configured")
+
+
+class AutoStopTests(unittest.TestCase):
+    ENV = {"GPUTW_MANAGE_API_KEY": "manage_key", "GPUTW_INSTANCE_ID": "i-1", "RESEARCH_GPUTW_AUTOSTOP_MINUTES": "15"}
+
+    def watchdog(self, jobs, state="RUNNING"):
+        from research_service.autostop import AutoStop
+        self.now, self.stops = 0.0, []
+        return AutoStop(lambda: jobs[0], clock=lambda: self.now, state=lambda: state,
+                        stop=lambda: self.stops.append(1) or {"status": "stopped"})
+
+    def test_stops_only_after_the_queue_is_idle_for_the_whole_period(self):
+        jobs = [3]
+        with patch.dict(os.environ, self.ENV, clear=False):
+            dog = self.watchdog(jobs)
+            for minute in range(0, 60, 1):  # an hour of work: never stop while jobs remain
+                self.now = minute * 60
+                dog.tick()
+            jobs[0] = 0
+            self.now = 3600
+            dog.tick()                      # queue just emptied: start the idle clock
+            self.now = 3600 + 14 * 60
+            dog.tick()
+            self.assertEqual(self.stops, [])
+            self.now = 3600 + 15 * 60
+            self.assertEqual(dog.tick(), {"status": "stopped"})
+        self.assertEqual(self.stops, [1])
+
+    def test_new_work_resets_the_idle_clock(self):
+        jobs = [0]
+        with patch.dict(os.environ, self.ENV, clear=False):
+            dog = self.watchdog(jobs)
+            dog.tick()
+            self.now = 10 * 60
+            jobs[0] = 1
+            dog.tick()
+            jobs[0] = 0
+            self.now = 16 * 60
+            dog.tick()
+            self.now = 20 * 60
+            dog.tick()
+        self.assertEqual(self.stops, [])
+
+    def test_an_already_stopped_instance_is_left_alone(self):
+        with patch.dict(os.environ, self.ENV, clear=False):
+            dog = self.watchdog([0], state="STOPPED")
+            dog.tick()
+            self.now = 16 * 60
+            dog.tick()
+        self.assertEqual(self.stops, [])
+
+    def test_inert_without_a_manage_key_or_when_disabled(self):
+        for env in ({**self.ENV, "GPUTW_MANAGE_API_KEY": ""}, {**self.ENV, "RESEARCH_GPUTW_AUTOSTOP_MINUTES": "0"}):
+            with patch.dict(os.environ, env, clear=False):
+                dog = self.watchdog([0])
+                dog.tick()
+                self.now = 99 * 60
+                dog.tick()
+                self.assertFalse(dog.public()["enabled"])
+        self.assertEqual(self.stops, [])
+
 
 if __name__ == "__main__":
     unittest.main()

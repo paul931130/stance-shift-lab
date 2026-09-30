@@ -626,6 +626,19 @@ class WorkflowTests(unittest.TestCase):
         job["state"] = engine.advance(job)
         self.assertEqual(len(job["state"]["records"]), 2)
 
+    def test_ollama_parallel_is_opt_in_and_bounded(self):
+        with patch.dict("os.environ", {"RESEARCH_OLLAMA_PARALLEL": "4"}):
+            engine = Engine(self.store, fake_model, parallel_workers=4)
+        engine.uses_builtin_provider = True
+        job = self.create()
+        for _ in range(3):
+            job["state"] = engine.advance(job)
+        job["state"] = engine.advance(job)
+        self.assertEqual(len(job["state"]["records"]), 4)
+        self.assertEqual(job["state"]["trace"][-1]["effective_workers"], 4)
+        with patch.dict("os.environ", {"RESEARCH_OLLAMA_PARALLEL": "9"}), self.assertRaises(ValueError):
+            Engine(self.store, fake_model)
+
     def test_parallel_agent_failure_uses_audited_source_extract(self):
         job = self.create()
         job["state"] = Engine(self.store, fake_model).advance(job)
@@ -907,6 +920,44 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.store.preregistration(body["protocol_hash"])["frozen_at"], body["frozen_at"])
             mixed = client.post('/api/studies/preregister', json={"cases": [case, {**case, "voting_samples": 5}]})
             self.assertEqual(mixed.status_code, 422)
+
+    def test_enqueue_is_idempotent_and_limited_to_the_preregistered_sample(self):
+        with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            case = {"dataset_id": self.dataset_id, "analysis_date": "2024-12-31"}
+            protocol_hash = client.post('/api/studies/preregister', json={"cases": [case]}).json()["protocol_hash"]
+            listed = client.get('/api/studies').json()
+            self.assertEqual([(s["protocol_hash"], s["cases"]) for s in listed], [(protocol_hash, 1)])
+            self.assertEqual(listed[0]["progress"]["not_created"], 1)
+
+            first = client.post(f'/api/studies/{protocol_hash}/enqueue', json={"cases": [case]})
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertEqual((first.json()["created"], first.json()["skipped_existing"]), (1, 0))
+            # Pressing the button twice (or a helper re-sending the batch) must not duplicate GPU work.
+            again = client.post(f'/api/studies/{protocol_hash}/enqueue', json={"cases": [case]}).json()
+            self.assertEqual((again["created"], again["skipped_existing"]), (1 - 1, 1))
+            self.assertEqual(len(self.store.job_summaries()), 1)
+
+            outsider = self.store.add_dataset({**self.data, "source": "unit-test-fixture-v2"})
+            refused = client.post(f'/api/studies/{protocol_hash}/enqueue',
+                                  json={"cases": [{"dataset_id": outsider, "analysis_date": "2024-12-31"}]})
+            self.assertEqual(refused.status_code, 422)
+            other_protocol = client.post(f'/api/studies/{protocol_hash}/enqueue',
+                                         json={"cases": [{**case, "voting_samples": 5}]})
+            self.assertEqual(other_protocol.status_code, 422)
+            self.assertEqual(len(self.store.job_summaries()), 1)
+
+            paused = client.post(f'/api/studies/{protocol_hash}/pause-all').json()
+            self.assertEqual((paused["changed"], paused["progress"]["counts"]["paused"]), (1, 1))
+            resumed = client.post(f'/api/studies/{protocol_hash}/resume-all').json()
+            self.assertEqual((resumed["changed"], resumed["progress"]["counts"]["queued"]), (1, 1))
+            self.assertEqual(client.post(f'/api/studies/{protocol_hash}/delete-all').status_code, 404)
+
+    def test_enqueue_requires_a_preregistration(self):
+        with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            response = client.post('/api/studies/not-registered/enqueue',
+                                   json={"cases": [{"dataset_id": self.dataset_id, "analysis_date": "2024-12-31"}]})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.store.job_summaries(), [])
 
     def test_freeze_rejects_changing_the_dataset_set_after_the_fact(self):
         job = self.complete(self.create("2024-12-31"))

@@ -87,6 +87,11 @@ class Store:
             db.execute("INSERT INTO services(id, heartbeat_at) VALUES(?, ?) "
                        "ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at", (service_id, now()))
 
+    def active_job_count(self):
+        """Jobs that still need the model: queued or currently running."""
+        with self.connect() as db:
+            return db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')").fetchone()[0]
+
     def recover(self, dead_before, idle_before):
         """Pause worker jobs whose service stopped; never touch a live service's or a CLI's job.
 
@@ -213,6 +218,26 @@ class Store:
                 rows = db.execute("""SELECT * FROM jobs WHERE json_extract(config, '$.protocol_hash')=?
                     ORDER BY created_at DESC""", (protocol_hash,))
             return [self.unpack(row) for row in rows]
+
+    def study_rows(self, protocol_hash):
+        """One protocol's jobs without state JSON: enough to show batch progress cheaply."""
+        with self.connect() as db:
+            rows = db.execute("""SELECT id, status, error, created_at, updated_at, steps,
+                    json_extract(config, '$.ticker') AS ticker,
+                    json_extract(config, '$.analysis_date') AS analysis_date,
+                    json_extract(config, '$.dataset_id') AS dataset_id,
+                    json_extract(config, '$.protocol.version') AS version,
+                    json_extract(config, '$.protocol.model') AS model,
+                    json_extract(config, '$.protocol.design') AS design
+                FROM jobs WHERE json_extract(config, '$.protocol_hash')=?""", (protocol_hash,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def preregistrations(self):
+        with self.connect() as db:
+            rows = db.execute("SELECT protocol_hash, dataset_ids, frozen_at FROM preregistrations "
+                              "ORDER BY frozen_at DESC").fetchall()
+        return [{"protocol_hash": row["protocol_hash"], "cases": len(json.loads(row["dataset_ids"])),
+                 "frozen_at": row["frozen_at"]} for row in rows]
 
     def job_summaries(self):
         """Job list without the state JSON, for the frequently polled dashboard."""

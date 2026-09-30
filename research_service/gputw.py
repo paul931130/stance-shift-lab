@@ -1,9 +1,10 @@
-"""Small, read-only GPUtw API client used by the local research service.
+"""Small GPUtw API client used by the local research service.
 
-GPUtw manages GPU containers; it is not a model provider by itself.  This
-module deliberately exposes only read operations so a mistyped setting cannot
-start billable compute.  Model traffic is sent separately to the configured
-Ollama endpoint (usually an Ollama template running in a GPUtw instance).
+GPUtw manages GPU containers; it is not a model provider by itself.  Status
+and resources use the read key (GPUTW_API_KEY).  The only write operation is
+``stop_instance``, and it needs a separate GPUTW_MANAGE_API_KEY, so nothing
+here can ever start billable compute.  Model traffic is sent separately to the
+configured Ollama endpoint running in a GPUtw instance.
 """
 from __future__ import annotations
 
@@ -41,6 +42,10 @@ def instance_id() -> str:
     return os.getenv("GPUTW_INSTANCE_ID", "").strip()
 
 
+def manage_api_key() -> str:
+    return os.getenv("GPUTW_MANAGE_API_KEY", "").strip()
+
+
 def configured() -> bool:
     return bool(api_key())
 
@@ -66,16 +71,22 @@ def _error_from_http(error: HTTPError) -> GpuTwError:
     return GpuTwError(message, status_code=error.code, code=code, retryable=retryable)
 
 
-def _request(path: str, *, requester=None):
-    if not configured():
+def _request(path: str, *, requester=None, body=None, key=None):
+    key = key or api_key()
+    if not key:
         raise GpuTwError("尚未設定 GPUTW_API_KEY", code="not_configured")
     requester = requester or urlopen
     url = f"{api_url()}/api/{path.lstrip('/')}"
-    request = Request(url, headers={
+    headers = {
         "Accept": "application/json",
-        "Authorization": f"Bearer {api_key()}",
+        "Authorization": f"Bearer {key}",
         "User-Agent": "StanceShiftResearch/3 GPUtw integration",
-    })
+    }
+    data = None
+    if body is not None:
+        data = json.dumps(body).encode()
+        headers["Content-Type"] = "application/json"
+    request = Request(url, data=data, headers=headers, method="POST" if body is not None else "GET")
     try:
         with requester(request, timeout=_TIMEOUT) as response:
             payload = json.load(response)
@@ -140,6 +151,33 @@ def resources() -> dict:
     except GpuTwError as error:
         return {"configured": True, "api_url": api_url(),
                 "instance_id": instance_id(), **_result_error(error)}
+
+
+def instance_state(requester=None) -> str | None:
+    """The configured instance's status string (e.g. RUNNING, STOPPED), or None when unknown."""
+    key = api_key() or manage_api_key()
+    if not key or not instance_id():
+        return None
+    try:
+        value = _request(f"instances/{quote(instance_id(), safe='')}/status", requester=requester, key=key)
+    except GpuTwError:
+        return None
+    return value.get("status") if isinstance(value, dict) else None
+
+
+def stop_instance(requester=None) -> dict:
+    """Stop the configured instance (ends compute billing). Needs GPUTW_MANAGE_API_KEY."""
+    if not manage_api_key():
+        return {"status": "not_configured", "message": "尚未設定 GPUTW_MANAGE_API_KEY，無法自動關機"}
+    if not instance_id():
+        return {"status": "needs_instance", "message": "尚未設定 GPUTW_INSTANCE_ID"}
+    try:
+        value = _request("instances/stop", requester=requester, body={"instanceId": instance_id()},
+                         key=manage_api_key())
+    except GpuTwError as error:
+        return _result_error(error)
+    return {"status": "stopped", "instance_id": instance_id(),
+            "instance_status": value.get("status") if isinstance(value, dict) else None}
 
 
 def active() -> dict:

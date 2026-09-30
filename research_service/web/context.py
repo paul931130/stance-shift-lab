@@ -26,6 +26,8 @@ class AppContext:
     # A test or demo model replaces the real provider, so Ollama checks are skipped.
     injected_model_call: bool
     trusted_proxies: set = field(default_factory=set)
+    # GPU idle watchdog (research_service.autostop); None in tests that build a bare context.
+    autostop: object = None
 
 
 class TaskRegistry:

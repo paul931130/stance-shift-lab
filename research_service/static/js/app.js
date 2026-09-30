@@ -13,6 +13,7 @@ import { initDataPanel, refreshReadiness } from './data-panel.js';
 import { initExperimentPanel, applyModels, refreshDatasets } from './experiment-panel.js';
 import { refreshJobs, schedulePoll } from './runs-panel.js';
 import { refreshSettings, applySourceState } from './settings-panel.js';
+import { initStudyPanel } from './study-panel.js';
 
 function chooseInitialTab(requestedTab) {
   if (requestedTab) return;
@@ -50,6 +51,7 @@ async function initialize() {
   catch { $('first-time-guide').hidden = false; }
   initDataPanel(config);
   initExperimentPanel(config);
+  initStudyPanel(refreshJobs);
   applySourceState(config);
 
   const params = new URLSearchParams(location.search);

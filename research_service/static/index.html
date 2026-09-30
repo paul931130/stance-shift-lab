@@ -30,6 +30,15 @@
 
 <div class="workspace" id="workspace">
 
+<!-- Formal studies first: batch progress, ETA and GPU state are what a run needs at a glance. -->
+<section class="panel study-panel" aria-labelledby="study-title">
+  <div class="panel-heading">
+    <div><div class="section-label">FORMAL STUDIES</div><h2 id="study-title">正式實驗</h2></div>
+    <button id="gpu-refresh" class="quiet" type="button" title="重新讀取 GPU 狀態">GPU 狀態 ↻</button>
+  </div>
+  <div id="studies" aria-live="polite"><p class="hint">讀取中…</p></div>
+</section>
+
 <!-- Main view: the live pipeline map. Clicking a node or band opens that step below. -->
 <section class="flow-hero" aria-labelledby="flow-title">
   <div class="flow-head">

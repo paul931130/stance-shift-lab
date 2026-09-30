@@ -11,6 +11,8 @@ FIELDS = {
     "GEMINI_API_KEY": "Gemini API key", "RESEARCH_MODEL": "預設模型",
     "GPUTW_API_URL": "GPUtw API 位址（預設 https://gputw.ai）",
     "GPUTW_API_KEY": "GPUtw API key（只用來查詢執行個體狀態）",
+    "GPUTW_MANAGE_API_KEY": "GPUtw 管理 key（instances:manage；只用來在佇列閒置時自動關機）",
+    "RESEARCH_GPUTW_AUTOSTOP_MINUTES": "佇列閒置幾分鐘後自動關閉 GPU（預設 15；0 表示關閉此功能）",
     "GPUTW_INSTANCE_ID": "GPUtw 執行個體 ID",
     "GPUTW_OLLAMA_BASE_URL": "GPUtw 遠端 Ollama 位址（選填）",
     "GPUTW_OLLAMA_API_KEY": "遠端 Ollama 存取 key（若端點有保護）",

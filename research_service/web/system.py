@@ -114,7 +114,10 @@ def build_router(ctx):
     @router.get("/api/gputw/status")
     def gpu_cloud_status():
         """Read GPUtw status; this endpoint never creates or stops compute."""
-        return gputw_status()
+        result = gputw_status()
+        if ctx.autostop is not None:
+            result["autostop"] = ctx.autostop.public()
+        return result
 
     @router.get("/api/gputw/resources")
     def gpu_cloud_resources():
