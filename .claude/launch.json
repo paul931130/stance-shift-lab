@@ -4,24 +4,26 @@
     {
       "name": "research-service",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-m", "uvicorn", "research_service.app:create_app", "--factory", "--host", "127.0.0.1", "--port", "8010"],
+      "runtimeArgs": [
+        "-m",
+        "uvicorn",
+        "research_service.app:create_app",
+        "--factory",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "8010"
+      ],
       "port": 8010
     },
     {
       "name": "research-demo",
       "runtimeExecutable": ".venv/Scripts/python.exe",
-      "runtimeArgs": ["-c", "import os; os.environ['RESEARCH_DEMO_MODE']='true'; os.environ['RESEARCH_DATA_DIR']='work/demo-preview-data'; import uvicorn; uvicorn.run('research_service.app:create_app', factory=True, host='127.0.0.1', port=8011)"],
+      "runtimeArgs": [
+        "-c",
+        "import os; os.environ['RESEARCH_DEMO_MODE']='true'; os.environ['RESEARCH_DATA_DIR']='work/demo-preview-data'; import uvicorn; uvicorn.run('research_service.app:create_app', factory=True, host='127.0.0.1', port=8011)"
+      ],
       "port": 8011
-    },
-    {
-      "name": "study-ui-test",
-      "runtimeExecutable": "docker",
-      "runtimeArgs": ["run", "--rm", "--name", "study-ui-test", "-p", "127.0.0.1:8012:8000",
-        "--env-file", ".env.research", "-e", "RESEARCH_DATA_DIR=/data", "-e", "RESEARCH_CONTAINER_LOCAL=true",
-        "-e", "RESEARCH_ENABLE_LIVE=false", "-e", "RESEARCH_MODEL=ollama/qwen3:32b",
-        "-v", "stance-shift-lab_uitest:/data", "-v", "./research_service:/app/research_service:ro",
-        "stance-shift-lab-research-qwen:v3-0930.3"],
-      "port": 8012
     }
   ]
 }
