@@ -133,6 +133,30 @@ def _jobs():
     return 0
 
 
+def _studies():
+    from .labels import ljust
+    from .progress import study_progress
+    from .storage import Store
+
+    store = Store(os.getenv("RESEARCH_DATA_DIR", "research-data"))
+    studies = store.preregistrations()
+    if not studies:
+        print("尚無事前登記的研究。")
+        return 0
+    for item in studies:
+        p = study_progress(store.preregistration(item["protocol_hash"]), store.study_rows(item["protocol_hash"]))
+        c = p["counts"]
+        label = f"{p['version']} · {p['model']}" if p["version"] else "尚未排入"
+        eta = f"，預估還要 {p['eta_hours']} 小時" if p["eta_hours"] is not None else ""
+        state = "舊版（只能查看）" if not p["current"] else f"執行中 {c['running']}、等待 {c['queued']}、暫停 {c['paused']}{eta}"
+        print(f"{item['protocol_hash'][:8]}  {ljust(label, 34)} {c['complete']:>3}/{p['total']} 完成  {state}")
+        for error in (p["errors"] if p["current"] else [])[:5]:
+            print(f"    ! {error['ticker']} {error['analysis_date']}：{error['error'][:100]}")
+        if p["current"] and len(p["errors"]) > 5:
+            print(f"    … 另有 {len(p['errors']) - 5} 案錯誤")
+    return 0
+
+
 def _utf8_output():
     """Output redirected to a file or pipe (e.g. --json > run.json on Windows) is
     written as UTF-8 instead of the legacy code page, which cannot hold Chinese."""
@@ -153,7 +177,7 @@ def main(argv=None):
     run = subparsers.add_parser("run", help="跑一個案例（不問問題，給腳本用）")
     run.add_argument("ticker")
     run.add_argument("date", help="季末日期，例如 2024-12-31，或今天")
-    run.add_argument("--model", default=None, help="例如 gemini/gemini-2.5-flash、ollama/qwen3:14b；預設 RESEARCH_MODEL")
+    run.add_argument("--model", default=None, help="例如 ollama/qwen3:32b、gemini/gemini-2.5-flash；預設 RESEARCH_MODEL")
     run.add_argument("--finbert", action="store_true", help="用本機 FinBERT 分析新聞標題")
     run.add_argument("--refresh", action="store_true", help="重新下載資料，不重用既有資料集")
     run.add_argument("--json", action="store_true", help="只輸出 JSON 結果")
@@ -174,17 +198,18 @@ def main(argv=None):
                       help="重建這個協議事前登記的所有資料集")
     news.add_argument("--output", default="refreshed-news.json", help="寫出舊→新資料集對照（JSON）")
     news.add_argument("--allow-live", action="store_true", help="本機新聞檔不足時呼叫 Alpha Vantage（會用掉額度）")
-    subparsers.add_parser("version")
-    subparsers.add_parser("doctor")
-    power = subparsers.add_parser("power-plan", help="simulation-based design planning")
+    subparsers.add_parser("studies", help="正式實驗（事前登記的研究）的整批進度")
+    subparsers.add_parser("version", help="顯示版本")
+    subparsers.add_parser("doctor", help="檢查安裝、資料目錄與金鑰是否就緒")
+    power = subparsers.add_parser("power-plan", help="以模擬估計樣本數與檢定力")
     power.add_argument("--total-cases", type=int, default=180)
     power.add_argument("--cluster-size", type=int, default=9)
     power.add_argument("--replicates", type=int, default=2000)
     power.add_argument("--seed", type=int, default=905)
-    canary = subparsers.add_parser("model-canary", help="synthetic provider qualification")
+    canary = subparsers.add_parser("model-canary", help="用合成案例檢查模型是否能正確回答（正式實驗前的資格測試）")
     canary.add_argument("--model", default=None)
     canary.add_argument("--allow-small-model", action="store_true")
-    serve = subparsers.add_parser("serve", help="start the FastAPI service")
+    serve = subparsers.add_parser("serve", help="開啟網頁研究台（預設 http://127.0.0.1:8000/）")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--reload", action="store_true")
@@ -218,6 +243,8 @@ def main(argv=None):
         return _refresh_fundamentals(args)
     if args.command == "jobs":
         return _jobs()
+    if args.command == "studies":
+        return _studies()
     if args.command == "serve":
         import uvicorn
         uvicorn.run("research_service.app:create_app", factory=True, host=args.host, port=args.port, reload=args.reload)

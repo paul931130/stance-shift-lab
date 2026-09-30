@@ -1,4 +1,9 @@
+import contextlib
+import io
+import os
+import tempfile
 import unittest
+from unittest.mock import patch
 from datetime import datetime, timedelta, timezone
 
 from research_service.progress import study_progress
@@ -36,6 +41,20 @@ class StudyProgressTests(unittest.TestCase):
         self.assertEqual([e["id"] for e in result["errors"]], ["job-0"])
         self.assertEqual(result["outside_sample_jobs"], 1)
         self.assertFalse(result["active"])
+
+
+class StudiesCommandTests(unittest.TestCase):
+    def test_studies_command_lists_preregistered_samples(self):
+        from research_service.cli import main
+        from research_service.storage import Store
+
+        with tempfile.TemporaryDirectory() as directory, patch.dict(os.environ, {"RESEARCH_DATA_DIR": directory}):
+            Store(directory).freeze("abcdef1234", ["d1", "d2"])
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(main(["studies"]), 0)
+        self.assertIn("abcdef12", out.getvalue())
+        self.assertIn("0/2 完成", out.getvalue())
 
 
 if __name__ == "__main__":
