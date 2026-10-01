@@ -136,9 +136,9 @@ class FidelityTests(unittest.TestCase):
             'prices': [{'date': (start + timedelta(days=i)).isoformat(), 'close': 100 + i}
                        for i in range(65)],
             'evidence': [
-                {'evidence_id': 'target-news', 'domain': 'sentiment', 'available_at': '2024-03-01',
+                {'evidence_id': 'target-news', 'domain': 'sentiment', 'available_at': '2024-12-01',
                  'source_type': 'fnspid', 'claim': 'NVIDIA earnings headline'},
-                {'evidence_id': 'market-context', 'domain': 'sentiment', 'available_at': '2024-03-02',
+                {'evidence_id': 'market-context', 'domain': 'sentiment', 'available_at': '2024-12-02',
                  'source_type': 'fnspid', 'claim': 'Micron sector headline'},
             ],
         }

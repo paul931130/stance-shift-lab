@@ -13,6 +13,8 @@ import { initDataPanel, refreshReadiness } from './data-panel.js';
 import { initExperimentPanel, applyModels, refreshDatasets } from './experiment-panel.js';
 import { refreshJobs, schedulePoll } from './runs-panel.js';
 import { refreshSettings, applySourceState } from './settings-panel.js';
+import { initStudyPanel } from './study-panel.js';
+import { initBatchPanel, syncPlanModels } from './batch-panel.js';
 
 function chooseInitialTab(requestedTab) {
   if (requestedTab) return;
@@ -50,6 +52,8 @@ async function initialize() {
   catch { $('first-time-guide').hidden = false; }
   initDataPanel(config);
   initExperimentPanel(config);
+  initStudyPanel(refreshJobs);
+  initBatchPanel(config, async () => { await Promise.allSettled([refreshDatasets(), refreshReadiness()]); }, refreshJobs);
   applySourceState(config);
 
   const params = new URLSearchParams(location.search);
@@ -66,6 +70,7 @@ async function initialize() {
   applyModels(config, results[4].status === 'fulfilled'
     ? results[4].value
     : {ready: false, models: [], details: [], message: 'Ollama 暫時無法連線；可稍後重試或改用雲端模型。'});
+  syncPlanModels();
   chooseInitialTab(requestedTab);
   schedulePoll();
 }

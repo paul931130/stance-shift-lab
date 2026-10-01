@@ -6,7 +6,7 @@ saved protocol can be audited before any data download or inference occurs.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, timedelta
 import hashlib
 import json
 import re
@@ -22,6 +22,37 @@ from .errors import PreflightError
 STUDY_TICKERS = ("AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "INTC", "GE")
 TICKERS = STUDY_TICKERS  # Backwards-compatible name used by the API and tests.
 QUARTER_DATES = tuple(f"{year}-{suffix}" for year in range(2021, 2026) for suffix in ("03-31", "06-30", "09-30", "12-31"))
+def _month_end_dates():
+    dates = []
+    for year in range(2021, 2026):
+        for month in range(1, 13):
+            following = date(year + (month == 12), month % 12 + 1, 1)
+            dates.append((following - timedelta(days=1)).isoformat())
+    return tuple(dates)
+
+
+MONTH_END_DATES = _month_end_dates()
+# Study designs. The quarterly design is the original 180-case study (60-session
+# primary horizon, 90-day news window). The monthly design scales it to one
+# month: 540 cases, a 20-session primary horizon that does not overlap the next
+# case, and a 30-day news window. Robustness horizons keep the same ratios.
+DESIGNS = {
+    "quarterly": {"dates": QUARTER_DATES, "primary_horizon": 60, "horizons": (30, 60, 90), "news_window_days": 90},
+    "monthly": {"dates": MONTH_END_DATES, "primary_horizon": 20, "horizons": (10, 20, 30), "news_window_days": 30},
+}
+QUARTERLY_VERSION = "v3-1001.1"
+MONTHLY_VERSION = "v3-1001.2"
+MONTHLY_VERSIONS = frozenset({"v3-0930.2", "v3-0930.4", MONTHLY_VERSION})
+# From v3-1001.x the inference settings that change model output (context length,
+# concurrent Ollama calls) are protocol fields, and numeric claims and the
+# role-switch rebuttal are checked more strictly (see models.validate_*).
+FROZEN_INFERENCE_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION})
+STRICT_VALIDATION_VERSIONS = FROZEN_INFERENCE_VERSIONS
+DEFAULT_CONTEXT_LENGTH = 8192
+# From v3-0930.1 the prompt carries FinBERT indicators computed over every eligible headline instead of a
+# 12-headline sample (see data.research_inputs); earlier versions keep the headline sample.
+INDICATOR_VERSIONS = ("v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", QUARTERLY_VERSION, MONTHLY_VERSION)
+NUMERIC_CLAIM_VERSIONS = frozenset({"v3-0930.3", "v3-0930.4", QUARTERLY_VERSION, MONTHLY_VERSION})
 DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
 BASE_RATE_MIN_WINDOWS = 8
 DEFAULT_RESEARCH_MODEL = "ollama/qwen3:14b"
@@ -46,7 +77,8 @@ COMPANY_NAMES = {
 class StudyProtocol:
     # Display, extraction and validation rules change what enters a report.
     # Version them so a partially completed job cannot mix evidence rules.
-    version: str = "v3-0929.1"
+    version: str = QUARTERLY_VERSION
+    design: Literal["quarterly", "monthly"] = "quarterly"
     study: Literal["study1", "study2"] = "study1"
     model: str = DEFAULT_RESEARCH_MODEL
     allow_small_model: bool = False
@@ -77,10 +109,20 @@ class StudyProtocol:
     inference_seed: int = 905
     provider_retry_attempts: int = 3
     study_universe: tuple[str, ...] = STUDY_TICKERS
+    # Frozen inference settings (v3-1001.x); None in older versions, which read the environment.
+    model_context_length: int | None = None
+    ollama_parallel: int | None = None
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1"):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", QUARTERLY_VERSION, MONTHLY_VERSION):
             raise ValueError("Unsupported protocol version")
+        if self.version in FROZEN_INFERENCE_VERSIONS:
+            if self.model_context_length is None:
+                object.__setattr__(self, "model_context_length", DEFAULT_CONTEXT_LENGTH)
+            if self.ollama_parallel is None:
+                object.__setattr__(self, "ollama_parallel", 1)
+            if not 1024 <= self.model_context_length <= 131072 or not 1 <= self.ollama_parallel <= 8:
+                raise ValueError("model_context_length must be 1024-131072 and ollama_parallel 1-8")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")
         if self.version == "v3-0905.1" and self.missing_data_policy != "force_no_trade":
@@ -93,8 +135,13 @@ class StudyProtocol:
             raise PreflightError("model_too_small", "模型參數量未達正式門檻（14B；qwen3:8b 除外）；若只是測試，請勾選「允許 14B 以下的模型」（allow_small_model=True）")
         if self.max_rounds != 3 or self.voting_samples not in (5, 7):
             raise ValueError("v3 fixes three rounds and supports voting n=5 or n=7")
-        if self.primary_horizon != 60 or self.horizons != (30, 60, 90):
-            raise ValueError("The primary endpoint must remain 60 days")
+        if self.design not in DESIGNS:
+            raise ValueError("Unsupported study design")
+        if ((self.design == "monthly") != (self.version in MONTHLY_VERSIONS)):
+            raise ValueError(f"Monthly versions are {', '.join(sorted(MONTHLY_VERSIONS))}; quarterly protocols cannot use them")
+        design = DESIGNS[self.design]
+        if self.primary_horizon != design["primary_horizon"] or tuple(self.horizons) != design["horizons"]:
+            raise ValueError(f"The {self.design} design fixes the primary endpoint at {design['primary_horizon']} sessions")
         if not 0 <= self.temperature <= 2 or not 0 <= self.voting_temperature <= 2 or self.voting_temperature < self.temperature or self.max_output_tokens < 64:
             raise ValueError("Invalid model generation parameters")
         if self.confidence_floor is not None and not 0 <= self.confidence_floor <= 1:
@@ -116,9 +163,38 @@ class StudyProtocol:
         if tuple(self.study_universe) != STUDY_TICKERS:
             raise ValueError("v3-0907.3 fixes the current backtest universe to the nine FNSPID-covered stocks")
 
+    @classmethod
+    def monthly(cls, **overrides):
+        """The monthly study design: month-end anchors, 20-session primary horizon, 30-day news window."""
+        design = DESIGNS["monthly"]
+        return cls(version=MONTHLY_VERSION, design="monthly", primary_horizon=design["primary_horizon"],
+                   horizons=design["horizons"], **overrides)
+
+    @property
+    def analysis_dates(self) -> tuple[str, ...]:
+        return DESIGNS[self.design]["dates"]
+
+    @property
+    def sentiment_indicators(self) -> bool:
+        """Whether sentiment reaches the models as FinBERT indicators over all headlines (v3-0930.1+)."""
+        return self.version in INDICATOR_VERSIONS
+
+    @property
+    def news_window_days(self) -> int:
+        return DESIGNS[self.design]["news_window_days"]
+
     @property
     def fingerprint(self) -> str:
-        return hashlib.sha256(json.dumps(asdict(self), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        payload = asdict(self)
+        # Protocols saved before the design field existed are quarterly; leaving the
+        # default out keeps their recorded hashes valid.
+        if payload["design"] == "quarterly":
+            del payload["design"]
+        # Older protocols had no frozen inference fields; their hashes stay unchanged.
+        for key in ("model_context_length", "ollama_parallel"):
+            if payload[key] is None:
+                del payload[key]
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     @property
     def compute_matched(self) -> bool:
@@ -147,6 +223,16 @@ def decision_plan(protocol: StudyProtocol) -> tuple[DecisionCall, ...]:
                 calls.append(DecisionCall(f"{group.lower()}-r{round_number}-{agent}", group, "debate", agent, stance, round_number))
         calls.append(DecisionCall(f"{group.lower()}-adjudication", group, "adjudication", "adjudicator", "NEUTRAL"))
     return tuple(calls)
+
+
+def protocol_is_current(protocol: dict) -> bool:
+    """Whether a saved protocol is the current version of its own study design.
+
+    Older versions stay readable but are never resumed on a newer engine. Each design has its
+    own current version, so a quarterly and a monthly job never make each other look stale.
+    """
+    current = MONTHLY_VERSION if protocol.get("design", "quarterly") == "monthly" else QUARTERLY_VERSION
+    return protocol.get("version") == current
 
 
 def is_switched(protocol: StudyProtocol, call: DecisionCall) -> bool:
@@ -199,10 +285,10 @@ def decision_wave(protocol: StudyProtocol, records: list[dict]) -> tuple[Decisio
     return tuple(sorted(ready, key=lambda call: order[call.key]))
 
 
-def cases(tickers: tuple[str, ...] = STUDY_TICKERS) -> tuple[tuple[str, str], ...]:
+def cases(tickers: tuple[str, ...] = STUDY_TICKERS, design: str = "quarterly") -> tuple[tuple[str, str], ...]:
     if not tickers or len(set(tickers)) != len(tickers) or any(ticker not in STUDY_TICKERS for ticker in tickers):
         raise ValueError("Select unique tickers from the approved universe")
-    return tuple((ticker, analysis_date) for analysis_date in QUARTER_DATES for ticker in tickers)
+    return tuple((ticker, analysis_date) for analysis_date in DESIGNS[design]["dates"] for ticker in tickers)
 
 
 def is_live_case_date(analysis_date: str) -> bool:
@@ -212,7 +298,10 @@ def is_live_case_date(analysis_date: str) -> bool:
     return analysis_date == date.today().isoformat()
 
 
-def validate_case(ticker: str, analysis_date: str) -> None:
-    if ticker not in STUDY_TICKERS or (analysis_date not in QUARTER_DATES and not is_live_case_date(analysis_date)):
-        raise ValueError("Case must use an approved ticker and either a 2021–2025 quarter anchor or today's date")
+def validate_case(ticker: str, analysis_date: str, design: str = "quarterly") -> None:
+    if design not in DESIGNS:
+        raise ValueError("Unsupported study design")
+    if ticker not in STUDY_TICKERS or (analysis_date not in DESIGNS[design]["dates"] and not is_live_case_date(analysis_date)):
+        anchor = "month-end" if design == "monthly" else "quarter"
+        raise ValueError(f"Case must use an approved ticker and either a 2021–2025 {anchor} anchor or today's date")
     date.fromisoformat(analysis_date)

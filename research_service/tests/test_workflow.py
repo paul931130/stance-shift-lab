@@ -35,8 +35,12 @@ def fixture():
         rows.append({"date": day.isoformat(), "open": value, "high": value + 1, "low": value - 1, "close": value + .1})
     evidence = [{"evidence_id": domain + "-1", "domain": domain,
         "claim": "NVIDIA synthetic test evidence only" if domain == "sentiment" else "Synthetic test evidence only",
-        "source": "unit-test-fixture", "available_at": "2024-12-20", **({"vintage_date": "2024-12-20"} if domain == "macro" else {})}
+        "source": "unit-test-fixture", "available_at": "2024-12-20", **({"vintage_date": "2024-12-20"} if domain == "macro" else {}),
+        **({"headline": "NVIDIA synthetic test evidence only", "sentiment_score": .2} if domain == "sentiment" else {})}
         for domain in ("fundamental", "sentiment", "macro")]
+    # Three direct headlines: a kind with fewer than three scored headlines reports no sentiment indicator.
+    evidence = evidence + [{**item, "evidence_id": f"sentiment-{number}"} for number in (2, 3)
+                           for item in evidence if item["domain"] == "sentiment"]
     return {"ticker": "NVDA", "kind": "synthetic", "source": "unit-test-fixture", "price_basis": "adjusted_ohlc", "prices": rows, "evidence": evidence}
 
 
@@ -53,8 +57,8 @@ def fake_model(protocol, messages):
         if "assigned debate stance" in messages[0]["content"]:
             result["strongest_counterpoint"] = "Synthetic counterpoint supported by the shared evidence."
         if "role-switch round" in messages[0]["content"]:
-            result["rebutted_claim"] = "Synthetic round-1 claim being abandoned in this fixture."
-            result["confidence_shift"] = -0.1 if action == "Sell" else 0.1
+            result["rebutted_claim"] = "Synthetic test decision"  # this agent's own round-1 rationale
+            result["confidence_shift"] = 0.0
     return result, {"prompt_hash": digest(messages), "usage": {}, "raw_response": json.dumps(result)}
 
 
@@ -141,7 +145,7 @@ class WorkflowTests(unittest.TestCase):
             for i in range(20))
         inputs = research_inputs(self.data, "2024-12-31")
         self.assertEqual(len(inputs["domains"]["sentiment"]), 12)
-        self.assertEqual(inputs["evidence_selection"]["sentiment"]["available"], 21)
+        self.assertEqual(inputs["evidence_selection"]["sentiment"]["available"], 23)  # 3 fixture headlines + 20
         self.assertTrue(all(len(item["claim"]) <= 1200 for item in inputs["domains"]["sentiment"]))
 
     def test_recovery_releases_only_jobs_of_stopped_services(self):
@@ -193,7 +197,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_missing_sentiment_domain_is_not_blocked_by_news_quality_gate(self):
         historical = json.loads(json.dumps(self.data))
-        historical.update(kind="historical", requested_analysis_date="2024-12-31", evidence=[])
+        historical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, requested_analysis_date="2024-12-31", evidence=[])
         dataset_id = self.store.add_dataset(historical)
         with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
             response = client.post('/api/jobs', json={"dataset_id": dataset_id,
@@ -202,7 +206,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_point_only_fundamental_requires_an_explicit_sensitivity_override(self):
         historical = json.loads(json.dumps(self.data))
-        historical.update(kind="historical", requested_analysis_date="2024-12-31")
+        historical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, requested_analysis_date="2024-12-31")
         historical["evidence"] = [item for item in historical["evidence"] if item["domain"] == "fundamental"]
         dataset_id = self.store.add_dataset(historical)
         with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
@@ -405,7 +409,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_complete_dataset_snapshot_is_reused_unless_refresh_is_requested(self):
         technical = json.loads(json.dumps(self.data))
-        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        technical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         by_domain = {domain: [next(item for item in self.data["evidence"] if item["domain"] == domain)]
                      for domain in ("fundamental", "sentiment", "macro")}
         with patch("research_service.collect.download_prices", side_effect=lambda *_: json.loads(json.dumps(technical))) as prices, \
@@ -431,7 +435,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_collection_task_matches_sync_download_and_hides_internal_errors(self):
         technical = json.loads(json.dumps(self.data))
-        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        technical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         by_domain = {domain: [next(item for item in self.data["evidence"] if item["domain"] == domain)]
                      for domain in ("fundamental", "sentiment", "macro")}
         case = {"ticker": "NVDA", "analysis_date": "2024-12-31", "refresh": True}
@@ -476,7 +480,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_readiness_date_guard_and_finbert_version_endpoint(self):
         historical = json.loads(json.dumps(self.data))
-        historical.update(kind="historical", requested_analysis_date="2024-12-31")
+        historical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, requested_analysis_date="2024-12-31")
         historical_id = self.store.add_dataset(historical)
 
         def enrich(data, **kwargs):
@@ -513,7 +517,7 @@ class WorkflowTests(unittest.TestCase):
                     active -= 1
 
         technical = json.loads(json.dumps(self.data))
-        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        technical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         with patch("research_service.collect.download_prices", side_effect=lambda *_: tracked(technical)), \
              patch("research_service.collect.fetch_fundamental", side_effect=lambda *_: tracked(([], "SEC not configured"))), \
              patch("research_service.collect.fetch_sentiment", side_effect=lambda *_, **__: tracked(([], "news not configured"))), \
@@ -528,7 +532,7 @@ class WorkflowTests(unittest.TestCase):
 
     def test_download_with_finbert_keeps_zero_news_as_missing_data(self):
         technical = json.loads(json.dumps(self.data))
-        technical.update(kind="historical", evidence=[], limitations=[], requested_analysis_date="2024-12-31")
+        technical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"}, evidence=[], limitations=[], requested_analysis_date="2024-12-31")
         with patch("research_service.collect.download_prices", return_value=technical), \
              patch("research_service.collect.fetch_fundamental", return_value=([], "SEC not configured")), \
              patch("research_service.collect.fetch_sentiment", return_value=([], "news not configured")), \
@@ -622,7 +626,23 @@ class WorkflowTests(unittest.TestCase):
         job["state"] = engine.advance(job)
         self.assertEqual(len(job["state"]["records"]), 2)
 
-    def test_parallel_agent_failure_uses_audited_source_extract(self):
+    def test_ollama_parallel_is_opt_in_and_bounded(self):
+        # v3-1001.x: concurrency is a protocol field (part of the fingerprint), not an environment setting.
+        engine = Engine(self.store, fake_model, parallel_workers=4)
+        engine.uses_builtin_provider = True
+        protocol = StudyProtocol(dataset_kind="synthetic", bootstrap_replicates=199, ollama_parallel=4)
+        self.assertNotEqual(protocol.fingerprint, self.protocol.fingerprint)
+        job = self.store.create({"ticker": "NVDA", "analysis_date": "2024-12-31", "dataset_id": self.dataset_id,
+                                 "protocol": asdict(protocol), "protocol_hash": protocol.fingerprint})
+        for _ in range(3):
+            job["state"] = engine.advance(job)
+        job["state"] = engine.advance(job)
+        self.assertEqual(len(job["state"]["records"]), 4)
+        self.assertEqual(job["state"]["trace"][-1]["effective_workers"], 4)
+        with patch.dict("os.environ", {"RESEARCH_OLLAMA_PARALLEL": "9"}), self.assertRaises(ValueError):
+            Engine(self.store, fake_model)
+
+    def test_a_provider_timeout_pauses_the_step_instead_of_degrading_the_case(self):
         job = self.create()
         job["state"] = Engine(self.store, fake_model).advance(job)
 
@@ -631,17 +651,21 @@ class WorkflowTests(unittest.TestCase):
                 raise TimeoutError("test timeout")
             return fake_model(protocol, messages)
 
-        job["state"] = Engine(self.store, fail_sentiment, parallel_workers=4).advance(job)
-        self.assertEqual(set(job["state"]["research"]), {"technical", "fundamental", "sentiment", "macro"})
-        self.assertEqual(job["state"]["research"]["sentiment"]["status"], "degraded")
-        self.assertEqual(job["state"]["research"]["sentiment"]["audit"]["error_type"], "TimeoutError")
+        with self.assertRaises(Exception):
+            Engine(self.store, fail_sentiment, parallel_workers=4).advance(job)
+        stored = self.store.get(job["id"])["state"]
+        self.assertNotIn("sentiment", stored.get("research", {}))
+        # Once the provider is back, the same step completes and nothing is degraded.
+        job["state"] = Engine(self.store, fake_model, parallel_workers=4).advance(job)
+        self.assertEqual({item["status"] for item in job["state"]["research"].values()}, {"complete"})
 
     def test_fundamental_source_locked_extract_preserves_raw_claims_without_a_model_call(self):
         items = [{"evidence_id": "sec-revenue", "domain": "fundamental", "claim": "Revenues = 91166000000 USD"},
                  {"evidence_id": "sec-income", "domain": "fundamental", "claim": "NetIncomeLoss = 50,789,000,000 USD"}]
         result, audit = source_locked_fundamental(items)
-        self.assertIn("Revenues = 91,166,000,000 USD", result["summary"])
-        self.assertIn("NetIncomeLoss = 50,789,000,000 USD", result["summary"])
+        # v3-0930.3: exact values live in claim_map and the cited evidence, not in free summary prose.
+        self.assertNotIn("91,166,000,000", result["summary"])
+        self.assertEqual(result["claim_map"][0], {"evidence_id": "sec-revenue", "claim": "Revenues = 91166000000 USD"})
         self.assertEqual(result["evidence_ids"], ["sec-revenue", "sec-income"])
         self.assertEqual(result["claim_map"][1], {"evidence_id": "sec-income", "claim": "NetIncomeLoss = 50,789,000,000 USD"})
         self.assertEqual(audit["mode"], "source_locked_extract")
@@ -660,7 +684,9 @@ class WorkflowTests(unittest.TestCase):
         sentiment = job["state"]["research"]["sentiment"]
         self.assertEqual(sentiment["status"], "degraded")
         self.assertEqual(sentiment["audit"]["fallback"], "deterministic_source_extract")
-        self.assertEqual(sentiment["evidence_ids"], ["sentiment-1"])
+        # Sentiment reaches the models as FinBERT indicators (v3-0930.1), so the audited fallback cites those.
+        self.assertEqual(len(sentiment["evidence_ids"]), 3)
+        self.assertTrue(all(item.startswith("sentiment-target-") for item in sentiment["evidence_ids"]))
 
     def test_invalid_decision_citation_retries_with_new_seed_and_audit(self):
         job = self.create()
@@ -716,6 +742,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(audit["validation_retries"][0]["error_type"], "ValidationError")
 
     def test_unsupported_positive_magnitude_retry_explains_negative_source_sign(self):
+        # Retry-then-redact is the registered v3-0930.3 behaviour; v3-1001.x redacts at once.
+        self.protocol = StudyProtocol(version="v3-0930.3", dataset_kind="synthetic", bootstrap_replicates=199)
         engine = Engine(self.store, fake_model)
         call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
         evidence = [{"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True,
@@ -758,14 +786,22 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("xxxx", hint)
 
     def test_persistent_unsupported_numbers_are_redacted_instead_of_aborting(self):
+        # Retry-then-redact is the registered v3-0930.3 behaviour; v3-1001.x redacts at once.
+        self.protocol = StudyProtocol(version="v3-0930.3", dataset_kind="synthetic", bootstrap_replicates=199)
         engine = Engine(self.store, fake_model)
         call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
-        evidence = [{"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True,
+        evidence = [{"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True, "metric": "Revenue",
+                     "current_period": "2024-12-31", "prior_period": "2023-12-31",
+                     "current_value": 98.5993, "prior_value": 100.0, "change_pct": -1.400692,
                      "claim": "Revenue: year_over_year_change_pct=-1.400692"}]
         messages = messages_for(call, {"evidence": evidence}, [], [], self.protocol)
+        bound = {"evidence_id": "sec-yoy", "metric": "Revenue year-over-year change",
+                 "period": "2023-12-31..2024-12-31", "unit": "percent", "value": -1.400692,
+                 "quote": "Revenue fell -1.400692%"}
         invalid = {"action": "Sell", "expected_return_pct": -2.0, "confidence": .6,
                    "rationale": "Revenue fell -1.400692%, roughly 1.4% (about 987654 units).",
-                   "evidence_ids": ["sec-yoy"], "risks": ["Margins near 12345.6789"]}
+                   "evidence_ids": ["sec-yoy"], "risks": ["Margins near 12345.6789"],
+                   "numeric_claims": [bound]}
         engine.call_model = lambda *_args, **_kwargs: (
             json.loads(json.dumps(invalid)), {"prompt_hash": "synthetic", "usage": {}, "raw_response": "x"})
         result, audit = engine.validated_decision(self.protocol, call, messages, evidence)
@@ -894,6 +930,48 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual(self.store.preregistration(body["protocol_hash"])["frozen_at"], body["frozen_at"])
             mixed = client.post('/api/studies/preregister', json={"cases": [case, {**case, "voting_samples": 5}]})
             self.assertEqual(mixed.status_code, 422)
+
+    def test_enqueue_is_idempotent_and_limited_to_the_preregistered_sample(self):
+        with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            case = {"dataset_id": self.dataset_id, "analysis_date": "2024-12-31"}
+            protocol_hash = client.post('/api/studies/preregister', json={"cases": [case]}).json()["protocol_hash"]
+            listed = client.get('/api/studies').json()
+            self.assertEqual([(s["protocol_hash"], s["cases"]) for s in listed], [(protocol_hash, 1)])
+            self.assertEqual(listed[0]["progress"]["not_created"], 1)
+
+            first = client.post(f'/api/studies/{protocol_hash}/enqueue', json={"cases": [case, case]})
+            self.assertEqual(first.status_code, 200, first.text)
+            # The same case listed twice in one request is created once.
+            self.assertEqual((first.json()["created"], first.json()["skipped_existing"]), (1, 1))
+            # Pressing the button twice (or a helper re-sending the batch) must not duplicate GPU work.
+            again = client.post(f'/api/studies/{protocol_hash}/enqueue', json={"cases": [case]}).json()
+            self.assertEqual((again["created"], again["skipped_existing"]), (1 - 1, 1))
+            self.assertEqual(len(self.store.job_summaries()), 1)
+
+            # The single-job and batch routes refuse a second job for a registered case.
+            self.assertEqual(client.post('/api/jobs', json=case).status_code, 422)
+            self.assertEqual(client.post('/api/batches', json={"cases": [case]}).status_code, 422)
+            outsider = self.store.add_dataset({**self.data, "source": "unit-test-fixture-v2"})
+            refused = client.post(f'/api/studies/{protocol_hash}/enqueue',
+                                  json={"cases": [{"dataset_id": outsider, "analysis_date": "2024-12-31"}]})
+            self.assertEqual(refused.status_code, 422)
+            other_protocol = client.post(f'/api/studies/{protocol_hash}/enqueue',
+                                         json={"cases": [{**case, "voting_samples": 5}]})
+            self.assertEqual(other_protocol.status_code, 422)
+            self.assertEqual(len(self.store.job_summaries()), 1)
+
+            paused = client.post(f'/api/studies/{protocol_hash}/pause-all').json()
+            self.assertEqual((paused["changed"], paused["progress"]["counts"]["paused"]), (1, 1))
+            resumed = client.post(f'/api/studies/{protocol_hash}/resume-all').json()
+            self.assertEqual((resumed["changed"], resumed["progress"]["counts"]["queued"]), (1, 1))
+            self.assertEqual(client.post(f'/api/studies/{protocol_hash}/delete-all').status_code, 404)
+
+    def test_enqueue_requires_a_preregistration(self):
+        with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            response = client.post('/api/studies/not-registered/enqueue',
+                                   json={"cases": [{"dataset_id": self.dataset_id, "analysis_date": "2024-12-31"}]})
+        self.assertEqual(response.status_code, 422)
+        self.assertEqual(self.store.job_summaries(), [])
 
     def test_freeze_rejects_changing_the_dataset_set_after_the_fact(self):
         job = self.complete(self.create("2024-12-31"))

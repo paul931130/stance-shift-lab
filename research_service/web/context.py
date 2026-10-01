@@ -26,6 +26,8 @@ class AppContext:
     # A test or demo model replaces the real provider, so Ollama checks are skipped.
     injected_model_call: bool
     trusted_proxies: set = field(default_factory=set)
+    # GPU idle watchdog (research_service.autostop); None in tests that build a bare context.
+    autostop: object = None
 
 
 class TaskRegistry:
@@ -66,6 +68,16 @@ class DownloadInput(BaseModel):
     refresh: bool = False
     use_finbert: bool = False
     offline_news_only: bool = False
+    design: str = "quarterly"
+
+
+class BatchCollectInput(BaseModel):
+    tickers: list[str] = Field(min_length=1, max_length=20)
+    dates: list[str] = Field(min_length=1, max_length=120)
+    refresh: bool = False
+    use_finbert: bool = True
+    offline_news_only: bool = False
+    design: str = "quarterly"
 
 
 class JobInput(BaseModel):
@@ -79,7 +91,25 @@ class JobInput(BaseModel):
     allow_point_fundamental: bool = False
     allow_small_model: bool = False
     allow_low_quality_sentiment: bool = False
+    design: str = "quarterly"
+    # Frozen inference settings; None keeps the protocol default (8192 tokens, one call at a time).
+    model_context_length: int | None = None
+    ollama_parallel: int | None = None
 
 
 class BatchInput(BaseModel):
-    cases: list[JobInput] = Field(min_length=1, max_length=200)
+    cases: list[JobInput] = Field(min_length=1, max_length=600)
+
+
+class PlanInput(BaseModel):
+    """Tickers x analysis dates plus the settings every case of a study shares."""
+    tickers: list[str] = Field(min_length=1, max_length=20)
+    dates: list[str] = Field(min_length=1, max_length=120)
+    model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
+    voting_samples: int = 7
+    study: str = "study1"
+    anonymize_ticker: bool = False
+    missing_data_policy: str = "allow_decision"
+    design: str = "quarterly"
+    model_context_length: int | None = None
+    ollama_parallel: int | None = None

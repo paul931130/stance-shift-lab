@@ -32,6 +32,52 @@ function knowledgeCutoffBlock(k) {
   return `<section class="stats-substep"><div class="section-label">4.1b / 模型知識截止日前後</div><p class="hint">知識截止日：${cutoffs}。${escape(k.note)}</p><div class="table-wrap"><table><thead><tr><th>方法</th>${head}<th>後 − 前</th></tr></thead><tbody>${body}</tbody></table></div><p class="hint">表內為有下注時的方向準確率（60 日、扣成本）。</p></section>`;
 }
 
+function completionBlock(c) {
+  if (!c) return '';
+  if (c.target_cases == null) return `<section class="stats-substep"><div class="section-label">完成狀態（不同門檻）</div><p class="hint">目前沒有可辨識的實驗協議與事前登記目標，無法判定整批完成；達到最低統計案例數也不代表正式樣本完整。</p></section>`;
+  const formal = c.formal_sample_status === 'complete' ? '完整' : c.formal_sample_status === 'not_preregistered' ? '尚未事前登記' : '未完整';
+  const quality = c.quality_status === 'passed_for_all_completed' ? '目前完成案例皆通過' : c.quality_status === 'has_exclusions' ? `有排除（${c.quality_excluded_completed_cases ?? 0} 案）` : '尚無可判定案例';
+  return `<section class="stats-substep"><div class="section-label">完成狀態（不同門檻）</div><div class="table-wrap"><table><thead><tr><th>工作執行</th><th>品質條件</th><th>事前登記樣本</th><th>可做統計</th></tr></thead><tbody><tr><td>${c.work_completed_cases}/${c.target_cases} 案${c.work_complete ? ' · 全部工作完成' : ' · 尚未全數完成'}</td><td>${escape(quality)} · ${c.quality_passed_cases} 案</td><td>${escape(formal)}${c.formal_sample_complete ? ` · ${c.target_cases}/${c.target_cases}` : ''}</td><td>${c.inference_ready ? '達最低統計門檻' : `未達 ${c.inference_minimum_cases ?? 30} 案`}</td></tr></tbody></table></div><p class="hint">「達最低統計門檻」不代表整批工作完成或正式樣本完整。</p></section>`;
+}
+
+function dateClusterBlock(comparisons, primaryHorizon) {
+  const rows = (comparisons || []).filter(item => item.horizon === primaryHorizon && item.cost_model === 'corwin_schultz' && item.decision_layer === 'candidate' && item.portfolio_basis === 'all');
+  const records = rows.flatMap(item => {
+    const sensitivity = item.date_cluster_direction_sensitivity;
+    return (sensitivity?.by_block_length || []).map(block => ({item, sensitivity, block}));
+  }).filter(row => row.block.status === 'ok');
+  if (!records.length) return '';
+  const body = records.map(({item, sensitivity, block}) => `<tr><td>D vs ${escape(item.groups?.[1] || '')}</td><td>${block.block_length_dates}</td><td>${sensitivity.n_dates}</td><td>${sensitivity.n_pairs}</td><td>${percentage(sensitivity.estimate)}</td><td>${percentage(block.confidence_interval?.[0])} – ${percentage(block.confidence_interval?.[1])}</td></tr>`).join('');
+  return `<section class="stats-substep"><div class="section-label">日期群聚／連續日期區塊敏感度</div><p class="hint">方向準確率差（D 減比較組）的配對日期區塊 bootstrap 95% percentile 區間；依日期整組重抽，並以較長連續日期區塊保留部分時間相依。這是敏感度區間，不是另一個顯著性 p 值；季度只有 20 個日期群聚，需保守解讀。</p><div class="table-wrap"><table><thead><tr><th>比較</th><th>區塊（日期）</th><th>日期群聚</th><th>配對方向案例</th><th>差值</th><th>95% 區間</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
+}
+
+function temporalSplitBlock(result) {
+  if (!result?.splits) return '';
+  const body = Object.entries(result.splits).flatMap(([name, split]) => Object.entries(split.by_group || {}).map(([group, item]) => `<tr><td>${escape(split.label || name)}</td><td>${escape(group)}</td><td>${split.completed_cases}/${split.target_cases}</td><td>${item.directional_cases}/${item.cases}</td><td>${percentage(item.coverage)}</td><td>${percentage(item.selective_accuracy)}</td><td>${item.mean_net_return == null ? '—' : percentage(item.mean_net_return)}</td></tr>`)).join('');
+  return `<section class="stats-substep"><div class="section-label">Training／Validation／Test 分開呈現</div><p class="hint">各年度區段僅報描述統計，分母與下注覆蓋分開列示；Test 僅供最終評估，不用於調參。</p><div class="table-wrap"><table><thead><tr><th>切分</th><th>方法</th><th>完成/目標</th><th>有方向案例</th><th>覆蓋率</th><th>條件準確率</th><th>平均成本後報酬</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
+}
+
+function numericQualityBlock(q) {
+  if (!q || q.status !== 'available') return '';
+  const body = Object.entries(q.strata || {}).map(([name, stratum]) => `<tr><td>${name === 'redaction' ? '移除數字或丟棄數字主張' : '無數字修補'}</td><td>${stratum.cases}</td>${['A', 'B', 'C', 'D'].map(group => `<td>${stratum.by_group?.[group]?.cases ? `${percentage(stratum.by_group[group].selective_accuracy)} · ${stratum.by_group[group].directional_cases}/${stratum.by_group[group].cases}` : '—'}</td>`).join('')}</tr>`).join('');
+  return `<section class="stats-substep"><div class="section-label">數字驗證品質分層</div><p class="hint">${q.redacted_cases} 個案例、${q.redacted_calls} 個決策呼叫曾移除數字或丟棄數字主張（${q.redacted_numeric_tokens} 個數字、${q.removed_numeric_claims || 0} 項主張）。分層是品質／選擇診斷，不證明修補是否改變決策。</p><div class="table-wrap"><table><thead><tr><th>品質層</th><th>案例數</th><th>A 準確率 · n</th><th>B 準確率 · n</th><th>C 準確率 · n</th><th>D 準確率 · n</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
+}
+
+function sentimentCoverageBlock(report) {
+  const coverage = report.sentiment_coverage;
+  if (!coverage) return '';
+  const rows = coverage.by_ticker_year.map(item => {
+    const target = item.scopes.target, context = item.scopes.context;
+    const sourceText = Object.entries(target.source_counts || {}).map(([name, values]) => `${escape(name)} ${values.scored_count}/${values.headline_count}`).join('；') || '無';
+    const contextSourceText = Object.entries(context.source_counts || {}).map(([name, values]) => `${escape(name)} ${values.scored_count}/${values.headline_count}`).join('；') || '無';
+    return `<tr><td>${escape(item.ticker)}</td><td>${escape(item.year)}</td><td>${item.coverage_recorded_cases}/${item.cases}</td><td>${item.window_days == null ? '未記錄' : `${item.window_days} 日`}</td><td>${target.scored_count}/${target.headline_count}</td><td>${percentage(target.missing_score_rate)}</td><td>${target.indicator_cases}/${item.coverage_recorded_cases}</td><td>${sourceText}</td><td>${context.scored_count}/${context.headline_count}</td><td>${contextSourceText}</td></tr>`;
+  }).join('');
+  const coverageNote = coverage.status === 'available'
+    ? `${coverage.cases_with_coverage} 案有窗口覆蓋紀錄、${coverage.cases_without_coverage || 0} 案未記錄`
+    : `所有 ${coverage.cases_without_coverage || 0} 案均未記錄窗口覆蓋；這不等於窗口內沒有新聞`;
+  return `<section class="stats-substep"><div class="section-label">全量 FinBERT 新聞覆蓋與缺失</div><p class="hint">${coverageNote}；依股票與年份列出窗口內新聞數、缺分率、指標產生率及目標／背景來源組成。</p><details><summary>展開股票 × 年份覆蓋表</summary><div class="table-wrap"><table><thead><tr><th>股票</th><th>年份</th><th>覆蓋紀錄/案例</th><th>窗口</th><th>目標：已評分/新聞數</th><th>目標缺分率</th><th>產生指標/覆蓋案例</th><th>目標來源：已評分/新聞數</th><th>背景：已評分/新聞數</th><th>背景來源：已評分/新聞數</th></tr></thead><tbody>${rows}</tbody></table></div></details></section>`;
+}
+
 export async function showStatistics() {
   if (!state.selectedProtocol) return;
   loadedFor = state.selectedProtocol;
@@ -41,19 +87,31 @@ export async function showStatistics() {
     api(`/api/studies/${protocol}`), api(`/api/studies/${protocol}/pilot`), api(`/api/studies/${protocol}/hold-band`),
   ]);
   const element = $('statistics');
-  const primary = report.summary.filter(r => r.horizon === 60 && r.cost_model === 'corwin_schultz' && r.decision_layer === 'candidate' && r.portfolio_basis === 'all');
-  flow.set('stats', {status: report.status === 'insufficient_cases' ? 'warn' : 'done', sub: `${report.unique_cases || 0} 個案例`});
+  const primaryHorizon = report.primary_horizon || 60;
+  const primary = report.summary.filter(r => r.horizon === primaryHorizon && r.cost_model === 'corwin_schultz' && r.decision_layer === 'candidate' && r.portfolio_basis === 'all');
+  const completionStatus = report.completion;
+  const completed = completionStatus?.work_completed_cases ?? report.unique_cases ?? 0;
+  const target = completionStatus?.target_cases;
+  const quality = completionStatus?.quality_passed_cases ?? 0;
+  const batchComplete = Boolean(completionStatus?.work_complete && completionStatus?.formal_sample_complete);
+  const progressText = target == null ? `${completed} 案；品質合格 ${quality} 案` : `${completed}/${target} 案；品質合格 ${quality} 案`;
+  flow.set('stats', {status: batchComplete ? 'done' : 'warn', sub: progressText});
   const insufficient = report.status === 'insufficient_cases' ? `<p class="protocol-warning">目前只有 ${report.unique_cases || 0} 個完成的案例，至少要 ${report.required_cases || 30} 個才會計算統計檢定。</p>` : '';
   const prereg = report.preregistration;
   const preregBlock = prereg
     ? `<p class="${prereg.post_freeze_dataset_ids.length ? 'protocol-warning' : 'hint'}">研究樣本已於 ${escape(formatStamp(prereg.frozen_at))} 鎖定（事前登記），共 ${prereg.dataset_ids.length} 個資料集。${prereg.post_freeze_dataset_ids.length ? `⚠️ 鎖定後又追加了 ${prereg.post_freeze_dataset_ids.length} 個資料集的實驗；這些是看過結果後才加入的，不應算進正式結論。` : '目前所有案例都在鎖定的樣本內。'}</p>`
     : `<p class="hint">尚未鎖定研究樣本（事前登記）。正式實驗要在執行前鎖定：到「建立實驗」的批次研究匯入案例清單，並勾選「先鎖定這批研究樣本」。只有鎖定後建立的實驗算正式結果；已經跑完的結果即使之後鎖定，也只算探索性分析，避免看了結果才挑樣本。</p>`;
-  element.innerHTML = `<section class="stats-substep"><div class="section-label">4.1 / 回測摘要</div><h2>同協議研究比較</h2><p class="hint">只比較用同一套研究規則（同協議版本）跑出的結果。以下為 60 個交易日、扣除估計交易成本（Corwin–Schultz）、各案例等權重的結果，共 ${report.unique_cases || 0} 個完成的案例；同一案例重跑的紀錄會保留但不重複計算。</p>${insufficient}${preregBlock}
+  const completion = completionBlock(report.completion);
+  const directionBlocks = dateClusterBlock(report.comparisons, primaryHorizon);
+  const splits = temporalSplitBlock(report.temporal_split_results);
+  const numericQuality = numericQualityBlock(report.numeric_validation_quality);
+  const newsCoverage = sentimentCoverageBlock(report);
+  element.innerHTML = `<section class="stats-substep"><div class="section-label">4.1 / 回測摘要</div><h2>同協議研究比較</h2><p class="hint">只比較用同一套研究規則（同協議版本）跑出的結果。以下為 ${primaryHorizon} 個交易日、扣除估計交易成本（Corwin–Schultz）、各案例等權重的結果，共 ${report.unique_cases || 0} 個完成的案例；同一案例重跑的紀錄會保留但不重複計算。</p>${insufficient}${preregBlock}
     <div class="chart-pair">${comparisonBars(primary, 'selective_accuracy', '有下注時的方向準確率', percentage)}${comparisonBars(primary, 'sharpe', 'Sharpe', number)}</div>
     <div class="table-wrap"><table><thead><tr><th>方法</th><th>下注比例</th><th>有下注時準確率</th><th>Hold 比例</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div></section>
-    ${knowledgeCutoffBlock(report.knowledge_cutoff)}
+    ${completion}${directionBlocks}${splits}${numericQuality}${newsCoverage}${knowledgeCutoffBlock(report.knowledge_cutoff)}
     <section class="stats-substep"><div class="section-label">4.2 / 品質與匯出</div><p class="hint">試跑檢查（pilot）：${pilot.verdict === 'proceed' ? '通過，可以開始正式批次' : pilot.verdict === 'blocked' ? '尚未通過' : '—'}。這是正式批次前的健檢，用來確認各組結果沒有異常（例如全部都 Hold）。「Hold 門檻」的敏感度分析是用既有預測重算，不會重新呼叫模型。</p>${pilotReasons(pilot.blocking_reasons)}<div class="actions"><a href="/api/studies/${protocol}/summary.csv">下載摘要表（summary.csv）</a><a href="/api/studies/${protocol}" download="statistics.json">下載完整統計（statistics.json）</a></div></section>
-    <section class="stats-substep"><div class="section-label">4.3 / 詳細稽核</div><details><summary>試跑檢查、Hold 門檻與資料完整性（原始數據）</summary>${copyablePre(JSON.stringify({pilot, hold_band: band, completeness: report.completeness}, null, 2))}</details><details><summary>統計檢定結果與計算方式（原始數據）</summary>${copyablePre(JSON.stringify({comparisons: report.comparisons, conventions: report.conventions}, null, 2))}</details></section>`;
+    <section class="stats-substep"><div class="section-label">4.3 / 詳細稽核</div><details><summary>試跑檢查、門檻、切分、新聞與數字品質（原始數據）</summary>${copyablePre(JSON.stringify({pilot, hold_band: band, completeness: report.completeness, completion: report.completion, temporal_split_results: report.temporal_split_results, numeric_validation_quality: report.numeric_validation_quality, sentiment_coverage: report.sentiment_coverage}, null, 2))}</details><details><summary>統計檢定結果與計算方式（原始數據）</summary>${copyablePre(JSON.stringify({comparisons: report.comparisons, conventions: report.conventions}, null, 2))}</details></section>`;
   requestAnimationFrame(() => { for (const bar of element.querySelectorAll('.bar-track i')) bar.style.width = `${bar.dataset.width}%`; });
 }
 

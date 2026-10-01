@@ -1,8 +1,9 @@
 // Step 2 · experiment setup: pick a dataset snapshot and model, check the
 // readiness guard, and queue an A/B/C/D comparison job.
+import { showSingleCase } from './batch-panel.js';
 import { $, escape, percentage, number, formatStamp, notify, datasetCut, datasetLabel, modelOptions, sleep } from './ui.js';
 import { state, on, emit, selectedDataset } from './store.js';
-import { api, task } from './api.js';
+import { api, task, BATCH_TIMEOUT } from './api.js';
 import { flow } from './flow.js';
 import { setTab } from './nav.js';
 import { refreshJobs } from './runs-panel.js';
@@ -108,6 +109,7 @@ function announceSelection() {
 }
 
 export function selectDataset(id, analysisDate) {
+  showSingleCase();
   renderDatasetOptions(id);
   $('dataset').value = id;
   if (analysisDate) $('analysis-date').value = analysisDate;
@@ -217,8 +219,8 @@ $('batch-file').addEventListener('change', e => task(null, async () => {
   const lock = $('batch-preregister').checked;
   const summary = `即將建立 ${cases.length} 筆研究案例\n分析日：${dates.join('、') || '（未指定）'}\n涉及資料集：${datasets.size} 種\n模型：${models.join('、') || '使用各筆預設值'}\n${lock ? '\n會先鎖定這批研究樣本（事前登記，不能撤銷），之後才排入佇列；只有鎖定後建立的實驗算正式結果。\n' : '\n不鎖定樣本：這批結果只算探索性分析。\n'}\n確定要送出並排入佇列嗎？`;
   if (!cases.length || !window.confirm(summary)) { e.target.value = ''; return; }
-  if (lock) await api('/api/studies/preregister', payload);
-  const ids = await api('/api/batches', payload);
+  if (lock) await api('/api/studies/preregister', payload, 'POST', BATCH_TIMEOUT);
+  const ids = await api('/api/batches', payload, 'POST', BATCH_TIMEOUT);
   notify(`已加入 ${ids.length} 個研究案例${lock ? '，研究樣本已先鎖定' : '（探索性分析）'}。`);
   await refreshJobs();
   e.target.value = '';

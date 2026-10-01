@@ -84,7 +84,7 @@ def demo_model(protocol, messages, seed=None, temperature=None):
         evidence_ids = _evidence_ids_from_research_message(messages[1]["content"])
         result = {"summary": "Deterministic demo summary of the supplied synthetic evidence.",
                   "evidence_ids": evidence_ids or ["demo-technical-1"],
-                  "risks": ["這是合成展示資料，不代表真實研究結論。"]}
+                  "risks": ["這是合成展示資料，不代表真實研究結論。"], "numeric_claims": []}
     else:
         payload = json.loads(messages[1]["content"])
         evidence = payload.get("report", {}).get("evidence", [])
@@ -95,12 +95,13 @@ def demo_model(protocol, messages, seed=None, temperature=None):
             action, expected = "Buy", 4.0
         result = {"action": action, "expected_return_pct": expected, "confidence": .75,
                   "rationale": "Deterministic demo response; not a research conclusion.",
-                  "evidence_ids": evidence_ids, "risks": ["合成展示資料不具外部效度。"]}
+                  "evidence_ids": evidence_ids, "risks": ["合成展示資料不具外部效度。"], "numeric_claims": []}
         if "assigned debate stance" in system:
             result["strongest_counterpoint"] = "The opposing stance remains possible in this synthetic example."
         if "role-switch round" in system:
-            result["rebutted_claim"] = "Synthetic round-1 claim, retained only for the demo walkthrough."
-            result["confidence_shift"] = 0.1 if action == "Buy" else -0.1
+            # Quote this agent's own round-1 rationale; the confidence is unchanged, so the shift is 0.
+            result["rebutted_claim"] = "Deterministic demo response; not a research conclusion."
+            result["confidence_shift"] = 0.0
     audit = {"prompt_hash": digest(messages), "usage": {"prompt_tokens": 0,
              "completion_tokens": 0, "client_elapsed_seconds": 0.0},
              "raw_response": json.dumps(result, ensure_ascii=False), "provider_attempts": 1,

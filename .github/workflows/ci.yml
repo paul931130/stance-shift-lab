@@ -110,9 +110,13 @@ jobs:
         with:
           node-version: "22"
 
-      - name: node --check static assets
+      - name: node --check static assets (as ES modules)
+        # Plain `node --check file.js` parses as CommonJS and let a stray
+        # template fragment through that broke every page; check as modules.
         run: |
-          for module in research_service/static/js/*.js; do node --check "$module" || exit 1; done
+          for module in research_service/static/js/*.js; do
+            node --input-type=module --check < "$module" || { echo "::error file=$module::syntax error"; exit 1; }
+          done
 
   browser-e2e:
     name: Browser end-to-end (demo mode)

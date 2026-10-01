@@ -21,6 +21,8 @@ from rich.spinner import Spinner
 from rich.table import Table
 from rich.text import Text
 
+from .labels import gate_reasons, pct, ratio_pct
+
 DOMAIN_NAMES = {"technical": "技術面", "fundamental": "基本面", "sentiment": "情緒面", "macro": "總經面"}
 GROUP_NAMES = {"A": "單次判斷", "B": "獨立投票", "C": "固定立場辯論", "D": "立場交換辯論"}
 STANCE = {"BULL": "看多", "BEAR": "看空", "NEUTRAL": "中立"}
@@ -337,16 +339,14 @@ def result_table(result):
                            style={True: "green", False: "red", None: "dim"}[correct])
         else:
             outcome = Text("—", style="dim")
+        if row.get("net_return") is not None and row.get("status") != "pending":
+            outcome.append(f"  {ratio_pct(row['net_return'])}")
         action = item["action"] or "—"
         table.add_row(f"{group} {item['name']}", Text(action, style=ACTION_STYLE.get(action, "")),
-                      _pct(item["expected_return_pct"]), _num(item["confidence"]), outcome,
-                      "、".join(item["gate_reasons"]) or "—")
+                      pct(item["expected_return_pct"], sign=True), _num(item["confidence"]), outcome,
+                      gate_reasons(item["gate_reasons"]))
     return table
 
 
-def _pct(value):
-    return "—" if value is None else f"{value:g}%"
-
-
 def _num(value):
-    return "—" if value is None else f"{value:g}"
+    return "—" if value is None else f"{value:.2f}"

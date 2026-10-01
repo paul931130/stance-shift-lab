@@ -13,6 +13,7 @@ import json
 import os
 from pathlib import Path
 
+from .labels import gate_reasons, ljust, pct, ratio_pct, rjust
 from .protocol import QUARTER_DATES, STUDY_TICKERS
 
 OVERRIDES = {"model_too_small": ("allow_small_model", "模型小於 14B"),
@@ -183,7 +184,8 @@ def show_step(event):
         if record["kind"] == "debate":
             who = f"第 {record.get('round')} 輪 {STANCE.get(record.get('stance'), record.get('stance'))}"
         print(f"  [{number:>2}/{event['total']}] {record['group']} {GROUP_NAMES[record['group']]} · {who}"
-              f" → {output.get('action')}  預期 {output.get('expected_return_pct')}%  信心 {output.get('confidence')}")
+              f" → {output.get('action')}  預期 {pct(output.get('expected_return_pct'), sign=True)}"
+              f"  信心 {_num(output.get('confidence'))}")
     if node == "gatekeeper_decisions_locked":
         print("\n[把關] 最終決策已鎖定，開始回測")
 
@@ -207,11 +209,11 @@ def print_result(result):
                       f"http://127.0.0.1:8000/?tab=runs&selected={result['job_id']}")
         return
     print(f"\n=== {result['ticker']} · {result['analysis_date']} · {result['model']} ===")
-    print(f"{'組別':<14}{'決策':<9}{'預期報酬':>9}{'信心':>7}  把關原因")
+    print(ljust("組別", 18) + ljust("決策", 9) + rjust("預期報酬", 10) + rjust("信心", 7) + "  把關原因")
     for group, item in result["decisions"].items():
-        reasons = "、".join(item["gate_reasons"]) or "—"
-        print(f"{group} {item['name']:<11}{item['action'] or '—':<9}{_num(item['expected_return_pct']):>8}%"
-              f"{_num(item['confidence']):>7}  {reasons}")
+        print(ljust(f"{group} {item['name']}", 18) + ljust(item["action"] or "—", 9)
+              + rjust(pct(item["expected_return_pct"], sign=True), 10) + rjust(_num(item["confidence"]), 7)
+              + "  " + gate_reasons(item["gate_reasons"]))
     primary = [row for row in result["backtest"] if row.get("horizon") == 60 and row.get("cost_model") == "zero"
                and row.get("decision_layer", "gated") == "gated"]
     if primary:
@@ -221,7 +223,7 @@ def print_result(result):
                 print(f"  {row['group']}  尚未到期（只有 {row.get('available_sessions')} 個交易日的未來行情）")
             else:
                 outcome = {True: "方向正確", False: "方向錯誤", None: "不計方向"}[row.get("correct")]
-                print(f"  {row['group']}  {outcome}  報酬 {row.get('net_return')}")
+                print(f"  {row['group']}  {outcome}  報酬 {ratio_pct(row.get('net_return'))}")
     if result["degraded_research_domains"]:
         print(f"\n注意：{'、'.join(result['degraded_research_domains'])} 研究輸出未通過來源驗證，這個案例不適合放進正式分析。")
     print(f"\n實驗 ID：{result['job_id']}")
@@ -230,7 +232,7 @@ def print_result(result):
 
 
 def _num(value):
-    return "—" if value is None else f"{value:g}"
+    return "—" if value is None else f"{value:.2f}"
 
 
 def planned_calls(protocol=None):

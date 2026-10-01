@@ -6,6 +6,7 @@ import { api, task } from './api.js';
 import { flow } from './flow.js';
 import { setTab, syncUrl } from './nav.js';
 import { showStatistics } from './stats-panel.js';
+import { refreshStudies } from './study-panel.js';
 
 const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
 const GROUP_LABELS = {A: '單次判斷', B: '獨立投票', C: '固定立場', D: '立場交換'};
@@ -58,6 +59,8 @@ export async function refreshJobs() {
     if (state.currentTab === 'runs' && state.selectedJob === completed.id) setTab('stats');
   }
   if (dashboard.selected) await showJob(state.selectedJob, dashboard.selected);
+  // The studies card rides on the same poll; its failure must not break the queue view.
+  try { await refreshStudies(); } catch (error) { console.warn('studies refresh failed', error); }
   schedulePoll();
 }
 

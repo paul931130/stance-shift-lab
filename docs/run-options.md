@@ -31,7 +31,7 @@
 | 模型來源 | 要準備什麼 | 適合誰 |
 | --- | --- | --- |
 | 雲端模型 API（最簡單） | 一把 API key：[Gemini](https://aistudio.google.com/apikey)、[OpenRouter](https://openrouter.ai/) 或 OpenAI；模型名稱例如 `gemini/gemini-2.5-flash` | 大多數人；依用量付費 |
-| 雲端租 GPU（GPUtw） | 依 [GPUtw 整合指南](gputw-integration.md) 開好 Ollama 執行個體並下載 `qwen3:14b`，記下位址與存取 key | 想用正式協議的 `qwen3:14b`、又沒有顯示卡 |
+| 雲端租 GPU（GPUtw） | 依 [GPUtw 整合指南](gputw-integration.md) 開好 Ollama 執行個體並下載 `qwen3:14b`，記下位址與存取 key | 想用 `qwen3:32b` 等大模型、又沒有大顯示卡 |
 | Ollama | 在電腦裝 [Ollama](https://ollama.com/) 並執行 `ollama pull qwen3:14b`；或讓 Docker 一起跑 Ollama，連安裝都不用（跑法二）。`qwen3:14b` 建議 16 GB 以上顯示卡記憶體 | 有好顯示卡；不想付 API 或租 GPU 的費用 |
 
 詳細比較見 [選擇模型來源](model-sources.md)。
@@ -191,7 +191,7 @@ pip 跑法與 Docker 用的是同一份程式；遇到安裝問題，改用跑�
 
 ## 正式研究用的模型
 
-正式協議使用 `ollama/qwen3:14b`（本機 Ollama 或 GPUtw）；OpenRouter 的 `openrouter/qwen/qwen3-14b` 是同一個模型。`ollama/qwen3:8b` 已通過本專案的相容性測試（canary），也可用於正式研究；其他 14B 以下的模型只算測試。改用 Gemini 等其他雲端模型時，需在研究紀錄中註明。
+框架預設模型是 `ollama/qwen3:14b`（16 GB 顯示卡即可）；本專題的正式實驗（E2、E2′）使用 `ollama/qwen3:32b`（需 32 GB，見 [GPUtw 雲端 GPU](gputw-integration.md)）。OpenRouter 的 `openrouter/qwen/qwen3-14b` 與 `ollama/qwen3:14b` 是同一個模型。`ollama/qwen3:8b` 已通過本專案的相容性測試（canary），也可用於正式研究；其他 14B 以下的模型只算測試。改用 Gemini 等其他雲端模型時，需在研究紀錄中註明。
 
 ## 進階：終端機指令
 

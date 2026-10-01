@@ -44,6 +44,14 @@ class Store:
                 CREATE TABLE IF NOT EXISTS services(id TEXT PRIMARY KEY, heartbeat_at TEXT);
                 CREATE TABLE IF NOT EXISTS preregistrations(
                     protocol_hash TEXT PRIMARY KEY, dataset_ids TEXT, frozen_at TEXT);
+                -- The exact case requests a study was registered with, so it can be
+                -- queued later in one step (older registrations may lack this).
+                CREATE TABLE IF NOT EXISTS preregistration_cases(
+                    protocol_hash TEXT PRIMARY KEY, cases TEXT, saved_at TEXT);
+                -- Which protocol version/model/design a registration is for, so a study can be
+                -- labelled (current or old) before any of its jobs exist.
+                CREATE TABLE IF NOT EXISTS preregistration_meta(
+                    protocol_hash TEXT PRIMARY KEY, version TEXT, model TEXT, design TEXT);
             """)
             self._ensure_steps_column(db)
             self._ensure_owner_column(db)
@@ -86,6 +94,11 @@ class Store:
         with self.connect() as db:
             db.execute("INSERT INTO services(id, heartbeat_at) VALUES(?, ?) "
                        "ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at", (service_id, now()))
+
+    def active_job_count(self):
+        """Jobs that still need the model: queued or currently running."""
+        with self.connect() as db:
+            return db.execute("SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')").fetchone()[0]
 
     def recover(self, dead_before, idle_before):
         """Pause worker jobs whose service stopped; never touch a live service's or a CLI's job.
@@ -214,6 +227,26 @@ class Store:
                     ORDER BY created_at DESC""", (protocol_hash,))
             return [self.unpack(row) for row in rows]
 
+    def study_rows(self, protocol_hash):
+        """One protocol's jobs without state JSON: enough to show batch progress cheaply."""
+        with self.connect() as db:
+            rows = db.execute("""SELECT id, status, error, created_at, updated_at, steps,
+                    json_extract(config, '$.ticker') AS ticker,
+                    json_extract(config, '$.analysis_date') AS analysis_date,
+                    json_extract(config, '$.dataset_id') AS dataset_id,
+                    json_extract(config, '$.protocol.version') AS version,
+                    json_extract(config, '$.protocol.model') AS model,
+                    json_extract(config, '$.protocol.design') AS design
+                FROM jobs WHERE json_extract(config, '$.protocol_hash')=?""", (protocol_hash,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def preregistrations(self):
+        with self.connect() as db:
+            rows = db.execute("SELECT protocol_hash, dataset_ids, frozen_at FROM preregistrations "
+                              "ORDER BY frozen_at DESC").fetchall()
+        return [{"protocol_hash": row["protocol_hash"], "cases": len(json.loads(row["dataset_ids"])),
+                 "frozen_at": row["frozen_at"]} for row in rows]
+
     def job_summaries(self):
         """Job list without the state JSON, for the frequently polled dashboard."""
         with self.connect() as db:
@@ -226,8 +259,8 @@ class Store:
             job = self.unpack(db.execute("SELECT * FROM jobs WHERE id=?", (key,)).fetchone())
             if job["status"] in ("complete", "cancelled"):
                 raise ValueError("已完成或取消的實驗不能變更；可建立新實驗")
-            from .protocol import StudyProtocol
-            if command == "resume" and job["config"]["protocol"].get("version") != StudyProtocol().version:
+            from .protocol import protocol_is_current
+            if command == "resume" and not protocol_is_current(job["config"]["protocol"]):
                 raise ValueError("舊版實驗不能混用新版引擎；請使用複製至新版，原始紀錄會保留")
             wanted = int(command == "resume")
             # A pause request must be visible to the worker even when the job
@@ -278,8 +311,8 @@ class Store:
                 return None
             db.execute("UPDATE jobs SET status='running',owner=?,updated_at=? WHERE id=?", (owner, now(), row["id"]))
             job = self.unpack(row)
-            from .protocol import StudyProtocol
-            if job["config"]["protocol"].get("version") != StudyProtocol().version:
+            from .protocol import protocol_is_current
+            if not protocol_is_current(job["config"]["protocol"]):
                 db.execute("UPDATE jobs SET status='paused',wants_run=0,error=? WHERE id=?",
                            ("舊版實驗已隔離；請複製至新版重新執行", row["id"]))
                 return None
@@ -387,6 +420,29 @@ class Store:
             db.execute("INSERT INTO preregistrations VALUES(?,?,?)",
                        (protocol_hash, json.dumps(dataset_ids), stamp))
             return {"protocol_hash": protocol_hash, "dataset_ids": dataset_ids, "frozen_at": stamp}
+
+    def save_registered_cases(self, protocol_hash, cases):
+        """Keep the first case list a study was registered or queued with; later calls never replace it."""
+        with self.connect() as db:
+            db.execute("INSERT OR IGNORE INTO preregistration_cases VALUES(?,?,?)",
+                       (protocol_hash, json.dumps(cases, ensure_ascii=False), now()))
+
+    def save_registration_meta(self, protocol_hash, version, model, design):
+        with self.connect() as db:
+            db.execute("INSERT OR IGNORE INTO preregistration_meta VALUES(?,?,?,?)",
+                       (protocol_hash, version, model, design))
+
+    def registration_meta(self, protocol_hash):
+        with self.connect() as db:
+            row = db.execute("SELECT version, model, design FROM preregistration_meta WHERE protocol_hash=?",
+                             (protocol_hash,)).fetchone()
+        return dict(row) if row else None
+
+    def registered_cases(self, protocol_hash):
+        with self.connect() as db:
+            row = db.execute("SELECT cases FROM preregistration_cases WHERE protocol_hash=?",
+                             (protocol_hash,)).fetchone()
+        return json.loads(row["cases"]) if row else None
 
     def preregistration(self, protocol_hash):
         with self.connect() as db:

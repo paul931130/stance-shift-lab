@@ -11,13 +11,37 @@ from fastapi.responses import Response
 from ..data import research_inputs
 from ..errors import NotFoundError, PreflightError
 from ..protocol import (DEFAULT_RESEARCH_MODEL, FORMAL_SMALL_MODEL_ALLOWLIST, SMALL_MODEL_PATTERN,
-                        StudyProtocol, validate_case)
+                        StudyProtocol, protocol_is_current, validate_case)
 from ..readiness import coverage
 from ..reporting import export_job, study_report
 from ..splits import classify_analysis_date
 from ..storage import now
 from .context import BatchInput, JobInput
 from .ollama import CachedProbe, parameter_billions, probe_models
+
+
+def reject_registered_duplicates(store, configs):
+    """A preregistered case runs once; a second job would be double-counted (use clone for deliberate reruns)."""
+    for protocol_hash in {config["protocol_hash"] for config in configs}:
+        if not store.preregistration(protocol_hash):
+            continue
+        existing = {row["dataset_id"] for row in store.study_rows(protocol_hash) if row["status"] != "cancelled"}
+        taken = [c for c in configs if c["protocol_hash"] == protocol_hash and c["dataset_id"] in existing]
+        if taken:
+            first = taken[0]
+            raise ValueError(f"{len(taken)} 個案例在事前登記的研究中已有工作（例如 {first['ticker']} {first['analysis_date']}）；"
+                             "不會重複建立。要刻意重跑請用「複製」")
+
+
+def probe_once(ctx):
+    """A model probe that contacts the endpoint at most once per request (batches validate hundreds of cases)."""
+    result = []
+
+    def probe():
+        if not result:
+            result.append(probe_models(ctx))
+        return result[0]
+    return probe
 
 
 def prepare(ctx, payload, model_probe=None):
@@ -28,17 +52,27 @@ def prepare(ctx, payload, model_probe=None):
     PreflightError with a reason code the UI maps to an override checkbox.
     """
     data = ctx.store.dataset(payload.dataset_id)
-    validate_case(data["ticker"], payload.analysis_date)
+    validate_case(data["ticker"], payload.analysis_date, payload.design)
+    rules = data.get("collection_rules") or {}
+    if data.get("kind") == "historical" and rules.get("design", "quarterly") != payload.design:
+        raise PreflightError("design_mismatch", f"資料集是 {rules.get('design', 'quarterly')} 設計（新聞窗口 {rules.get('news_window_days', 90)} 天），"
+                             f"不能用於 {payload.design} 設計的實驗；請以該設計重新蒐集資料")
     requested_date = data.get("requested_analysis_date")
     if data.get("kind") == "historical" and requested_date != payload.analysis_date:
         shown = requested_date or "未記錄"
         raise PreflightError("date_mismatch", f"資料集研究日是 {shown}，不能用於 {payload.analysis_date}；請選擇日期完全相同的資料集")
     effective_model = ctx.demo_model_id if ctx.demo_mode else payload.model
-    protocol = StudyProtocol(model=effective_model, voting_samples=payload.voting_samples, study=payload.study,
+    build_protocol = StudyProtocol.monthly if payload.design == "monthly" else StudyProtocol
+    protocol = build_protocol(model=effective_model, voting_samples=payload.voting_samples, study=payload.study,
         anonymize_ticker=payload.anonymize_ticker, dataset_kind=data["kind"],
         missing_data_policy=payload.missing_data_policy,
         allow_point_fundamental=payload.allow_point_fundamental,
-        allow_small_model=payload.allow_small_model)
+        allow_small_model=payload.allow_small_model,
+        **{key: value for key in ("model_context_length", "ollama_parallel")
+           if (value := getattr(payload, key, None)) is not None})
+    if protocol.sentiment_indicators and data.get("kind") == "historical" and rules.get("news_item_limit") != "uncapped":
+        raise PreflightError("news_capped", "此資料集的新聞在蒐集時被截斷（每來源最多 50 筆）；v3-0930 之後的協議需要窗口內的全部標題，"
+                             "請重新蒐集資料")
     # Build the frozen evidence selection once before accepting a job.  The
     # quality gate catches stale broad-market news while retaining a
     # researcher-visible override for deliberate sensitivity cases.
@@ -67,8 +101,12 @@ def prepare(ctx, payload, model_probe=None):
                              "或在「資料品質例外」勾選舊版 SEC 基本面例外（只算敏感性測試）")
     if effective_model.startswith("ollama/") and not ctx.injected_model_call:
         installed = (model_probe or (lambda: probe_models(ctx)))()
-        if not installed.get("ready") or effective_model not in installed.get("models", []):
-            raise PreflightError("model_not_installed", f"Ollama 模型 {effective_model} 尚未安裝，或 Ollama 目前連不上；請先執行 ollama pull，或改用其他模型來源")
+        if not installed.get("ready"):
+            # Say why (e.g. the GPUtw instance is off) instead of implying the model is missing.
+            raise PreflightError("model_not_installed", installed.get("message")
+                                 or f"Ollama 目前連不上，無法使用 {effective_model}")
+        if effective_model not in installed.get("models", []):
+            raise PreflightError("model_not_installed", f"Ollama 模型 {effective_model} 尚未安裝；請先執行 ollama pull，或改用其他模型來源")
         model_identity = next(item for item in installed["details"] if item["id"] == effective_model)
         parameter_count = parameter_billions(model_identity.get("parameter_size"))
         if (parameter_count is not None and parameter_count < 14
@@ -101,7 +139,7 @@ def clone_request(ctx, original):
     """Rebuild a job request under the current protocol, keeping legacy exceptions auditable."""
     old = original["config"]
     p = old["protocol"]
-    legacy = p.get("version") != StudyProtocol().version
+    legacy = not protocol_is_current(p)
     model = p.get("model", DEFAULT_RESEARCH_MODEL)
     old_quality = coverage(ctx.store.dataset(old["dataset_id"]), old["analysis_date"]).get("sentiment_quality", {})
     # A user pressing the explicit migration action asks to reproduce a
@@ -120,7 +158,7 @@ def clone_request(ctx, original):
                                or legacy)
     payload = JobInput(dataset_id=old["dataset_id"], analysis_date=old["analysis_date"],
         model=model, study=p.get("study", "study1"), voting_samples=p.get("voting_samples", 7),
-        anonymize_ticker=p.get("anonymize_ticker", False),
+        anonymize_ticker=p.get("anonymize_ticker", False), design=p.get("design", "quarterly"),
         missing_data_policy=p.get("missing_data_policy", "allow_decision"),
         allow_point_fundamental=allow_point_fundamental,
         allow_small_model=allow_small, allow_low_quality_sentiment=allow_low_quality)
@@ -137,7 +175,9 @@ def build_router(ctx):
 
     @router.post("/api/jobs")
     def create_job(payload: JobInput):
-        return store.create(prepare(ctx, payload))
+        config = prepare(ctx, payload)
+        reject_registered_duplicates(store, [config])
+        return store.create(config)
 
     @router.post("/api/jobs/preflight")
     def preflight(payload: JobInput):
@@ -155,10 +195,12 @@ def build_router(ctx):
 
     @router.post("/api/batches")
     def batch(payload: BatchInput):
-        prepared = [prepare(ctx, item) for item in payload.cases]
+        probe = probe_once(ctx)
+        prepared = [prepare(ctx, item, model_probe=probe) for item in payload.cases]
         keys = [(item["ticker"], item["analysis_date"], item["protocol_hash"]) for item in prepared]
         if len(set(keys)) != len(keys):
             raise ValueError("批次內不可重複 case")
+        reject_registered_duplicates(store, prepared)
         return [store.create(item)["id"] for item in prepared]
 
     @router.get("/api/jobs")
