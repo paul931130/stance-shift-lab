@@ -9,7 +9,7 @@ import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import DESIGNS, NUMERIC_CLAIM_VERSIONS, SWITCH_ROUND, visible_history
+from .protocol import DESIGNS, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, SWITCH_ROUND, visible_history
 
 _gputw_opener = None
 _gputw_lock = threading.Lock()
@@ -267,8 +267,49 @@ def validate_financial_numbers(result, evidence, context=None, redact=False):
         raise ValueError(f'財務摘要包含來源未支持的數字（{shown}）；必須原樣保留數值、單位與期間')
 
 
-def validate_numeric_claims(result, evidence, redact=False):
-    """Bind narrative numbers to a cited evidence ID, metric, period, unit and source value."""
+# Words that rescale or relabel a number. Sources store raw values (USD, percent),
+# so "100 billion USD" or "100%" can never be the source's "100 USD".
+_SCALE_AFTER = re.compile(r"^\s*(?:thousand|million|billion|trillion|bn|mn|[kmbt]\b|千|萬|万|百萬|千萬|億|亿|兆)", re.I)
+_PERCENT_AFTER = re.compile(r"^\s*(?:%|％|percent|pct\b|個百分點|百分點)", re.I)
+_PERCENT_UNITS = {"percent", "percent_per_year"}
+# Prose labels of the SEC metrics; a quote must not name a different metric than the one it binds.
+_METRIC_WORDS = {
+    "Revenue": ("revenue", "sales", "營收", "收入"),
+    "NetIncomeLoss": ("net income", "net loss", "profit", "earnings", "淨利", "淨損", "盈餘", "獲利"),
+    "OperatingCashFlow": ("operating cash", "cash flow", "營業現金", "現金流"),
+    "Assets": ("total assets", "總資產"),
+    "Liabilities": ("total liabilities", "總負債"),
+}
+
+
+def _strict_claim_problem(claim, quote, displayed):
+    """Why a value-matching claim still misstates its source (v3-1001.x), or None."""
+    for start, end, number, _ in _numeric_tokens(quote):
+        if number != displayed:
+            continue
+        after = quote[end:end + 12]
+        if _SCALE_AFTER.match(after):
+            return "數字帶了倍數單位（例如 billion、億），來源是原始數值"
+        if claim["unit"] in _PERCENT_UNITS and not _PERCENT_AFTER.match(after):
+            return "百分比來源的數字必須寫成百分比"
+        if claim["unit"] not in _PERCENT_UNITS and _PERCENT_AFTER.match(after):
+            return "非百分比來源的數字被寫成百分比"
+    base = claim["metric"].replace(" year-over-year change", "")
+    own = _METRIC_WORDS.get(base)
+    if own:
+        lowered = quote.lower()
+        named_other = any(word in lowered for metric, words in _METRIC_WORDS.items() if metric != base for word in words)
+        if named_other and not any(word in lowered for word in own):
+            return "引用的指標與文字描述的指標不同"
+    return None
+
+
+def validate_numeric_claims(result, evidence, redact=False, strict=False):
+    """Bind narrative numbers to a cited evidence ID, metric, period, unit and source value.
+
+    With ``strict`` (v3-1001.x) a bound number must also keep the source's scale,
+    percent-ness and metric label in the quoted prose.
+    """
     cited = set(result.get("evidence_ids", []))
     by_id = {item.get("evidence_id"): item for item in evidence if item.get("evidence_id")}
     prose_fields = [("summary", result.get("summary")), ("rationale", result.get("rationale")),
@@ -313,7 +354,8 @@ def validate_numeric_claims(result, evidence, redact=False):
         quote_values = [number for _, _, number, _ in tokens]
         has_claim_value = displayed in quote_values
         no_extra_values = all(number == displayed or number in period_numbers for number in quote_values)
-        if supported and has_claim_value and no_extra_values:
+        if supported and has_claim_value and no_extra_values and not (
+                strict and _strict_claim_problem(claim, quote, displayed)):
             valid.append(claim)
         else:
             invalid_claim_count += 1
@@ -602,6 +644,13 @@ def messages_for(call, report, records, memory, protocol):
         if claim_bound else
         "Copy financial numbers exactly as shown in cited evidence; do not invent, round, convert units, or compute values. Use numeric_claims: [] unless a factual numeric claim is explicitly supported. "
     )
+    if protocol.version in STRICT_VALIDATION_VERSIONS:
+        numeric_claim_instruction = (
+            "Every factual number in rationale, risks, strongest_counterpoint or rebutted_claim needs one numeric_claims "
+            "item (evidence_id, metric, period, unit, value from that evidence's numeric_fields; quote = the exact prose "
+            "fragment). Use the source value or half-up rounding to 3 significant figures, in the source unit (no "
+            "thousand/million/billion; % only for percent units), naming the same metric. expected_return_pct is a "
+            "forecast, not a source fact. Drop any number you cannot bind. ")
     common = ("You are a decision agent in a fixed historical experiment. "
         f"Forecast the target's return over the next {protocol.primary_horizon} trading sessions using only the supplied report; do not use remembered future facts. "
         "Candidate action is Buy, Hold, or Sell. NoTrade is reserved for the later Gatekeeper. "
@@ -634,6 +683,10 @@ def messages_for(call, report, records, memory, protocol):
             common += (" State confidence_shift: your new confidence minus your round-1 confidence, signed toward "
                        "the newly assigned stance, from -1 to 1. A value near 0 means the switch changed little; "
                        "do not default to 0 without justifying it in the rationale.")
+            if protocol.version in STRICT_VALIDATION_VERSIONS:
+                common += (" rebutted_claim must be copied word for word from your own round-1 rationale, "
+                           "strongest_counterpoint or risks; confidence_shift must equal this turn's confidence "
+                           "minus your round-1 confidence exactly.")
     elif call.kind == "adjudication":
         common += (" You are the neutral Adjudicator. Weigh the complete debate without favoring speaker order. "
             "Assigned Bull/Bear counts are not evidence. For each side, check its cited evidence IDs against the evidence list in the report: "
@@ -711,7 +764,8 @@ def generate(protocol, messages, seed=None, temperature=None):
     output_schema = output_schema_for(messages)
     effective_temperature = protocol.temperature if temperature is None else temperature
     timeout_seconds = model_timeout_seconds()
-    context_length = model_context_length()
+    # A frozen protocol (v3-1001.x) carries its own context length; older ones read the environment.
+    context_length = getattr(protocol, "model_context_length", None) or model_context_length()
     failures, attempt_audits = [], []
     for attempt in range(1, protocol.provider_retry_attempts + 1):
         usage, content = {}, ""
@@ -810,7 +864,8 @@ def generate(protocol, messages, seed=None, temperature=None):
             time.sleep(.5 * attempt)
 
 
-def validate_decision(result, evidence, call=None, context=None, redact_numbers=False, claim_bound=False):
+def validate_decision(result, evidence, call=None, context=None, redact_numbers=False, claim_bound=False,
+                      strict=False, own_round1=None):
     allowed_actions = ("Buy", "Hold", "Sell")
     if call is not None and call.kind == "debate":
         allowed_actions = ("Buy",) if call.stance == "BULL" else ("Sell",)
@@ -840,9 +895,11 @@ def validate_decision(result, evidence, call=None, context=None, redact_numbers=
             shift = result.get("confidence_shift")
             if isinstance(shift, bool) or not isinstance(shift, (float, int)) or not -1 <= shift <= 1:
                 raise ValueError("角色交換輪 confidence_shift 須介於 -1 與 1")
+            if strict and own_round1 is not None:
+                validate_self_rebuttal(result, own_round1)
     cited = set(result["evidence_ids"])
     if claim_bound:
-        validate_numeric_claims(result, evidence, redact=redact_numbers)
+        validate_numeric_claims(result, evidence, redact=redact_numbers, strict=strict)
     elif any(item.get("domain") == "fundamental" and item.get("evidence_id") in cited for item in evidence):
         validate_financial_numbers(result, evidence, context, redact=redact_numbers)
     validate_financial_interpretation(result, evidence)
@@ -855,7 +912,29 @@ def validate_decision(result, evidence, call=None, context=None, redact_numbers=
     return result
 
 
-def validate_research(result, evidence, domain, claim_bound=False):
+def _words(text):
+    return re.findall(r"\w+", str(text or "").lower())
+
+
+def validate_self_rebuttal(result, own_round1, shift_tolerance=0.05):
+    """The switch round must rebut something this agent really said in round 1, and report the real shift."""
+    earlier = own_round1.get("output", own_round1)
+    claim = _words(result["rebutted_claim"])
+    prose = _words(" ".join([str(earlier.get("rationale", "")), str(earlier.get("strongest_counterpoint", "")),
+                             *[str(r) for r in earlier.get("risks", [])]]))
+    if claim:
+        from difflib import SequenceMatcher
+        match = SequenceMatcher(None, claim, prose, autojunk=False).find_longest_match(0, len(claim), 0, len(prose))
+        if match.size < max(1, round(0.7 * len(claim))):
+            raise ValueError("rebutted_claim 必須引用自己第 1 輪實際寫過的主張（至少 70% 的字詞連續相同）")
+    previous = earlier.get("confidence")
+    if isinstance(previous, (int, float)) and not isinstance(previous, bool):
+        actual = result["confidence"] - previous
+        if abs(result["confidence_shift"] - actual) > shift_tolerance + 1e-9:
+            raise ValueError(f"confidence_shift 應等於本輪信心減第 1 輪信心（{actual:+.2f}）")
+
+
+def validate_research(result, evidence, domain, claim_bound=False, strict=False):
     """Validate a research-agent answer before it becomes part of the frozen report."""
     if not isinstance(result, dict) or not isinstance(result.get("summary"), str) or not result["summary"].strip():
         raise ValueError("研究代理人輸出格式錯誤")
@@ -867,7 +946,7 @@ def validate_research(result, evidence, domain, claim_bound=False):
     if any(evidence_id not in allowed for evidence_id in result["evidence_ids"]):
         raise ValueError("研究代理人引用未提供的證據")
     if claim_bound:
-        validate_numeric_claims(result, evidence)
+        validate_numeric_claims(result, evidence, strict=strict)
     elif domain == "fundamental":
         validate_financial_numbers(result, evidence)
     if domain == "fundamental":

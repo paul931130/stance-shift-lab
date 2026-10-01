@@ -40,13 +40,19 @@ DESIGNS = {
     "quarterly": {"dates": QUARTER_DATES, "primary_horizon": 60, "horizons": (30, 60, 90), "news_window_days": 90},
     "monthly": {"dates": MONTH_END_DATES, "primary_horizon": 20, "horizons": (10, 20, 30), "news_window_days": 30},
 }
-QUARTERLY_VERSION = "v3-0930.3"
-MONTHLY_VERSION = "v3-0930.4"
-MONTHLY_VERSIONS = frozenset({"v3-0930.2", MONTHLY_VERSION})
+QUARTERLY_VERSION = "v3-1001.1"
+MONTHLY_VERSION = "v3-1001.2"
+MONTHLY_VERSIONS = frozenset({"v3-0930.2", "v3-0930.4", MONTHLY_VERSION})
+# From v3-1001.x the inference settings that change model output (context length,
+# concurrent Ollama calls) are protocol fields, and numeric claims and the
+# role-switch rebuttal are checked more strictly (see models.validate_*).
+FROZEN_INFERENCE_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION})
+STRICT_VALIDATION_VERSIONS = FROZEN_INFERENCE_VERSIONS
+DEFAULT_CONTEXT_LENGTH = 8192
 # From v3-0930.1 the prompt carries FinBERT indicators computed over every eligible headline instead of a
 # 12-headline sample (see data.research_inputs); earlier versions keep the headline sample.
-INDICATOR_VERSIONS = ("v3-0930.1", "v3-0930.2", QUARTERLY_VERSION, MONTHLY_VERSION)
-NUMERIC_CLAIM_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION})
+INDICATOR_VERSIONS = ("v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", QUARTERLY_VERSION, MONTHLY_VERSION)
+NUMERIC_CLAIM_VERSIONS = frozenset({"v3-0930.3", "v3-0930.4", QUARTERLY_VERSION, MONTHLY_VERSION})
 DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
 BASE_RATE_MIN_WINDOWS = 8
 DEFAULT_RESEARCH_MODEL = "ollama/qwen3:14b"
@@ -103,10 +109,20 @@ class StudyProtocol:
     inference_seed: int = 905
     provider_retry_attempts: int = 3
     study_universe: tuple[str, ...] = STUDY_TICKERS
+    # Frozen inference settings (v3-1001.x); None in older versions, which read the environment.
+    model_context_length: int | None = None
+    ollama_parallel: int | None = None
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", QUARTERLY_VERSION, MONTHLY_VERSION):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", QUARTERLY_VERSION, MONTHLY_VERSION):
             raise ValueError("Unsupported protocol version")
+        if self.version in FROZEN_INFERENCE_VERSIONS:
+            if self.model_context_length is None:
+                object.__setattr__(self, "model_context_length", DEFAULT_CONTEXT_LENGTH)
+            if self.ollama_parallel is None:
+                object.__setattr__(self, "ollama_parallel", 1)
+            if not 1024 <= self.model_context_length <= 131072 or not 1 <= self.ollama_parallel <= 8:
+                raise ValueError("model_context_length must be 1024-131072 and ollama_parallel 1-8")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")
         if self.version == "v3-0905.1" and self.missing_data_policy != "force_no_trade":
@@ -174,6 +190,10 @@ class StudyProtocol:
         # default out keeps their recorded hashes valid.
         if payload["design"] == "quarterly":
             del payload["design"]
+        # Older protocols had no frozen inference fields; their hashes stay unchanged.
+        for key in ("model_context_length", "ollama_parallel"):
+            if payload[key] is None:
+                del payload[key]
         return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     @property

@@ -92,6 +92,9 @@ class JobInput(BaseModel):
     allow_small_model: bool = False
     allow_low_quality_sentiment: bool = False
     design: str = "quarterly"
+    # Frozen inference settings; None keeps the protocol default (8192 tokens, one call at a time).
+    model_context_length: int | None = None
+    ollama_parallel: int | None = None
 
 
 class BatchInput(BaseModel):
@@ -108,3 +111,5 @@ class PlanInput(BaseModel):
     anonymize_ticker: bool = False
     missing_data_policy: str = "allow_decision"
     design: str = "quarterly"
+    model_context_length: int | None = None
+    ollama_parallel: int | None = None

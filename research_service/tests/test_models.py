@@ -245,7 +245,8 @@ class ModelReliabilityTests(unittest.TestCase):
                 "rationale": "brief", "evidence_ids": ["e1"], "risks": [], "numeric_claims": []
             })}, "model": "demo"}).encode())
 
-        protocol = StudyProtocol(model="ollama/demo", dataset_kind="synthetic", bootstrap_replicates=199)
+        # Older protocols read the context length from the environment; v3-1001.x freeze it (below).
+        protocol = StudyProtocol(version="v3-0930.3", model="ollama/demo", dataset_kind="synthetic", bootstrap_replicates=199)
         with patch.dict("os.environ", {"RESEARCH_MODEL_TIMEOUT_SECONDS": "17",
                                         "RESEARCH_MODEL_CONTEXT_LENGTH": "16384"}, clear=False), \
              patch("research_service.models.urlopen", side_effect=requester):
@@ -255,6 +256,12 @@ class ModelReliabilityTests(unittest.TestCase):
         self.assertEqual(seen["body"]["options"]["num_ctx"], 16384)
         self.assertEqual(audit["model_timeout_seconds"], 17)
         self.assertEqual(audit["model_context_length"], 16384)
+        frozen = StudyProtocol(model="ollama/demo", dataset_kind="synthetic", bootstrap_replicates=199)
+        with patch.dict("os.environ", {"RESEARCH_MODEL_CONTEXT_LENGTH": "16384"}, clear=False),              patch("research_service.models.urlopen", side_effect=requester):
+            generate(frozen, [{"role": "system", "content": "decision"}, {"role": "user", "content": "{}"}])
+        self.assertEqual(seen["body"]["options"]["num_ctx"], 8192)
+        self.assertNotEqual(frozen.fingerprint, StudyProtocol(model="ollama/demo", dataset_kind="synthetic",
+                                                               bootstrap_replicates=199, model_context_length=16384).fingerprint)
 
 
 if __name__ == "__main__":

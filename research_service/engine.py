@@ -15,7 +15,7 @@ from .backtest import evaluate
 from .data import digest, research_inputs
 from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate, messages_for,
                      prompt_text, unalias_evidence_ids, validate_decision, validate_research)
-from .protocol import (DOMAIN_NAMES, NUMERIC_CLAIM_VERSIONS, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
+from .protocol import (DOMAIN_NAMES, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
                        temperature_for)
 from .storage import now
 from .logging_config import get_logger
@@ -247,7 +247,7 @@ class Engine:
         audit.setdefault("temperature", protocol.temperature if temperature is None else temperature)
         return result, audit
 
-    def validated_decision(self, protocol, call, messages, evidence):
+    def validated_decision(self, protocol, call, messages, evidence, own_round1=None):
         """Generate one decision, retrying only an auditable validation rejection.
 
         Provider transport and JSON failures remain the provider's responsibility.
@@ -267,6 +267,7 @@ class Engine:
         aliases = evidence_aliases(evidence)
         allowed_ids = [aliases[item["evidence_id"]] for item in decision_evidence]
         claim_bound = protocol.version in NUMERIC_CLAIM_VERSIONS
+        strict = protocol.version in STRICT_VALIDATION_VERSIONS
         for attempt in range(1, protocol.provider_retry_attempts + 1):
             retry_key = call.key if attempt == 1 else f"{call.key}:validation-retry-{attempt}"
             audit = None
@@ -274,7 +275,7 @@ class Engine:
                 result, audit = self.call_model(protocol, attempt_messages, retry_key, temperature_for(protocol, call),
                                                 aliases)
                 result = validate_decision(result, decision_evidence, call, prompt_text(messages),
-                                           claim_bound=claim_bound)
+                                           claim_bound=claim_bound, strict=strict, own_round1=own_round1)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
@@ -293,7 +294,7 @@ class Engine:
                         try:
                             redacted = validate_decision(json.loads(json.dumps(result)), decision_evidence, call,
                                                      prompt_text(messages), redact_numbers=True,
-                                                     claim_bound=claim_bound)
+                                                     claim_bound=claim_bound, strict=strict, own_round1=own_round1)
                         except (ValueError, JsonSchemaValidationError, TypeError):
                             raise error
                         audit = dict(audit)
@@ -336,12 +337,14 @@ class Engine:
         aliases = aliases or evidence_aliases(items)
         allowed_ids = [aliases[item["evidence_id"]] for item in items]
         claim_bound = protocol.version in NUMERIC_CLAIM_VERSIONS
+        strict = protocol.version in STRICT_VALIDATION_VERSIONS
         for attempt in range(1, protocol.provider_retry_attempts + 1):
             retry_key = f"research-{domain}" if attempt == 1 else f"research-{domain}:validation-retry-{attempt}"
             audit = None
             try:
                 result, audit = self.call_model(protocol, attempt_messages, retry_key, protocol.temperature, aliases)
-                result = validate_research(result, items, domain, claim_bound=claim_bound)
+                result = validate_research(result, items, domain, claim_bound=claim_bound,
+                                           strict=strict)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
@@ -443,7 +446,7 @@ class Engine:
                 # Keep source collection and cloud inference parallel, but
                 # serialize local inference just as decision waves already do.
                 if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
-                    research_workers = min(research_workers, self.ollama_parallel)
+                    research_workers = min(research_workers, protocol.ollama_parallel or self.ollama_parallel)
                 effective_workers = research_workers
                 with ThreadPoolExecutor(max_workers=research_workers, thread_name_prefix="research-agent") as pool:
                     futures = {pool.submit(run_research, domain, *value): domain for domain, value in tasks.items()}
@@ -485,13 +488,16 @@ class Engine:
             # Advance one decision at a time so the worker can checkpoint it
             # before a later provider error or process interruption occurs.
             if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
-                calls = calls[:self.ollama_parallel]
+                calls = calls[:protocol.ollama_parallel or self.ollama_parallel]
             snapshot = list(state["records"])
             prepared = {call.key: (call, messages_for(call, state["report"], snapshot, state["memory"][call.group], protocol)) for call in calls}
             completed, failures = {}, []
 
             def run_decision(call, messages):
-                return self.validated_decision(protocol, call, messages, state["report"]["evidence"])
+                # The D switch round is checked against what this same agent wrote in round 1.
+                own = next((r for r in snapshot if r["group"] == call.group and r.get("agent") == call.agent
+                            and r.get("round") == 1 and r["kind"] == "debate"), None) if call.kind == "debate" else None
+                return self.validated_decision(protocol, call, messages, state["report"]["evidence"], own_round1=own)
 
             # Ollama defaults to a single runner.  Sending a whole wave at
             # once makes queued CPU requests outlive the runner keep-alive and
@@ -501,7 +507,7 @@ class Engine:
             # parallel worker count.
             decision_workers = min(self.parallel_workers, len(prepared))
             if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
-                decision_workers = min(decision_workers, self.ollama_parallel)
+                decision_workers = min(decision_workers, protocol.ollama_parallel or self.ollama_parallel)
             effective_workers = decision_workers
             with ThreadPoolExecutor(max_workers=decision_workers, thread_name_prefix="decision-group") as pool:
                 futures = {pool.submit(run_decision, call, messages): key for key, (call, messages) in prepared.items()}

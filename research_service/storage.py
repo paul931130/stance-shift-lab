@@ -48,6 +48,10 @@ class Store:
                 -- queued later in one step (older registrations may lack this).
                 CREATE TABLE IF NOT EXISTS preregistration_cases(
                     protocol_hash TEXT PRIMARY KEY, cases TEXT, saved_at TEXT);
+                -- Which protocol version/model/design a registration is for, so a study can be
+                -- labelled (current or old) before any of its jobs exist.
+                CREATE TABLE IF NOT EXISTS preregistration_meta(
+                    protocol_hash TEXT PRIMARY KEY, version TEXT, model TEXT, design TEXT);
             """)
             self._ensure_steps_column(db)
             self._ensure_owner_column(db)
@@ -422,6 +426,17 @@ class Store:
         with self.connect() as db:
             db.execute("INSERT OR IGNORE INTO preregistration_cases VALUES(?,?,?)",
                        (protocol_hash, json.dumps(cases, ensure_ascii=False), now()))
+
+    def save_registration_meta(self, protocol_hash, version, model, design):
+        with self.connect() as db:
+            db.execute("INSERT OR IGNORE INTO preregistration_meta VALUES(?,?,?,?)",
+                       (protocol_hash, version, model, design))
+
+    def registration_meta(self, protocol_hash):
+        with self.connect() as db:
+            row = db.execute("SELECT version, model, design FROM preregistration_meta WHERE protocol_hash=?",
+                             (protocol_hash,)).fetchone()
+        return dict(row) if row else None
 
     def registered_cases(self, protocol_hash):
         with self.connect() as db:

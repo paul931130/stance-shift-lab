@@ -57,8 +57,8 @@ def fake_model(protocol, messages):
         if "assigned debate stance" in messages[0]["content"]:
             result["strongest_counterpoint"] = "Synthetic counterpoint supported by the shared evidence."
         if "role-switch round" in messages[0]["content"]:
-            result["rebutted_claim"] = "Synthetic round-1 claim being abandoned in this fixture."
-            result["confidence_shift"] = -0.1 if action == "Sell" else 0.1
+            result["rebutted_claim"] = "Synthetic test decision"  # this agent's own round-1 rationale
+            result["confidence_shift"] = 0.0
     return result, {"prompt_hash": digest(messages), "usage": {}, "raw_response": json.dumps(result)}
 
 
@@ -627,10 +627,13 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(len(job["state"]["records"]), 2)
 
     def test_ollama_parallel_is_opt_in_and_bounded(self):
-        with patch.dict("os.environ", {"RESEARCH_OLLAMA_PARALLEL": "4"}):
-            engine = Engine(self.store, fake_model, parallel_workers=4)
+        # v3-1001.x: concurrency is a protocol field (part of the fingerprint), not an environment setting.
+        engine = Engine(self.store, fake_model, parallel_workers=4)
         engine.uses_builtin_provider = True
-        job = self.create()
+        protocol = StudyProtocol(dataset_kind="synthetic", bootstrap_replicates=199, ollama_parallel=4)
+        self.assertNotEqual(protocol.fingerprint, self.protocol.fingerprint)
+        job = self.store.create({"ticker": "NVDA", "analysis_date": "2024-12-31", "dataset_id": self.dataset_id,
+                                 "protocol": asdict(protocol), "protocol_hash": protocol.fingerprint})
         for _ in range(3):
             job["state"] = engine.advance(job)
         job["state"] = engine.advance(job)
@@ -938,6 +941,9 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual((again["created"], again["skipped_existing"]), (1 - 1, 1))
             self.assertEqual(len(self.store.job_summaries()), 1)
 
+            # The single-job and batch routes refuse a second job for a registered case.
+            self.assertEqual(client.post('/api/jobs', json=case).status_code, 422)
+            self.assertEqual(client.post('/api/batches', json={"cases": [case]}).status_code, 422)
             outsider = self.store.add_dataset({**self.data, "source": "unit-test-fixture-v2"})
             refused = client.post(f'/api/studies/{protocol_hash}/enqueue',
                                   json={"cases": [{"dataset_id": outsider, "analysis_date": "2024-12-31"}]})

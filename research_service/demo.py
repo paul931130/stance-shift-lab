@@ -99,8 +99,9 @@ def demo_model(protocol, messages, seed=None, temperature=None):
         if "assigned debate stance" in system:
             result["strongest_counterpoint"] = "The opposing stance remains possible in this synthetic example."
         if "role-switch round" in system:
-            result["rebutted_claim"] = "Synthetic round-1 claim, retained only for the demo walkthrough."
-            result["confidence_shift"] = 0.1 if action == "Buy" else -0.1
+            # Quote this agent's own round-1 rationale; the confidence is unchanged, so the shift is 0.
+            result["rebutted_claim"] = "Deterministic demo response; not a research conclusion."
+            result["confidence_shift"] = 0.0
     audit = {"prompt_hash": digest(messages), "usage": {"prompt_tokens": 0,
              "completion_tokens": 0, "client_elapsed_seconds": 0.0},
              "raw_response": json.dumps(result, ensure_ascii=False), "provider_attempts": 1,

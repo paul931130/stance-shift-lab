@@ -43,12 +43,14 @@ def build_router(ctx):
         """Preregistered studies, newest first, each with its batch progress."""
         return [{**item, "has_saved_cases": store.registered_cases(item["protocol_hash"]) is not None,
                  "progress": study_progress(store.preregistration(item["protocol_hash"]),
-                                            store.study_rows(item["protocol_hash"]))}
+                                            store.study_rows(item["protocol_hash"]),
+                                            meta=store.registration_meta(item["protocol_hash"]))}
                 for item in store.preregistrations()]
 
     @router.get("/api/studies/{protocol_hash}/progress")
     def progress(protocol_hash: str):
-        return study_progress(store.preregistration(protocol_hash), store.study_rows(protocol_hash))
+        return study_progress(store.preregistration(protocol_hash), store.study_rows(protocol_hash),
+                              meta=store.registration_meta(protocol_hash))
 
     @router.post("/api/studies/{protocol_hash}/enqueue")
     def enqueue(protocol_hash: str, payload: BatchInput | None = None):
@@ -59,6 +61,9 @@ def build_router(ctx):
         registration = store.preregistration(protocol_hash)
         if not registration:
             raise ValueError("這個協議還沒有事前登記；請先用 POST /api/studies/preregister 鎖定樣本")
+        meta = store.registration_meta(protocol_hash)
+        if meta and not study_progress(registration, [], meta=meta)["current"]:
+            raise ValueError(f"這個研究登記的是舊版協議 {meta['version']}，目前的引擎不能執行；請用目前版本重新規劃並事前登記")
         if payload is None:
             saved = store.registered_cases(protocol_hash)
             if not saved:
@@ -107,7 +112,9 @@ def build_router(ctx):
                     request = JobInput(dataset_id=dataset["id"], analysis_date=analysis_date, model=payload.model,
                                        voting_samples=payload.voting_samples, study=payload.study,
                                        anonymize_ticker=payload.anonymize_ticker,
-                                       missing_data_policy=payload.missing_data_policy, design=payload.design)
+                                       missing_data_policy=payload.missing_data_policy, design=payload.design,
+                                       model_context_length=payload.model_context_length,
+                                       ollama_parallel=payload.ollama_parallel)
                     try:
                         config = prepare(ctx, request, model_probe=assume_model)
                         row.update(ready=True, protocol_hash=config["protocol_hash"])
@@ -128,7 +135,8 @@ def build_router(ctx):
         if command not in ("pause", "resume"):
             raise HTTPException(404)
         rows = store.study_rows(protocol_hash)
-        if command == "resume" and not study_progress(store.preregistration(protocol_hash), rows)["current"]:
+        if command == "resume" and not study_progress(store.preregistration(protocol_hash), rows,
+                                                      meta=store.registration_meta(protocol_hash))["current"]:
             raise ValueError("這是舊版協議的研究，不能用目前的引擎續跑；結果保留供查看")
         movable = ("queued", "running") if command == "pause" else ("paused",)
         changed = 0
@@ -155,6 +163,9 @@ def build_router(ctx):
         [protocol_hash] = hashes
         frozen = store.freeze(protocol_hash, {item["dataset_id"] for item in prepared})
         store.save_registered_cases(protocol_hash, [item.model_dump() for item in payload.cases])
+        protocol = prepared[0]["protocol"]
+        store.save_registration_meta(protocol_hash, protocol["version"], protocol["model"],
+                                     protocol.get("design", "quarterly"))
         return {**frozen, "cases": len(prepared)}
 
     @router.post("/api/studies/{protocol_hash}/freeze")

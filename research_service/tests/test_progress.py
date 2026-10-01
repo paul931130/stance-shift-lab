@@ -43,6 +43,15 @@ class StudyProgressTests(unittest.TestCase):
         self.assertFalse(result["active"])
 
 
+class DuplicateCaseTests(unittest.TestCase):
+    def test_a_case_with_two_jobs_counts_once(self):
+        registration = {"protocol_hash": "h", "dataset_ids": ["d0"], "frozen_at": "t"}
+        rows = [row(0, "complete", 5, dataset="d0"), row(1, "paused", error="x", dataset="d0")]
+        result = study_progress(registration, rows, now=NOW)
+        self.assertEqual((result["counts"]["complete"], result["done_fraction"], result["duplicate_jobs"]), (1, 1.0, 1))
+        self.assertEqual(result["errors"], [])
+
+
 class StudiesCommandTests(unittest.TestCase):
     def test_studies_command_lists_preregistered_samples(self):
         from research_service.cli import main

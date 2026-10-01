@@ -152,12 +152,12 @@
   <section id="panel-experiment" class="panel step-panel" data-panel="experiment" role="tabpanel" hidden>
     <div class="section-label">02 / 實驗</div>
     <h2>設定比較實驗</h2>
-    <p class="step-intro">選好資料集與模型後，系統會用 A/B/C/D 四種方法分析同一個案例，四組只有決策方式不同：</p>
+    <p class="step-intro">選好資料集與模型後，系統會用 A/B/C/D 四種方法分析同一個案例，四組使用相同資料與呼叫次數，只有決策流程不同（D 與 C 的差異包含交換立場與交換輪可見的內容）：</p>
     <div class="methods" aria-label="四種決策機制">
       <article class="m-a"><b>A</b><div><h3>單次判斷</h3><p>1 次獨立決策</p></div></article>
       <article class="m-b"><b>B</b><div><h3>獨立投票</h3><p>7 次相同提示</p></div></article>
       <article class="m-c"><b>C</b><div><h3>固定立場</h3><p>3 輪辯論＋裁決</p></div></article>
-      <article class="m-d treatment"><b>D</b><div><h3>立場交換</h3><p>第 2 輪交換，第 3 輪換回</p></div></article>
+      <article class="m-d treatment"><b>D</b><div><h3>立場交換</h3><p>第 2 輪交換且只看自己第 1 輪，第 3 輪換回</p></div></article>
     </div>
     <p class="hint">主要指標：60 個交易日的方向準確率與 Sharpe。30／90 日作為穩健性檢查；報酬同時提供不計成本與扣除 Corwin–Schultz 估計價差兩種版本。</p>
 

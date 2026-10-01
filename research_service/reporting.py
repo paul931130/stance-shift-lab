@@ -490,7 +490,7 @@ def _numeric_validation_quality(complete):
     known = False
     for job in complete:
         version = job.get("config", {}).get("protocol", {}).get("version")
-        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4"}:
+        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2"}:
             known = True
         records = job.get("state", {}).get("records", [])
         case_redacted_calls = 0
@@ -801,7 +801,8 @@ def _reprice_case(row, action, hold_band_pct, daily_rows):
     repriced = []
     for index, item in enumerate(daily_rows):
         cumulative *= 1 + base_returns[index]
-        applied_cost = float(entry_spread) / 2 if index == 0 and row.get("cost_model") == "corwin_schultz" else 0.0
+        # The entry half-spread is paid once and stays in every later mark.
+        applied_cost = float(entry_spread) / 2 if row.get("cost_model") == "corwin_schultz" else 0.0
         if index == len(daily_rows) - 1 and row.get("cost_model") == "corwin_schultz" and isinstance(entry, (int, float)) and entry:
             applied_cost += float(exit_spread) / 2 * cumulative
         equity = max(0.0, 1 + direction * (cumulative - 1) - applied_cost) if equity > 0 else 0.0

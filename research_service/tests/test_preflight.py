@@ -145,6 +145,7 @@ class StudyPlanTests(unittest.TestCase):
 
             registered = client.post("/api/studies/preregister", json={"cases": plan["ready_cases"]}).json()
             self.assertEqual(registered["protocol_hash"], plan["protocol_hash"])
+            self.assertEqual(self.store.registration_meta(plan["protocol_hash"])["model"], "ollama/qwen3:32b")
             listed = client.get("/api/studies").json()[0]
             self.assertTrue(listed["has_saved_cases"])
 
@@ -156,6 +157,16 @@ class StudyPlanTests(unittest.TestCase):
             replanned = client.post("/api/studies/plan", json={"tickers": ["NVDA"], "dates": ["2024-12-31"],
                                                                "model": "ollama/qwen3:32b"}).json()
             self.assertTrue(replanned["already_preregistered"])
+
+    def test_a_registration_of_an_older_protocol_is_read_only_before_any_job_exists(self):
+        self.store.freeze("oldhash", [self.dataset_id])
+        self.store.save_registration_meta("oldhash", "v3-0930.3", "ollama/qwen3:32b", "quarterly")
+        with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            listed = client.get("/api/studies").json()[0]
+            refused = client.post("/api/studies/oldhash/enqueue")
+        self.assertEqual((listed["progress"]["version"], listed["progress"]["current"]), ("v3-0930.3", False))
+        self.assertEqual(refused.status_code, 422)
+        self.assertIn("舊版協議", refused.json()["detail"])
 
     def test_enqueue_without_body_needs_a_saved_case_list(self):
         self.store.freeze("legacyhash", [self.dataset_id])

@@ -144,7 +144,8 @@ def _studies():
         print("尚無事前登記的研究。")
         return 0
     for item in studies:
-        p = study_progress(store.preregistration(item["protocol_hash"]), store.study_rows(item["protocol_hash"]))
+        p = study_progress(store.preregistration(item["protocol_hash"]), store.study_rows(item["protocol_hash"]),
+                           meta=store.registration_meta(item["protocol_hash"]))
         c = p["counts"]
         label = f"{p['version']} · {p['model']}" if p["version"] else "尚未排入"
         eta = f"，預估還要 {p['eta_hours']} 小時" if p["eta_hours"] is not None else ""

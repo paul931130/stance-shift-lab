@@ -20,6 +20,19 @@ from .context import BatchInput, JobInput
 from .ollama import CachedProbe, parameter_billions, probe_models
 
 
+def reject_registered_duplicates(store, configs):
+    """A preregistered case runs once; a second job would be double-counted (use clone for deliberate reruns)."""
+    for protocol_hash in {config["protocol_hash"] for config in configs}:
+        if not store.preregistration(protocol_hash):
+            continue
+        existing = {row["dataset_id"] for row in store.study_rows(protocol_hash) if row["status"] != "cancelled"}
+        taken = [c for c in configs if c["protocol_hash"] == protocol_hash and c["dataset_id"] in existing]
+        if taken:
+            first = taken[0]
+            raise ValueError(f"{len(taken)} 個案例在事前登記的研究中已有工作（例如 {first['ticker']} {first['analysis_date']}）；"
+                             "不會重複建立。要刻意重跑請用「複製」")
+
+
 def probe_once(ctx):
     """A model probe that contacts the endpoint at most once per request (batches validate hundreds of cases)."""
     result = []
@@ -54,7 +67,9 @@ def prepare(ctx, payload, model_probe=None):
         anonymize_ticker=payload.anonymize_ticker, dataset_kind=data["kind"],
         missing_data_policy=payload.missing_data_policy,
         allow_point_fundamental=payload.allow_point_fundamental,
-        allow_small_model=payload.allow_small_model)
+        allow_small_model=payload.allow_small_model,
+        **{key: value for key in ("model_context_length", "ollama_parallel")
+           if (value := getattr(payload, key, None)) is not None})
     if protocol.sentiment_indicators and data.get("kind") == "historical" and rules.get("news_item_limit") != "uncapped":
         raise PreflightError("news_capped", "此資料集的新聞在蒐集時被截斷（每來源最多 50 筆）；v3-0930 之後的協議需要窗口內的全部標題，"
                              "請重新蒐集資料")
@@ -160,7 +175,9 @@ def build_router(ctx):
 
     @router.post("/api/jobs")
     def create_job(payload: JobInput):
-        return store.create(prepare(ctx, payload))
+        config = prepare(ctx, payload)
+        reject_registered_duplicates(store, [config])
+        return store.create(config)
 
     @router.post("/api/jobs/preflight")
     def preflight(payload: JobInput):
@@ -183,6 +200,7 @@ def build_router(ctx):
         keys = [(item["ticker"], item["analysis_date"], item["protocol_hash"]) for item in prepared]
         if len(set(keys)) != len(keys):
             raise ValueError("批次內不可重複 case")
+        reject_registered_duplicates(store, prepared)
         return [store.create(item)["id"] for item in prepared]
 
     @router.get("/api/jobs")
