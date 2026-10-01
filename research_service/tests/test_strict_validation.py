@@ -40,7 +40,7 @@ class StrictNumericClaimTests(unittest.TestCase):
     def check(self, text, value, strict, **kwargs):
         result = decision(text, value, **kwargs)
         try:
-            validate_numeric_claims(result, [REVENUE], strict=strict)
+            validate_numeric_claims(result, [REVENUE], strict=strict, canonical=False)
             return True
         except ValueError:
             return False
@@ -64,7 +64,7 @@ class StrictNumericClaimTests(unittest.TestCase):
             result = decision(text, value, unit="percent", metric="Revenue year-over-year change",
                               period="2023-12-31..2024-12-31")
             try:
-                validate_numeric_claims(result, [source], strict=True)
+                validate_numeric_claims(result, [source], strict=True, canonical=False)
                 return True
             except ValueError:
                 return False
@@ -72,7 +72,7 @@ class StrictNumericClaimTests(unittest.TestCase):
         self.assertTrue(ok("Revenue fell -59%", -59))
         self.assertFalse(ok("Revenue fell -58.98%", -58.98))
         loose = {"rationale": "The 60-day trend and the 20 日 window", "risks": [], "evidence_ids": ["rev"], "numeric_claims": []}
-        validate_numeric_claims(loose, [source], strict=True)
+        validate_numeric_claims(loose, [source], strict=True, canonical=False)
         with self.assertRaises(ValueError):
             validate_numeric_claims({**loose, "rationale": "Margins near 12.5"}, [source], strict=True)
 
@@ -94,6 +94,17 @@ class SelfRebuttalTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "rebutted_claim"):
             validate_self_rebuttal({"rebutted_claim": "Interest rates will fall sharply this year",
                                     "confidence": .5, "confidence_shift": -0.2}, self.ROUND1)
+
+    def test_empty_numeric_and_trivial_claims_fail_closed(self):
+        for text in ("!!!", "...", "123456789", "risk", "a b", "", " "):
+            with self.subTest(text=text), self.assertRaises(ValueError):
+                validate_self_rebuttal({"rebutted_claim": text, "confidence": .5,
+                                       "confidence_shift": -.2}, self.ROUND1)
+
+    def test_chinese_prior_claim_is_supported(self):
+        prior = {"rationale": "需求成長有助維持利潤", "confidence": .7}
+        validate_self_rebuttal({"rebutted_claim": "需求成長有助維持利潤", "confidence": .5,
+                               "confidence_shift": -.2}, prior)
 
     def test_a_wrong_shift_is_replaced_by_the_true_change_and_kept_for_audit(self):
         result = {"rebutted_claim": "Export limits could cut China sales", "confidence": .5, "confidence_shift": 0.3}

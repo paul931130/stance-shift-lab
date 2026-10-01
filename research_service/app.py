@@ -16,14 +16,16 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from .autostop import AutoStop
+from .breaker import Breaker
 from .engine import Engine
 from .errors import NotFoundError
 from .logging_config import get_logger
 from .security import SessionAuth
 from .settings import Settings
-from .storage import Store, now
+from .storage import JobLeaseLost, Store, now
 from .web import datasets, jobs, studies, system
 from .web.context import AppContext
+from .web.ollama import probe_models
 
 logger = get_logger(__name__)
 
@@ -94,6 +96,8 @@ def create_app(store=None, model_call=None, start_worker=True):
     # running job, including ones another live service was still running.
     service_id = uuid4().hex
     worker_owner = f"worker:{service_id}"
+    # An injected model_call (tests, demo) has no endpoint to probe.
+    breaker = Breaker(lambda: model_call is not None or ctx.demo_mode or probe_models(ctx).get("ready"))
 
     def recover_orphans():
         at = datetime.now(timezone.utc)
@@ -119,6 +123,9 @@ def create_app(store=None, model_call=None, start_worker=True):
         # thread and leave every queued job stuck, so storage errors (e.g. a
         # locked database) are logged and retried after a short back-off.
         while not stop.is_set():
+            if not breaker.allow():
+                stop.wait(5)
+                continue
             try:
                 job = store.claim(worker_owner)
             except Exception:
@@ -132,15 +139,21 @@ def create_app(store=None, model_call=None, start_worker=True):
             try:
                 state = ctx.engine.advance(job)
                 state["attempts"].append({"at": now(), "status": "ok", "node": state["trace"][-1]["node"]})
-                store.save_step(job["id"], state)
+                store.save_step(job["id"], state, owner=worker_owner, generation=job["lease_generation"])
+                breaker.record(True)
+            except JobLeaseLost:
+                logger.warning("job %s: discarded a checkpoint after losing its lease", job["id"])
             except Exception as error:
                 # Persist progress before exposing a bounded diagnostic; never dump provider keys.
                 state = getattr(error, "state", state)
                 message = f"{type(error).__name__}: {_redact(str(error), access_key)[:700]}"
                 logger.error("job %s failed: %s", job["id"], message)
+                breaker.record(False)
                 state["attempts"].append({"at": now(), "status": "error", "message": message})
                 try:
-                    store.save_step(job["id"], state, message)
+                    store.save_step(job["id"], state, message, owner=worker_owner, generation=job["lease_generation"])
+                except JobLeaseLost:
+                    logger.warning("job %s: discarded a failure after losing its lease", job["id"])
                 except Exception:
                     # The job stays 'running'; recover() pauses it on the next restart.
                     logger.exception("job %s: could not persist failure state", job["id"])
@@ -164,6 +177,7 @@ def create_app(store=None, model_call=None, start_worker=True):
     # The auth middleware below still protects it in remote mode.
     app = FastAPI(title="Stance Shift Research v3", lifespan=lifespan)
     app.state.store = store
+    app.state.breaker = ctx.breaker = breaker
 
     @app.middleware("http")
     async def protect(request, call_next):

@@ -47,6 +47,8 @@ def _formal_exclusion_reason(job, eligible_dataset_ids, frozen_at=None):
     config = job.get("config", {})
     protocol = config.get("protocol", {})
     report = job.get("state", {}).get("report", {})
+    if job.get("state", {}).get("model_identity_failure"):
+        return "runtime_model_identity_failed"
     readiness = config.get("formal_readiness")
     if protocol.get("dataset_kind") != "historical" or report.get("dataset_kind") != "historical":
         return "non_historical_dataset"
@@ -490,7 +492,7 @@ def _numeric_validation_quality(complete):
     known = False
     for job in complete:
         version = job.get("config", {}).get("protocol", {}).get("version")
-        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2"}:
+        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4"}:
             known = True
         records = job.get("state", {}).get("records", [])
         case_redacted_calls = 0

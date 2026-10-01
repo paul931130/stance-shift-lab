@@ -15,9 +15,10 @@ from .backtest import evaluate
 from .data import digest, research_inputs
 from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate, messages_for,
                      prompt_text, unalias_evidence_ids, validate_decision, validate_research)
-from .protocol import (DOMAIN_NAMES, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
+from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
                        temperature_for)
 from .storage import now
+from .model_identity import ModelIdentityError, resolve_ollama_identity, verify_model_identity
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -198,8 +199,9 @@ class StepFailure(RuntimeError):
 
 
 class Engine:
-    def __init__(self, store, model_call=generate, parallel_workers=None):
+    def __init__(self, store, model_call=generate, parallel_workers=None, identity_probe=None):
         self.store, self.model_call = store, model_call
+        self.identity_probe = identity_probe or resolve_ollama_identity
         # Tests and embedding callers may inject a deterministic model while
         # retaining the protocol's default Ollama label.  Only the real
         # provider function needs the single-runner safeguard below.
@@ -275,7 +277,8 @@ class Engine:
                 result, audit = self.call_model(protocol, attempt_messages, retry_key, temperature_for(protocol, call),
                                                 aliases)
                 result = validate_decision(result, decision_evidence, call, prompt_text(messages),
-                                           claim_bound=claim_bound, strict=strict, own_round1=own_round1)
+                                           claim_bound=claim_bound, strict=strict, own_round1=own_round1,
+                                           canonical=protocol.version in CANONICAL_CLAIM_VERSIONS)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
@@ -297,7 +300,8 @@ class Engine:
                         try:
                             redacted = validate_decision(json.loads(json.dumps(result)), decision_evidence, call,
                                                      prompt_text(messages), redact_numbers=True,
-                                                     claim_bound=claim_bound, strict=strict, own_round1=own_round1)
+                                                     claim_bound=claim_bound, strict=strict, own_round1=own_round1,
+                                                     canonical=protocol.version in CANONICAL_CLAIM_VERSIONS)
                         except (ValueError, JsonSchemaValidationError, TypeError):
                             raise error
                         audit = dict(audit)
@@ -347,7 +351,7 @@ class Engine:
             try:
                 result, audit = self.call_model(protocol, attempt_messages, retry_key, protocol.temperature, aliases)
                 result = validate_research(result, items, domain, claim_bound=claim_bound,
-                                           strict=strict)
+                                           strict=strict, canonical=protocol.version in CANONICAL_CLAIM_VERSIONS)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
@@ -361,13 +365,18 @@ class Engine:
                 if strict and audit is not None and "來源未支持的數字" in str(error):
                     try:
                         redacted = validate_research(json.loads(json.dumps(result)), items, domain,
-                                                     claim_bound=claim_bound, strict=strict, redact=True)
+                                                     claim_bound=claim_bound, strict=strict, redact=True,
+                                                     canonical=protocol.version in CANONICAL_CLAIM_VERSIONS)
                     except (ValueError, JsonSchemaValidationError, TypeError):
                         redacted = None
                     if redacted is not None:
                         audit = dict(audit)
                         audit["validation_retries"] = validation_failures
                         audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
+                        if redacted.get("numeric_claims_removed"):
+                            audit["numeric_claims_removed"] = redacted["numeric_claims_removed"]
+                        if redacted.get("redacted_number_claims"):
+                            audit["redacted_number_claims"] = redacted["redacted_number_claims"]
                         return redacted, audit
                 if attempt >= protocol.provider_retry_attempts:
                     raise
@@ -383,7 +392,23 @@ class Engine:
     def advance(self, job):
         if not protocol_is_current(job["config"]["protocol"]):
             raise ValueError("舊版實驗已隔離；請複製至新版")
+        protocol = job["config"]["protocol"]
+        check_identity = (self.uses_builtin_provider and protocol.get("dataset_kind") == "historical"
+                          and protocol.get("version") in CANONICAL_CLAIM_VERSIONS
+                          and protocol["model"].startswith("ollama/"))
+        if job["state"].get("model_identity_failure"):
+            raise ModelIdentityError("此工作的推理後權重核對曾失敗，結果不可續跑或納入正式統計；請建立新工作")
+        if check_identity:
+            check = verify_model_identity(job["config"], self.identity_probe)
+            job["state"].setdefault("model_identity_checks", []).append({**check, "phase": "before_step"})
         state = self.graph.invoke({"job": job, "state": job["state"]})["state"]
+        if check_identity:
+            try:
+                check = verify_model_identity(job["config"], self.identity_probe)
+            except ModelIdentityError as error:
+                state["model_identity_failure"] = {"at": now(), "phase": "after_step", "reason": str(error)}
+                raise StepFailure(str(error), state) from error
+            state.setdefault("model_identity_checks", []).append({**check, "phase": "after_step"})
         failure = state.pop("_step_error", None)
         if failure:
             raise StepFailure(failure, state)
@@ -425,6 +450,13 @@ class Engine:
                 evidence_text = json.dumps(compact, ensure_ascii=False)
                 claim_rules = (" Every number in summary or risks must have a numeric_claims item tied to the cited evidence_id, metric, period, unit and value in numeric_fields, plus an exact prose quote; allow source values or half-up rounding to at most 3 significant figures. If a number cannot be bound, omit it. Return numeric_claims: [] when the prose has no numbers."
                                if protocol.version in NUMERIC_CLAIM_VERSIONS else "")
+                if protocol.version in CANONICAL_CLAIM_VERSIONS:
+                    claim_rules = (
+                        " Every factual numeric sentence must be a standalone statement exactly in the form "
+                        "metric [period] = value unit. Copy metric, period and unit verbatim from numeric_fields; "
+                        "use a source value or supported half-up rounding. Its numeric_claims quote must be the "
+                        "entire statement. Do not add words before/after it or use numeric fragments. "
+                        "Write other reasoning without numbers; omit facts you cannot bind.")
                 fundamental_rules = ("For fundamental evidence, retain the source metric, period and unit; do not combine periods or compute a new value. "
                     if protocol.version in NUMERIC_CLAIM_VERSIONS else
                     "For fundamental evidence, copy every financial number, unit and period exactly. Do not round, rescale, convert to millions/billions or combine periods. ")

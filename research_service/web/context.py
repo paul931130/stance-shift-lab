@@ -28,6 +28,8 @@ class AppContext:
     trusted_proxies: set = field(default_factory=set)
     # GPU idle watchdog (research_service.autostop); None in tests that build a bare context.
     autostop: object = None
+    # Holds the queue while the model endpoint keeps failing (research_service.breaker).
+    breaker: object = None
 
 
 class TaskRegistry:

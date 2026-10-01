@@ -117,6 +117,8 @@ def build_router(ctx):
         result = gputw_status()
         if ctx.autostop is not None:
             result["autostop"] = ctx.autostop.public()
+        if getattr(ctx, "breaker", None) is not None:
+            result["breaker"] = ctx.breaker.public()
         return result
 
     @router.get("/api/gputw/resources")

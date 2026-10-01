@@ -166,7 +166,7 @@ class WorkflowTests(unittest.TestCase):
         job = self.create()
         claimed = self.store.claim()
         state = Engine(self.store, fake_model).advance(claimed)
-        self.store.save_step(job["id"], state)
+        self.store.save_step(job["id"], state, owner=claimed["owner"], generation=claimed["lease_generation"])
         self.store.claim()
         self.store.recover("9999", "9999")  # its service has stopped
         recovered = self.store.get(job["id"])

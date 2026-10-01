@@ -9,7 +9,8 @@ import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import DESIGNS, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, SWITCH_ROUND, visible_history
+from .protocol import (CANONICAL_CLAIM_VERSIONS, DESIGNS, NUMERIC_CLAIM_VERSIONS,
+                       STRICT_VALIDATION_VERSIONS, SWITCH_ROUND, visible_history)
 
 _gputw_opener = None
 _gputw_lock = threading.Lock()
@@ -304,12 +305,35 @@ def _strict_claim_problem(claim, quote, displayed):
     return None
 
 
-def validate_numeric_claims(result, evidence, redact=False, strict=False):
+def _claim_statement(claim):
+    """Accept only a complete typed fact, never an arbitrary numeric fragment."""
+    quote = claim["quote"].strip().removesuffix(".").removesuffix("。")
+    pattern = (rf"{re.escape(claim['metric'])} \[{re.escape(claim['period'])}\]"
+               rf" = ({NUMBER_PATTERN}) {re.escape(claim['unit'])}")
+    match = re.fullmatch(pattern, quote)
+    if not match or Decimal(match[1].replace(",", "")) != Decimal(str(claim["value"])):
+        return None
+    return quote
+
+
+def _statement_spans(text):
+    """Sentence boundaries exclude decimal points and the '..' period separator."""
+    start = 0
+    for match in re.finditer(r"(?<![\d.])\.(?![\d.])|[;。；!?！？\n]", text):
+        yield start, match.start()
+        start = match.end()
+    yield start, len(text)
+
+
+def validate_numeric_claims(result, evidence, redact=False, strict=False, canonical=None):
     """Bind narrative numbers to a cited evidence ID, metric, period, unit and source value.
 
-    With ``strict`` (v3-1001.x) a bound number must also keep the source's scale,
-    percent-ness and metric label in the quoted prose.
+    Canonical mode (v3-1001.3/.4) requires a complete, standalone statement:
+    ``metric [period] = value unit``. Every number is covered only within an
+    actual occurrence of that statement in the same prose field. The legacy
+    strict mode (canonical=False, v3-1001.1/.2) retains its original label rules.
     """
+    canonical = strict if canonical is None else canonical
     cited = set(result.get("evidence_ids", []))
     by_id = {item.get("evidence_id"): item for item in evidence if item.get("evidence_id")}
     prose_fields = [("summary", result.get("summary")), ("rationale", result.get("rationale")),
@@ -354,27 +378,47 @@ def validate_numeric_claims(result, evidence, redact=False, strict=False):
         period_numbers = {number for _, _, number, _ in _numeric_tokens(claim["period"])}
         quote_values = [number for _, _, number, _ in tokens]
         has_claim_value = displayed in quote_values
-        no_extra_values = all(number == displayed or number in period_numbers
+        # Canonical statements already copy the complete source metric/period/unit,
+        # including any digits in those labels (e.g. "20-day momentum").
+        no_extra_values = canonical or all(number == displayed or number in period_numbers
                               or (strict and _is_label_number(quote, start, end, number))
                               for start, end, number, _ in tokens)
-        if supported and has_claim_value and no_extra_values and not (
-                strict and _strict_claim_problem(claim, quote, displayed)):
+        if supported and has_claim_value and no_extra_values and (
+                _claim_statement(claim) is not None if canonical
+                else not (strict and _strict_claim_problem(claim, quote, displayed))):
             valid.append(claim)
         else:
             invalid_claim_count += 1
 
-    valid_quotes = [(claim["quote"], Decimal(str(claim["value"])),
-                     {number for _, _, number, _ in _numeric_tokens(claim["period"])}) for claim in valid]
+    if canonical:
+        bound = [claim for claim in valid if any(
+            text[left:right].strip() == _claim_statement(claim)
+            and claim["quote"] in text[left:right + 1]
+            for _, text in prose_fields for left, right in _statement_spans(text))]
+        invalid_claim_count += len(valid) - len(bound)
+        valid = bound
+    # Resolve quotes independently in every prose field and cover every occurrence.
     unsupported = []
     for field_name, text in prose_fields:
+        ranges = []
+        for claim in valid:
+            if canonical:
+                statement = _claim_statement(claim)
+                for left, right in _statement_spans(text):
+                    if text[left:right].strip() == statement and claim["quote"] in text[left:right + 1]:
+                        ranges.append((left, right, claim))
+            else:
+                for match in re.finditer(re.escape(claim["quote"]), text):
+                    ranges.append((match.start(), match.end(), claim))
         for start, end, number, raw in _numeric_tokens(text):
-            if strict and _is_label_number(text, start, end, number):
+            if strict and not canonical and _is_label_number(text, start, end, number):
                 continue  # "20-day", "60 trading sessions", "2023": names a window or year, not a source value
             covered = False
-            for quote, value, period_numbers in valid_quotes:
-                quote_start = text.find(quote)
-                if quote_start <= start and end <= quote_start + len(quote):
-                    if number == value or number in period_numbers:
+            for left, right, claim in ranges:
+                value = Decimal(str(claim["value"]))
+                period_numbers = {n for _, _, n, _ in _numeric_tokens(claim["period"])}
+                if left <= start and end <= right:
+                    if canonical or number == value or number in period_numbers:
                         covered = True
                         break
             if not covered:
@@ -674,6 +718,14 @@ def messages_for(call, report, records, memory, protocol):
             "fragment). Use the source value or round it half-up (e.g. -58.9912 as -58.99 or -59), in the source unit (no "
             "thousand/million/billion; % only for percent units), naming the same metric. expected_return_pct is a "
             "forecast, not a source fact. Drop any number you cannot bind. ")
+    if protocol.version in CANONICAL_CLAIM_VERSIONS:
+        numeric_claim_instruction = (
+            "Every factual numeric sentence must use exactly: metric [period] = value unit. "
+            "Copy metric, period and unit verbatim from the cited numeric_fields; use its source value or "
+            "supported half-up rounding. Example: Revenue [2024-12-31] = 100 USD. "
+            "Each numeric_claims item must quote that entire standalone sentence, not a numeric fragment. "
+            "Do not add words before/after it, convert units, or put other factual numbers in prose. "
+            "Write other reasoning without numbers. expected_return_pct is a separate forecast, not a source fact. ")
     common = ("You are a decision agent in a fixed historical experiment. "
         f"Forecast the target's return over the next {protocol.primary_horizon} trading sessions using only the supplied report; do not use remembered future facts. "
         "Candidate action is Buy, Hold, or Sell. NoTrade is reserved for the later Gatekeeper. "
@@ -888,7 +940,7 @@ def generate(protocol, messages, seed=None, temperature=None):
 
 
 def validate_decision(result, evidence, call=None, context=None, redact_numbers=False, claim_bound=False,
-                      strict=False, own_round1=None):
+                      strict=False, own_round1=None, canonical=None):
     allowed_actions = ("Buy", "Hold", "Sell")
     if call is not None and call.kind == "debate":
         allowed_actions = ("Buy",) if call.stance == "BULL" else ("Sell",)
@@ -918,11 +970,13 @@ def validate_decision(result, evidence, call=None, context=None, redact_numbers=
             shift = result.get("confidence_shift")
             if isinstance(shift, bool) or not isinstance(shift, (float, int)) or not -1 <= shift <= 1:
                 raise ValueError("角色交換輪 confidence_shift 須介於 -1 與 1")
+            if strict and canonical is not False and own_round1 is None:
+                raise ValueError("角色交換輪缺少自己第 1 輪歷史；不能驗證 rebutted_claim")
             if strict and own_round1 is not None:
                 validate_self_rebuttal(result, own_round1)
     cited = set(result["evidence_ids"])
     if claim_bound:
-        validate_numeric_claims(result, evidence, redact=redact_numbers, strict=strict)
+        validate_numeric_claims(result, evidence, redact=redact_numbers, strict=strict, canonical=canonical)
     elif any(item.get("domain") == "fundamental" and item.get("evidence_id") in cited for item in evidence):
         validate_financial_numbers(result, evidence, context, redact=redact_numbers)
     validate_financial_interpretation(result, evidence)
@@ -943,13 +997,16 @@ def validate_self_rebuttal(result, own_round1, shift_tolerance=0.05):
     """The switch round must rebut something this agent really said in round 1, and report the real shift."""
     earlier = own_round1.get("output", own_round1)
     claim = _words(result["rebutted_claim"])
+    letters = re.findall(r"[^\W\d_]", result["rebutted_claim"], re.UNICODE)
+    cjk = re.findall(r"[\u3400-\u9fff]", result["rebutted_claim"])
+    if not claim or not ((len(claim) >= 2 and len(letters) >= 8) or len(cjk) >= 6):
+        raise ValueError("rebutted_claim 須包含可辨識的原主張，不能只有標點、數字或過短片段")
     prose = _words(" ".join([str(earlier.get("rationale", "")), str(earlier.get("strongest_counterpoint", "")),
                              *[str(r) for r in earlier.get("risks", [])]]))
-    if claim:
-        from difflib import SequenceMatcher
-        match = SequenceMatcher(None, claim, prose, autojunk=False).find_longest_match(0, len(claim), 0, len(prose))
-        if match.size < max(1, round(0.7 * len(claim))):
-            raise ValueError("rebutted_claim 必須引用自己第 1 輪實際寫過的主張（至少 70% 的字詞連續相同）")
+    from difflib import SequenceMatcher
+    match = SequenceMatcher(None, claim, prose, autojunk=False).find_longest_match(0, len(claim), 0, len(prose))
+    if match.size < max(1, round(0.7 * len(claim))):
+        raise ValueError("rebutted_claim 必須引用自己第 1 輪實際寫過的主張（至少 70% 的字詞連續相同）")
     # confidence_shift is derivable, so the system records the true change and keeps the
     # model's own figure for audit instead of failing the call (decided 2026-10-01).
     previous = earlier.get("confidence")
@@ -960,7 +1017,7 @@ def validate_self_rebuttal(result, own_round1, shift_tolerance=0.05):
             result["confidence_shift"] = actual
 
 
-def validate_research(result, evidence, domain, claim_bound=False, strict=False, redact=False):
+def validate_research(result, evidence, domain, claim_bound=False, strict=False, redact=False, canonical=None):
     """Validate a research-agent answer before it becomes part of the frozen report."""
     if not isinstance(result, dict) or not isinstance(result.get("summary"), str) or not result["summary"].strip():
         raise ValueError("研究代理人輸出格式錯誤")
@@ -972,7 +1029,7 @@ def validate_research(result, evidence, domain, claim_bound=False, strict=False,
     if any(evidence_id not in allowed for evidence_id in result["evidence_ids"]):
         raise ValueError("研究代理人引用未提供的證據")
     if claim_bound:
-        validate_numeric_claims(result, evidence, redact=redact, strict=strict)
+        validate_numeric_claims(result, evidence, redact=redact, strict=strict, canonical=canonical)
     elif domain == "fundamental":
         validate_financial_numbers(result, evidence)
     if domain == "fundamental":

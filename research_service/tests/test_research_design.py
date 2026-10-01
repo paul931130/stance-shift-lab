@@ -63,7 +63,8 @@ class MemoryOrderTests(unittest.TestCase):
         claimed = []
         while (job := self.store.claim()):
             claimed.append(job["config"]["analysis_date"])
-            self.store.save_step(job["id"], {**job["state"], "finished": True})
+            self.store.save_step(job["id"], {**job["state"], "finished": True},
+                                 owner=job["owner"], generation=job["lease_generation"])
         self.assertEqual(claimed, ["2023-12-29", "2024-06-28", "2024-12-31"])
 
     def test_memory_audit_lists_unfinished_earlier_cases_only(self):
