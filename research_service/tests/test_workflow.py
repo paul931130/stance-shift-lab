@@ -642,7 +642,7 @@ class WorkflowTests(unittest.TestCase):
         with patch.dict("os.environ", {"RESEARCH_OLLAMA_PARALLEL": "9"}), self.assertRaises(ValueError):
             Engine(self.store, fake_model)
 
-    def test_parallel_agent_failure_uses_audited_source_extract(self):
+    def test_a_provider_timeout_pauses_the_step_instead_of_degrading_the_case(self):
         job = self.create()
         job["state"] = Engine(self.store, fake_model).advance(job)
 
@@ -651,10 +651,13 @@ class WorkflowTests(unittest.TestCase):
                 raise TimeoutError("test timeout")
             return fake_model(protocol, messages)
 
-        job["state"] = Engine(self.store, fail_sentiment, parallel_workers=4).advance(job)
-        self.assertEqual(set(job["state"]["research"]), {"technical", "fundamental", "sentiment", "macro"})
-        self.assertEqual(job["state"]["research"]["sentiment"]["status"], "degraded")
-        self.assertEqual(job["state"]["research"]["sentiment"]["audit"]["error_type"], "TimeoutError")
+        with self.assertRaises(Exception):
+            Engine(self.store, fail_sentiment, parallel_workers=4).advance(job)
+        stored = self.store.get(job["id"])["state"]
+        self.assertNotIn("sentiment", stored.get("research", {}))
+        # Once the provider is back, the same step completes and nothing is degraded.
+        job["state"] = Engine(self.store, fake_model, parallel_workers=4).advance(job)
+        self.assertEqual({item["status"] for item in job["state"]["research"].values()}, {"complete"})
 
     def test_fundamental_source_locked_extract_preserves_raw_claims_without_a_model_call(self):
         items = [{"evidence_id": "sec-revenue", "domain": "fundamental", "claim": "Revenues = 91166000000 USD"},

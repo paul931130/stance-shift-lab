@@ -438,7 +438,10 @@ class Engine:
                         protocol, domain, items, messages,
                         state.get("evidence_aliases") or evidence_aliases(state["inputs"]["evidence"]))
                     return {**result, "status": "complete", "audit": audit}
-                except Exception as error:
+                except (ValueError, JsonSchemaValidationError) as error:
+                    # Only an answer that fails validation degrades the domain. Network or
+                    # provider failures (timeouts, HTTP 5xx) propagate so the job pauses and
+                    # resumes cleanly instead of leaving a permanently degraded case.
                     # Preserve source fidelity and let the shared report finish.
                     # The degraded flag remains visible so formal runs can be
                     # repeated or excluded instead of silently accepting a bad
@@ -450,7 +453,8 @@ class Engine:
                             "risks": ["研究模型輸出未通過來源驗證；已使用可追溯的來源摘錄",
                                       f"fallback_reason={type(error).__name__}"],
                             "status": "degraded", "audit": {"fallback": "deterministic_source_extract",
-                            "error_type": type(error).__name__, "prompt_hash": digest(messages)}}
+                            "error_type": type(error).__name__, "error_message": str(error)[:300],
+                            "prompt_hash": digest(messages)}}
 
             if tasks:
                 research_workers = min(self.parallel_workers, len(tasks))
