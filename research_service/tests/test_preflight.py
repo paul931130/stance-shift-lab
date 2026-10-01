@@ -164,6 +164,16 @@ class StudyPlanTests(unittest.TestCase):
                                                                "model": "ollama/qwen3:32b"}).json()
             self.assertTrue(replanned["already_preregistered"])
 
+    def test_plan_with_a_real_provider_needs_no_running_gpu(self):
+        coverage_result = {"sentiment_quality": GOOD_SENTIMENT, "fundamental_quality": GOOD_FUNDAMENTAL}
+        with patch("research_service.web.jobs.coverage", return_value=coverage_result), \
+             patch("research_service.web.studies.reusable_snapshot", return_value={"id": self.dataset_id}), \
+             TestClient(create_app(self.store, None, start_worker=False)) as client:
+            plan = client.post("/api/studies/plan", json={"tickers": ["NVDA"], "dates": ["2024-12-31"],
+                                                          "model": "ollama/qwen3:32b"}).json()
+        self.assertEqual(plan["ready"], 1, plan["cases"])
+        self.assertTrue(plan["protocol_hash"])
+
     def test_a_registration_of_an_older_protocol_is_read_only_before_any_job_exists(self):
         self.store.freeze("oldhash", [self.dataset_id])
         self.store.save_registration_meta("oldhash", "v3-0930.3", "ollama/qwen3:32b", "quarterly")

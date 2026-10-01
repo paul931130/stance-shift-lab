@@ -98,7 +98,8 @@ def build_router(ctx):
         GPU is off; queueing still checks the model for real.
         """
         def assume_model():
-            return {"ready": True, "models": [payload.model], "details": [{"id": payload.model}]}
+            # The weight digest is checked when jobs are queued, not part of the protocol hash.
+            return {"ready": True, "models": [payload.model], "details": [{"id": payload.model, "digest": "planned"}]}
         cases, ready = [], []
         snapshots = store.datasets()
         for analysis_date in payload.dates:
