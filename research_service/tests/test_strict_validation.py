@@ -55,10 +55,10 @@ class SelfRebuttalTests(unittest.TestCase):
             validate_self_rebuttal({"rebutted_claim": "Interest rates will fall sharply this year",
                                     "confidence": .5, "confidence_shift": -0.2}, self.ROUND1)
 
-    def test_a_shift_that_does_not_match_the_confidences_fails(self):
-        with self.assertRaisesRegex(ValueError, "confidence_shift"):
-            validate_self_rebuttal({"rebutted_claim": "Export limits could cut China sales",
-                                    "confidence": .5, "confidence_shift": 0.3}, self.ROUND1)
+    def test_a_wrong_shift_is_replaced_by_the_true_change_and_kept_for_audit(self):
+        result = {"rebutted_claim": "Export limits could cut China sales", "confidence": .5, "confidence_shift": 0.3}
+        validate_self_rebuttal(result, self.ROUND1)
+        self.assertEqual((result["confidence_shift"], result["confidence_shift_reported"]), (-0.2, 0.3))
 
 
 if __name__ == "__main__":

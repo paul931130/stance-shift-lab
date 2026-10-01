@@ -927,11 +927,14 @@ def validate_self_rebuttal(result, own_round1, shift_tolerance=0.05):
         match = SequenceMatcher(None, claim, prose, autojunk=False).find_longest_match(0, len(claim), 0, len(prose))
         if match.size < max(1, round(0.7 * len(claim))):
             raise ValueError("rebutted_claim 必須引用自己第 1 輪實際寫過的主張（至少 70% 的字詞連續相同）")
+    # confidence_shift is derivable, so the system records the true change and keeps the
+    # model's own figure for audit instead of failing the call (decided 2026-10-01).
     previous = earlier.get("confidence")
     if isinstance(previous, (int, float)) and not isinstance(previous, bool):
-        actual = result["confidence"] - previous
+        actual = round(result["confidence"] - previous, 6)
         if abs(result["confidence_shift"] - actual) > shift_tolerance + 1e-9:
-            raise ValueError(f"confidence_shift 應等於本輪信心減第 1 輪信心（{actual:+.2f}）")
+            result["confidence_shift_reported"] = result["confidence_shift"]
+            result["confidence_shift"] = actual
 
 
 def validate_research(result, evidence, domain, claim_bound=False, strict=False):
