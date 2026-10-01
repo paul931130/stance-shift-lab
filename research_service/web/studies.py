@@ -1,9 +1,11 @@
 """Protocol-level statistics, preregistration and diagnostics."""
+import threading
+
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
 from .context import BatchInput, JobInput, PlanInput
-from .jobs import prepare
+from .jobs import prepare, probe_once
 
 from ..collect import reusable_snapshot
 from ..errors import PreflightError
@@ -14,6 +16,9 @@ from ..reporting import csv_text, hold_band_sensitivity, pilot_diagnostics, stab
 def build_router(ctx):
     router = APIRouter()
     store = ctx.store
+    # Check-then-create must not interleave: two overlapping enqueues would both see
+    # no existing jobs and create the whole study twice.
+    enqueue_lock = threading.Lock()
 
     def protocol_jobs(protocol_hash):
         return store.jobs(protocol_hash)
@@ -60,7 +65,8 @@ def build_router(ctx):
                 raise ValueError("這個研究登記時沒有保存案例清單；請用「排入批次檔」上傳登記時的批次檔")
             payload = BatchInput(cases=saved)
         frozen = set(registration["dataset_ids"])
-        prepared = [prepare(ctx, item) for item in payload.cases]
+        probe = probe_once(ctx)
+        prepared = [prepare(ctx, item, model_probe=probe) for item in payload.cases]
         wrong = [item["dataset_id"] for item in prepared if item["protocol_hash"] != protocol_hash]
         if wrong:
             raise ValueError(f"{len(wrong)} 個案例的協議與登記不符（例如設定或模型不同），全部未排入")
@@ -69,8 +75,13 @@ def build_router(ctx):
             raise ValueError(f"{len(outside)} 個案例不在事前登記的樣本內，全部未排入")
         # A list that passed both checks reproduces the registration; keep it for one-click re-queueing.
         store.save_registered_cases(protocol_hash, [item.model_dump() for item in payload.cases])
-        existing = {row["dataset_id"] for row in store.study_rows(protocol_hash) if row["status"] != "cancelled"}
-        created = [store.create(item)["id"] for item in prepared if item["dataset_id"] not in existing]
+        with enqueue_lock:
+            existing = {row["dataset_id"] for row in store.study_rows(protocol_hash) if row["status"] != "cancelled"}
+            created = []
+            for item in prepared:
+                if item["dataset_id"] not in existing:  # also drops a case listed twice in one request
+                    existing.add(item["dataset_id"])
+                    created.append(store.create(item)["id"])
         return {"created": len(created), "skipped_existing": len(prepared) - len(created),
                 "progress": study_progress(registration, store.study_rows(protocol_hash))}
 
@@ -136,7 +147,8 @@ def build_router(ctx):
         records the exact protocol the batch will run under. Only jobs created
         after this lock count as formal results.
         """
-        prepared = [prepare(ctx, item) for item in payload.cases]
+        probe = probe_once(ctx)
+        prepared = [prepare(ctx, item, model_probe=probe) for item in payload.cases]
         hashes = {item["protocol_hash"] for item in prepared}
         if len(hashes) != 1:
             raise ValueError("批次內的案例必須使用同一套研究協議（相同模型與設定）才能一起鎖定樣本")

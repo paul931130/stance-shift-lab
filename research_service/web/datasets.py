@@ -178,7 +178,7 @@ def build_router(ctx):
         with start_lock:
             current = batch_state["task"]
             if current and current["stage"] == "running":
-                return current  # joins the running batch
+                return {**current, "joined": True}  # one batch at a time; the caller is told it did not start
             task = {"id": uuid4().hex, "stage": "running", "total": len(cases), "done": 0, "reused": 0,
                     "created": 0, "failed": [], "current": None, "created_at": now()}
             batch_state["task"] = task

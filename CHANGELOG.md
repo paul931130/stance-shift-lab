@@ -6,7 +6,7 @@
 
 - 網頁最上方新增「正式實驗」：每個事前登記的研究顯示完成度、錯誤案例、依最近一小時產能估算的剩餘時間與 GPU 狀態，並提供「排入批次檔」「全部繼續」「全部暫停」。排入可重複按：已有工作的案例會略過，不在登記樣本內或協議不同的案例整批拒絕。舊版協議的研究只能查看。
 - API：`GET /api/studies`、`GET /api/studies/{hash}/progress`、`POST /api/studies/{hash}/enqueue`、`POST /api/studies/{hash}/pause-all`、`POST /api/studies/{hash}/resume-all`。
-- GPU 自動關機：設定 `GPUTW_MANAGE_API_KEY`（`instances:manage`）與 `GPUTW_INSTANCE_ID` 後，佇列沒有等待或執行中的工作超過 `RESEARCH_GPUTW_AUTOSTOP_MINUTES`（預設 15）分鐘，就停止 GPUtw 執行個體。工作出錯會自動暫停，所以卡住的批次也會觸發關機。原本的 `GPUTW_API_KEY` 仍只用來查詢。
+- GPU 自動關機：設定 `GPUTW_INSTANCE_ID` 與一把有 `instances:manage` 權限的金鑰（`GPUTW_MANAGE_API_KEY`；沒設定時改用 `GPUTW_API_KEY`）後，GPU 在佇列沒有等待或執行中工作的情況下運轉超過 `RESEARCH_GPUTW_AUTOSTOP_MINUTES`（預設 15）分鐘，就停止 GPUtw 執行個體。計時從「看到 GPU 正在運轉且佇列為空」開始，剛開機載入模型的時間不會被誤判為閒置。工作出錯會自動暫停，所以卡住的批次也會觸發關機。金鑰缺少權限時只嘗試一次並在「正式實驗」卡上顯示。
 - `RESEARCH_OLLAMA_PARALLEL`（預設 1，行為不變）：GPU 上的 Ollama 可同時處理同一案例的多個呼叫。RTX 5090 實測約快 2.1 倍；32 個提示詞中決策 31/32 相同，但文字與部分預期報酬和逐一處理不同，因此只建議用於不需要與逐一處理結果比對的新實驗。
 - GPUtw 改用自帶映像 `ollama/ollama:0.35.0`，`OLLAMA_MODELS=/vault/ollama/models`：模型與 Ollama 版本固定，重開機不必重新下載。GPUtw 的 Ollama 範本不讀 `/vault`，重開機後模型清單會是空的。見 `docs/gputw-integration.md`。
 - 修正：`stats-panel.js` 的語法錯誤讓整個網頁無法載入（CI 的 `node --check` 以 CommonJS 解析而沒有抓到，現改以 ES module 檢查）；GPU 關機時的錯誤訊息改為直接說明。

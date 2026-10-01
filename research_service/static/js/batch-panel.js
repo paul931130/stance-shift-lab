@@ -61,7 +61,13 @@ async function planAction(action) {
   } else if (action === 'enqueue') {
     const url = `/api/studies/${encodeURIComponent(plan.protocol_hash)}/enqueue`;
     // Prefer the case list saved at registration; older registrations need this plan's list.
-    const result = await api(url, undefined, 'POST', BATCH_TIMEOUT).catch(() => api(url, payload, 'POST', BATCH_TIMEOUT));
+    let result;
+    try { result = await api(url, undefined, 'POST', BATCH_TIMEOUT); }
+    catch (error) {
+      // Only a registration without a saved case list falls back to this plan's list; show anything else.
+      if (!String(error.message).includes('沒有保存案例清單')) throw error;
+      result = await api(url, payload, 'POST', BATCH_TIMEOUT);
+    }
     notify(`已排入 ${result.created} 案${result.skipped_existing ? `，略過已建立的 ${result.skipped_existing} 案` : ''}。`);
   } else {
     if (!window.confirm(`排入 ${plan.ready} 個案例但不事前登記？這批結果只算探索性分析。`)) return;
@@ -123,8 +129,9 @@ export function initBatchPanel(config, onDatasetsChanged, onQueued) {
     if (!tickers.length || !dates.length) { notify('請至少選一檔股票與一個分析日', true); return; }
     if ($('batch-collect-refresh').checked && !window.confirm(`強制重新下載 ${tickers.length * dates.length} 個案例？這會消耗資料來源的 API 額度（Alpha Vantage 免費版每天 25 次）。`)) return;
     task(e.submitter, async () => {
-      await api('/api/collections/batch', {tickers, dates, use_finbert: $('batch-collect-finbert').checked,
+      const started = await api('/api/collections/batch', {tickers, dates, use_finbert: $('batch-collect-finbert').checked,
         refresh: $('batch-collect-refresh').checked, design: 'quarterly'});
+      if (started.joined) notify('已有一批資料集正在建立；這次的選擇沒有啟動，請等目前這批完成後再按一次。', true);
       await pollCollect(onDatasetsChanged);
     });
   });

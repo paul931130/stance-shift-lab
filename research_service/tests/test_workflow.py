@@ -929,9 +929,10 @@ class WorkflowTests(unittest.TestCase):
             self.assertEqual([(s["protocol_hash"], s["cases"]) for s in listed], [(protocol_hash, 1)])
             self.assertEqual(listed[0]["progress"]["not_created"], 1)
 
-            first = client.post(f'/api/studies/{protocol_hash}/enqueue', json={"cases": [case]})
+            first = client.post(f'/api/studies/{protocol_hash}/enqueue', json={"cases": [case, case]})
             self.assertEqual(first.status_code, 200, first.text)
-            self.assertEqual((first.json()["created"], first.json()["skipped_existing"]), (1, 0))
+            # The same case listed twice in one request is created once.
+            self.assertEqual((first.json()["created"], first.json()["skipped_existing"]), (1, 1))
             # Pressing the button twice (or a helper re-sending the batch) must not duplicate GPU work.
             again = client.post(f'/api/studies/{protocol_hash}/enqueue', json={"cases": [case]}).json()
             self.assertEqual((again["created"], again["skipped_existing"]), (1 - 1, 1))

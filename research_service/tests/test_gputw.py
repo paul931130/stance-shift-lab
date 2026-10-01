@@ -146,6 +146,39 @@ class AutoStopTests(unittest.TestCase):
             dog.tick()
         self.assertEqual(self.stops, [])
 
+    def test_a_freshly_started_gpu_gets_the_whole_period_to_warm_up(self):
+        from research_service.autostop import AutoStop
+        status, stops = ["STOPPED"], []
+        self.now = 0.0
+        with patch.dict(os.environ, self.ENV, clear=False):
+            dog = AutoStop(lambda: 0, clock=lambda: self.now, state=lambda: status[0],
+                           stop=lambda: stops.append(1) or {"status": "stopped"})
+            for minute in range(0, 180):          # service idle for three hours, GPU off
+                self.now = minute * 60
+                dog.tick()
+            status[0] = "RUNNING"                 # the user starts the GPU; the model loads for ~10 min
+            for minute in range(180, 194):
+                self.now = minute * 60
+                dog.tick()
+            self.assertEqual(stops, [])
+            self.now = 196 * 60
+            dog.tick()
+        self.assertEqual(stops, [1])
+
+    def test_a_key_without_manage_scope_is_tried_once(self):
+        from research_service.autostop import AutoStop
+        calls = []
+        self.now = 0.0
+        with patch.dict(os.environ, self.ENV, clear=False):
+            dog = AutoStop(lambda: 0, clock=lambda: self.now, state=lambda: "RUNNING",
+                           stop=lambda: calls.append(1) or {"status": "error", "code": "forbidden", "message": "no scope"})
+            for minute in range(0, 120):
+                self.now = minute * 60
+                dog.tick()
+            self.assertFalse(dog.public()["enabled"])
+            self.assertEqual(dog.public()["last_action"]["code"], "forbidden")
+        self.assertEqual(calls, [1])
+
     def test_inert_without_a_manage_key_or_when_disabled(self):
         for env in ({**self.ENV, "GPUTW_MANAGE_API_KEY": "", "GPUTW_API_KEY": ""},
                     {**self.ENV, "RESEARCH_GPUTW_AUTOSTOP_MINUTES": "0"}):

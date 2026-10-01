@@ -51,7 +51,7 @@ curl -X POST http://127.0.0.1:8000/api/studies/<protocol_hash>/enqueue -H "Conte
 
 ### 5. 關機
 
-設定了 `GPUTW_MANAGE_API_KEY` 時，佇列沒有等待或執行中的案例超過 15 分鐘（`RESEARCH_GPUTW_AUTOSTOP_MINUTES`），研究台會停止 GPUtw 機器。所有案例都出錯暫停時也算佇列清空，所以卡住的批次不會一直燒錢。沒有設定時請自己在 GPUtw 控制台停止。
+GPU 在佇列沒有等待或執行中案例的情況下運轉超過 15 分鐘（`RESEARCH_GPUTW_AUTOSTOP_MINUTES`），研究台會停止 GPUtw 機器；計時從看到 GPU 運轉才開始，開機載入模型的時間不會被誤判。金鑰（`GPUTW_MANAGE_API_KEY`，沒設定時用 `GPUTW_API_KEY`）需有 `instances:manage` 權限。所有案例都出錯暫停時也算佇列清空，所以卡住的批次不會一直燒錢。權限不足時「正式實驗」卡會顯示，請自己在 GPUtw 控制台停止。
 
 ### 6. 看結果
 
@@ -78,4 +78,4 @@ GPU 上的 Ollama 預設一次處理一個呼叫（`RESEARCH_OLLAMA_PARALLEL=1`�
 | 「研究樣本已於 … 鎖定，不能再變更」 | 這個協議已登記過另一批樣本。要換樣本就需要新的協議版本 |
 | 「舊版協議：只能查看」 | 程式升級後協議版本改變，舊工作不能用新引擎續跑；結果保留 |
 | 排入時「協議與登記不符」 | 批次檔的設定（模型、投票次數、缺資料策略等）和登記時不同 |
-| 自動關機未啟用 | 沒有設定 `GPUTW_MANAGE_API_KEY` 或 `GPUTW_INSTANCE_ID` |
+| 自動關機未啟用／失敗 | 沒有 GPUtw 金鑰或 `GPUTW_INSTANCE_ID`，或金鑰缺少 `instances:manage` 權限 |

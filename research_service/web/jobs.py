@@ -20,6 +20,17 @@ from .context import BatchInput, JobInput
 from .ollama import CachedProbe, parameter_billions, probe_models
 
 
+def probe_once(ctx):
+    """A model probe that contacts the endpoint at most once per request (batches validate hundreds of cases)."""
+    result = []
+
+    def probe():
+        if not result:
+            result.append(probe_models(ctx))
+        return result[0]
+    return probe
+
+
 def prepare(ctx, payload, model_probe=None):
     """Validate a job request and freeze its config.
 
@@ -167,7 +178,8 @@ def build_router(ctx):
 
     @router.post("/api/batches")
     def batch(payload: BatchInput):
-        prepared = [prepare(ctx, item) for item in payload.cases]
+        probe = probe_once(ctx)
+        prepared = [prepare(ctx, item, model_probe=probe) for item in payload.cases]
         keys = [(item["ticker"], item["analysis_date"], item["protocol_hash"]) for item in prepared]
         if len(set(keys)) != len(keys):
             raise ValueError("批次內不可重複 case")

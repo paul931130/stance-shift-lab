@@ -19,14 +19,16 @@ function gpuLine() {
   if (!gpu.configured) return '<p class="hint">未設定 GPUtw；GPU 需自行在 GPUtw 控制台開關。</p>';
   const status = gpu.instance?.status || (gpu.status === 'error' ? '無法讀取' : '未指定執行個體');
   const auto = gpu.autostop;
-  const failed = auto?.last_action && auto.last_action.status !== 'stopped';
-  const autoText = !auto ? '' : !auto.enabled
-    ? ' · 自動關機未啟用（需 GPUtw 金鑰與 GPUTW_INSTANCE_ID）'
-    : failed ? ` · 自動關機失敗：${auto.last_action.message || auto.last_action.status}`
-    : auto.idle_minutes == null
-      ? ` · 佇列閒置 ${auto.idle_minutes_limit} 分鐘後自動關機`
-      : ` · 已閒置 ${auto.idle_minutes} 分鐘，${Math.max(0, auto.idle_minutes_limit - auto.idle_minutes).toFixed(0)} 分鐘後自動關機`;
   const running = status === 'RUNNING';
+  const failed = auto?.last_action && auto.last_action.status !== 'stopped';
+  // The countdown only means something while the GPU is actually running with an empty queue.
+  const autoText = !auto ? ''
+    : failed ? ` · 自動關機失敗：${auto.last_action.message || auto.last_action.status}`
+    : !auto.enabled ? ' · 自動關機未啟用（需 GPUtw 金鑰與 GPUTW_INSTANCE_ID）'
+    : !running ? ''
+    : auto.idle_minutes == null
+      ? ` · 佇列清空且閒置 ${auto.idle_minutes_limit} 分鐘後自動關機`
+      : ` · 佇列已空 ${auto.idle_minutes} 分鐘，約 ${Math.max(0, auto.idle_minutes_limit - auto.idle_minutes).toFixed(0)} 分鐘後自動關機`;
   return `<p class="study-gpu ${running ? 'on' : 'off'}"><i aria-hidden="true"></i>GPU ${escape(status)}${escape(autoText)}${
     auto?.last_action ? `<br><small>上次自動關機：${escape(formatStamp(auto.last_action.at))}（${escape(auto.last_action.status)}）</small>` : ''}</p>`;
 }
