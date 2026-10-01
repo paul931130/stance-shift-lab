@@ -22,7 +22,8 @@ GOOD_FUNDAMENTAL = {"items": 4, "passes_quality_gate": True}
 
 def ollama_tags(*models):
     """A fake Ollama /api/tags response listing (name, parameter_size) pairs."""
-    return {"models": [{"name": name, "details": {"parameter_size": size}} for name, size in models]}
+    return {"models": [{"name": name, "digest": "test-weights-" + name,
+                        "details": {"parameter_size": size}} for name, size in models]}
 
 
 class PreflightTests(unittest.TestCase):
@@ -97,6 +98,11 @@ class PreflightTests(unittest.TestCase):
     def test_qwen3_8b_is_the_formal_small_model_exception(self):
         result = self.preflight(model_call=None, tags=ollama_tags(("qwen3:8b", "8.2B")), model="ollama/qwen3:8b")
         self.assertTrue(result["ready"], result)
+
+    def test_missing_weight_digest_blocks_real_provider(self):
+        tags = ollama_tags(("qwen3:14b", "14.8B"))
+        del tags["models"][0]["digest"]
+        self.assertBlocked(self.preflight(model_call=None, tags=tags), "model_identity_unresolved")
 
     def test_cloud_model_skips_the_ollama_probe(self):
         result = self.preflight(model_call=None, tags=ollama_tags(), model="openrouter/openai/gpt-4.1-mini")

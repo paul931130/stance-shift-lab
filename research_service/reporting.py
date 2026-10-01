@@ -45,6 +45,8 @@ def stable_model_identity(config):
 def _formal_exclusion_reason(job, eligible_dataset_ids, frozen_at=None):
     """Fail closed unless a completed job carries formal-study provenance."""
     config = job.get("config", {})
+    if config.get("execution_purpose") == "qualification":
+        return "qualification_run"
     protocol = config.get("protocol", {})
     report = job.get("state", {}).get("report", {})
     if job.get("state", {}).get("model_identity_failure"):

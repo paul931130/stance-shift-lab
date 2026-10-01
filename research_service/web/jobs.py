@@ -108,6 +108,8 @@ def prepare(ctx, payload, model_probe=None):
         if effective_model not in installed.get("models", []):
             raise PreflightError("model_not_installed", f"Ollama 模型 {effective_model} 尚未安裝；請先執行 ollama pull，或改用其他模型來源")
         model_identity = next(item for item in installed["details"] if item["id"] == effective_model)
+        if not model_identity.get("digest"):
+            raise PreflightError("model_identity_unresolved", "模型服務未提供權重 digest；不能凍結或建立可稽核工作")
         parameter_count = parameter_billions(model_identity.get("parameter_size"))
         if (parameter_count is not None and parameter_count < 14
                 and effective_model.strip().lower() not in FORMAL_SMALL_MODEL_ALLOWLIST

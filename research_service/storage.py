@@ -403,6 +403,8 @@ class Store:
         for row in rows:
             value = dict(row)
             source = json.loads(value.pop("source_config"))
+            if source.get("execution_purpose") == "qualification":
+                continue
             if stable_model_identity(source) != stable_model_identity(config):
                 continue
             value["correct"] = None if value["correct"] is None else bool(value["correct"])

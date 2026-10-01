@@ -13,15 +13,17 @@ def resolve_ollama_identity(model):
     # Import lazily: the inventory route also uses the model transport helpers.
     from .web.ollama import get_json
     endpoint = (ollama_base_url() or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
-    headers = {}
+    headers = {"User-Agent": "stance-shift-lab/1.0"}
     if os.getenv("GPUTW_OLLAMA_API_KEY", "").strip():
         headers["Authorization"] = "Bearer " + os.getenv("GPUTW_OLLAMA_API_KEY").strip()
     try:
         inventory = get_json(endpoint + "/api/tags", headers=headers)
     except Exception as error:
-        raise ModelIdentityError(f"無法核對模型權重（{type(error).__name__}）；未放行推理") from error
+        raise ModelIdentityError(f"無法核對模型權重（{type(error).__name__}）；未放行推理") from None
+    if not isinstance(inventory, dict) or not isinstance(inventory.get("models"), list):
+        raise ModelIdentityError("模型清單格式無法驗證；未放行推理")
     name = model.removeprefix("ollama/")
-    matches = [item for item in inventory.get("models", []) if item.get("name") == name]
+    matches = [item for item in inventory["models"] if isinstance(item, dict) and item.get("name") == name]
     if len(matches) != 1 or not matches[0].get("digest"):
         raise ModelIdentityError("模型未安裝或沒有唯一的權重 digest；未放行推理")
     return {"id": model, "digest": matches[0]["digest"]}

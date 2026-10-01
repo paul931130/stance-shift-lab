@@ -51,7 +51,7 @@ class DemoExperimentE2E(unittest.TestCase):
             time.sleep(.05)
         cls.playwright = sync_playwright().start()
         try:
-            cls.browser = cls.playwright.chromium.launch()
+            cls.browser = cls.playwright.chromium.launch(channel=os.getenv("PLAYWRIGHT_BROWSER_CHANNEL"))
         except PlaywrightError as error:
             cls.playwright.stop()
             cls.tearDownServer()
