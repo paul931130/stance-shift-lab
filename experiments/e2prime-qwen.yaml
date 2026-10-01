@@ -1,12 +1,12 @@
-# Experiment E2': qwen3:32b, quarterly design, protocol v3-0930.3 (new uncapped news rule,
+# Experiment E2': qwen3:32b, quarterly design, protocol v3-1001.1 (new uncapped news rule,
 # FinBERT indicators over every headline, structured numeric claims). Not yet run.
 # Own pinned image, own database volume (copy of E2 plus rebuilt news and the FinBERT model), own port.
-#   git archive HEAD | docker build -f Dockerfile.research -t stance-shift-lab-research-qwen:v3-0930.3 -
+#   git archive HEAD | docker build -f Dockerfile.research -t stance-shift-lab-research-qwen:v3-1001.1 -
 #   docker compose -p stance-shift-lab -f experiments/e2prime-qwen.yaml up -d
 # Never run this together with the sealed E2 service (:8001) or E1 (:8000).
 services:
   research-qwen-v2:
-    image: stance-shift-lab-research-qwen:v3-0930.3
+    image: stance-shift-lab-research-qwen:v3-1001.1
     restart: "no"
     init: true
     ports:

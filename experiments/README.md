@@ -6,7 +6,7 @@
 |---|---|---|---|---|---|
 | E1 | `e1-gemini.yaml` | Gemini 3.1 Pro／v3-0927.2 | 8000 | `stance-shift-lab_research-data` | 舊情緒規則，13/180 後停止，不再續跑 |
 | E2 | `e2-qwen.yaml` | qwen3:32b／v3-0929.1 | 8001 | `stance-shift-lab_research-data-qwen`（封存，唯讀） | 180/180 完成，舊規則的歷史結果 |
-| E2′ | `e2prime-qwen.yaml` | qwen3:32b／v3-0930.3 | 8003 | `stance-shift-lab_research-data-qwen-v2` | **RQ1 主實驗**，已事前登記，待執行 |
+| E2′ | `e2prime-qwen.yaml` | qwen3:32b／v3-1001.1 | 8003 | `stance-shift-lab_research-data-qwen-v2` | **RQ1 主實驗**，已事前登記，待執行 |
 | E3 | `e3-monthly.yaml` | qwen3:32b／v3-0930.4（月度） | 8002 | `stance-shift-lab_research-data-monthly` | RQ2，E2′ 完成後執行 |
 
 一律從專案根目錄執行，並指定同一個專案名稱，容器與 volume 名稱才會一致：
