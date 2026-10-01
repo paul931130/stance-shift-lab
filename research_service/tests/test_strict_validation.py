@@ -14,6 +14,28 @@ def decision(text, value, unit="USD", metric="Revenue", period="2024-12-31"):
                                 "value": value, "quote": text}]}
 
 
+class ImmediateRedactionTests(unittest.TestCase):
+    def test_v3_1001_redacts_unbound_numbers_without_retrying(self):
+        import tempfile
+        from research_service.engine import Engine
+        from research_service.models import messages_for
+        from research_service.protocol import StudyProtocol, decision_plan
+        from research_service.storage import Store
+        with tempfile.TemporaryDirectory() as directory:
+            engine = Engine(Store(directory), lambda *a, **k: None)
+            protocol = StudyProtocol(dataset_kind="synthetic", bootstrap_replicates=199)
+            call = next(item for item in decision_plan(protocol) if item.key == "a-decision")
+            evidence = [{"evidence_id": "rev", "domain": "technical", "claim": "return20 = 0.01", "value": 0.01}]
+            answer = {"action": "Buy", "expected_return_pct": 2.0, "confidence": .6, "rationale": "Margins near 12.5",
+                      "evidence_ids": ["rev"], "risks": [], "numeric_claims": []}
+            calls = []
+            engine.call_model = lambda *a, **k: (calls.append(1) or dict(answer), {"prompt_hash": "x", "usage": {}, "raw_response": "x"})
+            result, audit = engine.validated_decision(protocol, call, messages_for(call, {"evidence": evidence}, [], [], protocol), evidence)
+        self.assertEqual(len(calls), 1)
+        self.assertNotIn("12.5", result["rationale"])
+        self.assertIn("12.5", audit["numeric_redaction"])
+
+
 class StrictNumericClaimTests(unittest.TestCase):
     def check(self, text, value, strict, **kwargs):
         result = decision(text, value, **kwargs)
@@ -35,6 +57,24 @@ class StrictNumericClaimTests(unittest.TestCase):
         self.assertFalse(self.check("Revenue rose 100%", 100, strict=True))
         self.assertFalse(self.check("Revenue grew 25", 25.0, strict=True, unit="percent",
                                     metric="Revenue year-over-year change", period="2023-12-31..2024-12-31"))
+
+    def test_rounding_to_the_shown_decimals_and_window_labels_pass_when_strict(self):
+        source = {**REVENUE, "change_pct": -58.9912}
+        def ok(text, value):
+            result = decision(text, value, unit="percent", metric="Revenue year-over-year change",
+                              period="2023-12-31..2024-12-31")
+            try:
+                validate_numeric_claims(result, [source], strict=True)
+                return True
+            except ValueError:
+                return False
+        self.assertTrue(ok("Revenue fell -58.99% over 20 trading days in 2024", -58.99))
+        self.assertTrue(ok("Revenue fell -59%", -59))
+        self.assertFalse(ok("Revenue fell -58.98%", -58.98))
+        loose = {"rationale": "The 60-day trend and the 20 日 window", "risks": [], "evidence_ids": ["rev"], "numeric_claims": []}
+        validate_numeric_claims(loose, [source], strict=True)
+        with self.assertRaises(ValueError):
+            validate_numeric_claims({**loose, "rationale": "Margins near 12.5"}, [source], strict=True)
 
     def test_registered_older_versions_keep_their_rule(self):
         # The loophole exists by design in v3-0930.3 (already preregistered runs stay reproducible).

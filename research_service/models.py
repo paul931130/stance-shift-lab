@@ -346,14 +346,17 @@ def validate_numeric_claims(result, evidence, redact=False, strict=False):
             and field.get("unit") == claim["unit"]
             and isinstance(field.get("value"), (int, float, Decimal))
             and not isinstance(field.get("value"), bool)
-            and _rounds_to_significant_figures(Decimal(str(field["value"])), displayed)
+            and (_rounds_to_significant_figures(Decimal(str(field["value"])), displayed)
+                 or (strict and _rounds_to_displayed_precision(Decimal(str(field["value"])), displayed)))
             for field in source_fields if isinstance(field, dict)
         )
         tokens = _numeric_tokens(quote)
         period_numbers = {number for _, _, number, _ in _numeric_tokens(claim["period"])}
         quote_values = [number for _, _, number, _ in tokens]
         has_claim_value = displayed in quote_values
-        no_extra_values = all(number == displayed or number in period_numbers for number in quote_values)
+        no_extra_values = all(number == displayed or number in period_numbers
+                              or (strict and _is_label_number(quote, start, end, number))
+                              for start, end, number, _ in tokens)
         if supported and has_claim_value and no_extra_values and not (
                 strict and _strict_claim_problem(claim, quote, displayed)):
             valid.append(claim)
@@ -365,6 +368,8 @@ def validate_numeric_claims(result, evidence, redact=False, strict=False):
     unsupported = []
     for field_name, text in prose_fields:
         for start, end, number, raw in _numeric_tokens(text):
+            if strict and _is_label_number(text, start, end, number):
+                continue  # "20-day", "60 trading sessions", "2023": names a window or year, not a source value
             covered = False
             for quote, value, period_numbers in valid_quotes:
                 quote_start = text.find(quote)
@@ -408,6 +413,24 @@ def validate_numeric_claims(result, evidence, redact=False, strict=False):
     elif invalid_claim_count:
         # A schema-valid but unused claim is not evidence; never retain it as if validated.
         result["numeric_claims"] = valid
+
+
+_WINDOW_AFTER = re.compile(r"^(?:-|\s)?(?:day|days|日|天|個交易日|交易日|session|sessions|trading|week|weeks|週|month|months|個月|月|quarter|quarters|季|year|years|年)", re.I)
+
+
+def _is_label_number(text, start, end, number):
+    """A window length or calendar year, which the source does not state as a value."""
+    if number == number.to_integral_value() and 1990 <= number <= 2035:
+        return True
+    return number == number.to_integral_value() and 0 < number <= 365 and bool(_WINDOW_AFTER.match(text[end:end + 16]))
+
+
+def _rounds_to_displayed_precision(source, displayed):
+    """v3-1001.x: the source rounded half-up to the decimals the prose shows (-58.9912 -> -58.99 or -59)."""
+    if displayed == 0 and source != 0:
+        return False
+    quantum = Decimal(1).scaleb(displayed.as_tuple().exponent)
+    return source.quantize(quantum, rounding=ROUND_HALF_UP) == displayed
 
 
 def _rounds_to_significant_figures(source, displayed, figures=3):
@@ -648,7 +671,7 @@ def messages_for(call, report, records, memory, protocol):
         numeric_claim_instruction = (
             "Every factual number in rationale, risks, strongest_counterpoint or rebutted_claim needs one numeric_claims "
             "item (evidence_id, metric, period, unit, value from that evidence's numeric_fields; quote = the exact prose "
-            "fragment). Use the source value or half-up rounding to 3 significant figures, in the source unit (no "
+            "fragment). Use the source value or round it half-up (e.g. -58.9912 as -58.99 or -59), in the source unit (no "
             "thousand/million/billion; % only for percent units), naming the same metric. expected_return_pct is a "
             "forecast, not a source fact. Drop any number you cannot bind. ")
     common = ("You are a decision agent in a fixed historical experiment. "
@@ -937,7 +960,7 @@ def validate_self_rebuttal(result, own_round1, shift_tolerance=0.05):
             result["confidence_shift"] = actual
 
 
-def validate_research(result, evidence, domain, claim_bound=False, strict=False):
+def validate_research(result, evidence, domain, claim_bound=False, strict=False, redact=False):
     """Validate a research-agent answer before it becomes part of the frozen report."""
     if not isinstance(result, dict) or not isinstance(result.get("summary"), str) or not result["summary"].strip():
         raise ValueError("研究代理人輸出格式錯誤")
@@ -949,7 +972,7 @@ def validate_research(result, evidence, domain, claim_bound=False, strict=False)
     if any(evidence_id not in allowed for evidence_id in result["evidence_ids"]):
         raise ValueError("研究代理人引用未提供的證據")
     if claim_bound:
-        validate_numeric_claims(result, evidence, strict=strict)
+        validate_numeric_claims(result, evidence, redact=redact, strict=strict)
     elif domain == "fundamental":
         validate_financial_numbers(result, evidence)
     if domain == "fundamental":

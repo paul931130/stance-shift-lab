@@ -739,6 +739,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertEqual(audit["validation_retries"][0]["error_type"], "ValidationError")
 
     def test_unsupported_positive_magnitude_retry_explains_negative_source_sign(self):
+        # Retry-then-redact is the registered v3-0930.3 behaviour; v3-1001.x redacts at once.
+        self.protocol = StudyProtocol(version="v3-0930.3", dataset_kind="synthetic", bootstrap_replicates=199)
         engine = Engine(self.store, fake_model)
         call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
         evidence = [{"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True,
@@ -781,6 +783,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertNotIn("xxxx", hint)
 
     def test_persistent_unsupported_numbers_are_redacted_instead_of_aborting(self):
+        # Retry-then-redact is the registered v3-0930.3 behaviour; v3-1001.x redacts at once.
+        self.protocol = StudyProtocol(version="v3-0930.3", dataset_kind="synthetic", bootstrap_replicates=199)
         engine = Engine(self.store, fake_model)
         call = next(item for item in decision_plan(self.protocol) if item.key == "a-decision")
         evidence = [{"evidence_id": "sec-yoy", "domain": "fundamental", "comparative": True, "metric": "Revenue",

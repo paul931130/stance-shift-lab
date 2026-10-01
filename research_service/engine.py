@@ -286,7 +286,10 @@ class Engine:
                     failure.update({key: audit[key] for key in ("seed", "prompt_hash") if key in audit})
                     failure["raw_response_hash"] = digest(audit.get("raw_response", ""))
                 validation_failures.append(failure)
-                if attempt >= protocol.provider_retry_attempts:
+                numbers_only = "來源未支持的數字" in str(error)
+                # v3-1001.x: unbound numbers are removed at once; retrying rarely binds them and
+                # quadrupled the calls (E2' first cases), and the kept decision is the first answer.
+                if attempt >= protocol.provider_retry_attempts or (strict and numbers_only and audit is not None):
                     # Last resort: a well-formed decision whose only defect is
                     # unsupported numbers in prose is kept with those numbers
                     # redacted (audited), instead of aborting the whole run.
@@ -355,6 +358,17 @@ class Engine:
                     failure.update({key: audit[key] for key in ("seed", "prompt_hash") if key in audit})
                     failure["raw_response_hash"] = digest(audit.get("raw_response", ""))
                 validation_failures.append(failure)
+                if strict and audit is not None and "來源未支持的數字" in str(error):
+                    try:
+                        redacted = validate_research(json.loads(json.dumps(result)), items, domain,
+                                                     claim_bound=claim_bound, strict=strict, redact=True)
+                    except (ValueError, JsonSchemaValidationError, TypeError):
+                        redacted = None
+                    if redacted is not None:
+                        audit = dict(audit)
+                        audit["validation_retries"] = validation_failures
+                        audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
+                        return redacted, audit
                 if attempt >= protocol.provider_retry_attempts:
                     raise
                 number_hint = ("Every number in summary or risks must have a numeric_claims item bound to one exact "
