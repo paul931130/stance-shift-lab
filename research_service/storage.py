@@ -44,6 +44,10 @@ class Store:
                 CREATE TABLE IF NOT EXISTS services(id TEXT PRIMARY KEY, heartbeat_at TEXT);
                 CREATE TABLE IF NOT EXISTS preregistrations(
                     protocol_hash TEXT PRIMARY KEY, dataset_ids TEXT, frozen_at TEXT);
+                -- The exact case requests a study was registered with, so it can be
+                -- queued later in one step (older registrations may lack this).
+                CREATE TABLE IF NOT EXISTS preregistration_cases(
+                    protocol_hash TEXT PRIMARY KEY, cases TEXT, saved_at TEXT);
             """)
             self._ensure_steps_column(db)
             self._ensure_owner_column(db)
@@ -412,6 +416,18 @@ class Store:
             db.execute("INSERT INTO preregistrations VALUES(?,?,?)",
                        (protocol_hash, json.dumps(dataset_ids), stamp))
             return {"protocol_hash": protocol_hash, "dataset_ids": dataset_ids, "frozen_at": stamp}
+
+    def save_registered_cases(self, protocol_hash, cases):
+        """Keep the first case list a study was registered or queued with; later calls never replace it."""
+        with self.connect() as db:
+            db.execute("INSERT OR IGNORE INTO preregistration_cases VALUES(?,?,?)",
+                       (protocol_hash, json.dumps(cases, ensure_ascii=False), now()))
+
+    def registered_cases(self, protocol_hash):
+        with self.connect() as db:
+            row = db.execute("SELECT cases FROM preregistration_cases WHERE protocol_hash=?",
+                             (protocol_hash,)).fetchone()
+        return json.loads(row["cases"]) if row else None
 
     def preregistration(self, protocol_hash):
         with self.connect() as db:

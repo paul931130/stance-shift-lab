@@ -71,6 +71,15 @@ class DownloadInput(BaseModel):
     design: str = "quarterly"
 
 
+class BatchCollectInput(BaseModel):
+    tickers: list[str] = Field(min_length=1, max_length=20)
+    dates: list[str] = Field(min_length=1, max_length=120)
+    refresh: bool = False
+    use_finbert: bool = True
+    offline_news_only: bool = False
+    design: str = "quarterly"
+
+
 class JobInput(BaseModel):
     dataset_id: str = Field(min_length=1, max_length=128)
     analysis_date: str
@@ -87,3 +96,15 @@ class JobInput(BaseModel):
 
 class BatchInput(BaseModel):
     cases: list[JobInput] = Field(min_length=1, max_length=600)
+
+
+class PlanInput(BaseModel):
+    """Tickers x analysis dates plus the settings every case of a study shares."""
+    tickers: list[str] = Field(min_length=1, max_length=20)
+    dates: list[str] = Field(min_length=1, max_length=120)
+    model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
+    voting_samples: int = 7
+    study: str = "study1"
+    anonymize_ticker: bool = False
+    missing_data_policy: str = "allow_decision"
+    design: str = "quarterly"

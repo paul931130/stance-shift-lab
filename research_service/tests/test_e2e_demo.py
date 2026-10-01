@@ -84,6 +84,12 @@ class DemoExperimentE2E(unittest.TestCase):
         # The live pipeline map renders and the demo snapshot opens step 2.
         page.wait_for_selector(".flow-svg .flow-node")
         page.wait_for_selector('[data-panel="experiment"]:not([hidden])')
+        # Multi-case planning works in the page (the demo has no historical datasets to match).
+        page.click('[data-exp-mode="batch"]')
+        page.click("#plan-button")
+        page.wait_for_selector("#plan-result .plan-summary")
+        self.assertIn("0 / 180", page.inner_text("#plan-result"))
+        page.click('[data-exp-mode="single"]')
         # The server-side preflight approves the demo case before the run button unlocks.
         page.wait_for_selector("#experiment-guard.ready")
         self.assertTrue(page.is_enabled("#run-button"))

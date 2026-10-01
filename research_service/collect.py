@@ -101,13 +101,14 @@ def refresh_news(store, key, allow_live=False, progress=None, carry_live=True):
             "local_items": local_items, "carried_live_items": len(carried)}
 
 
-def reusable_snapshot(store, ticker, analysis_date, design="quarterly"):
+def reusable_snapshot(store, ticker, analysis_date, design="quarterly", datasets=None):
     """The newest complete historical snapshot for this case and study design, if any.
 
     A month-end that is also a quarter-end has two snapshots (90-day and 30-day
-    news windows); the design keeps them apart.
+    news windows); the design keeps them apart. Pass ``datasets`` (from
+    ``store.datasets()``) when looking up many cases, to list them only once.
     """
-    for existing in store.datasets():
+    for existing in (store.datasets() if datasets is None else datasets):
         rules = existing.get("collection_rules") or {}
         if (existing.get("ticker") == ticker and existing.get("kind") == "historical"
                 and rules.get("design", "quarterly") == design

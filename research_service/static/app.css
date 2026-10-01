@@ -478,3 +478,25 @@ footer { padding: 24px max(16px, 3vw); border-top: 1px solid var(--line); color:
 .button-like { display: inline-flex; align-items: center; padding: 6px 14px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent); color: var(--on-accent); font-size: 13px; font-weight: 600; cursor: pointer; }
 .linkish { min-height: 0; padding: 0; border: 0; background: none; color: var(--accent); font: inherit; text-decoration: underline; box-shadow: none; }
 .linkish:hover { filter: none; box-shadow: none; }
+
+/* Batch mode (batch-panel.js, case-picker.js) */
+.mode-switch { display: inline-flex; gap: 0; margin: 8px 0 14px; border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden; }
+.mode-switch button { min-height: 36px; padding: 6px 16px; border: 0; border-radius: 0; background: transparent; color: var(--muted); font-weight: 600; box-shadow: none; }
+.mode-switch button + button { border-left: 1px solid var(--line-strong); }
+.mode-switch button[aria-selected="true"] { background: var(--accent); color: var(--on-accent); }
+.mode-switch button:hover { filter: none; box-shadow: none; }
+.picker { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px 12px; margin: 0 0 10px; }
+.picker legend { padding: 0 6px; font-weight: 700; font-size: 13px; }
+.picker legend small { color: var(--muted); font-weight: 400; }
+.picker-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.chip-action { min-height: 0; padding: 3px 10px; font-size: 12px; font-weight: 600; background: transparent; color: var(--accent); border-color: color-mix(in srgb, var(--accent) 40%, var(--line)); border-radius: 999px; }
+.chip-action:hover { background: var(--accent-soft); box-shadow: none; filter: none; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border: 1px solid var(--line); border-radius: 999px; font-size: 12.5px; font-family: var(--mono); cursor: pointer; user-select: none; }
+.chip:has(input:checked) { border-color: var(--accent); background: var(--accent-soft); }
+.chip input { margin: 0; }
+.picker-total { margin: 0 0 4px; }
+.plan-summary { margin-top: 12px; padding: 12px 14px; border: 1px solid color-mix(in srgb, var(--accent) 35%, var(--line)); border-left: 3px solid var(--accent); border-radius: 8px; background: var(--accent-soft); }
+.plan-summary.blocked { border-color: var(--warn); border-left-color: var(--warn); background: var(--warn-soft); }
+.plan-summary p { margin: 0 0 6px; }
+.plan-summary ul { margin: 6px 0; padding-left: 18px; font-size: 12.5px; }

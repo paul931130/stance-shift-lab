@@ -13,7 +13,7 @@ from ..logging_config import get_logger
 from ..protocol import TICKERS, validate_case
 from ..readiness import gap_inventory, study_readiness
 from ..storage import now
-from .context import DownloadInput, TaskRegistry
+from .context import BatchCollectInput, DownloadInput, TaskRegistry
 
 logger = get_logger(__name__)
 
@@ -165,6 +165,45 @@ def build_router(ctx):
                 progress(stage="failed", message=detail)
         threading.Thread(target=run, daemon=True, name="collection-task").start()
         return task
+
+    # One batch at a time, case by case: complete snapshots are reused (no API
+    # quota), so re-running a batch after a failure only fetches what is missing.
+    batch_state = {"task": None}
+
+    @router.post("/api/collections/batch", status_code=202)
+    def start_batch_collection(payload: BatchCollectInput):
+        cases = [(ticker, day) for day in payload.dates for ticker in payload.tickers]
+        for ticker, day in cases:
+            validate_case(ticker, day, payload.design)
+        with start_lock:
+            current = batch_state["task"]
+            if current and current["stage"] == "running":
+                return current  # joins the running batch
+            task = {"id": uuid4().hex, "stage": "running", "total": len(cases), "done": 0, "reused": 0,
+                    "created": 0, "failed": [], "current": None, "created_at": now()}
+            batch_state["task"] = task
+
+        def run():
+            for ticker, day in cases:
+                task["current"] = f"{ticker} {day}"
+                single = DownloadInput(ticker=ticker, analysis_date=day, refresh=payload.refresh,
+                                       use_finbert=payload.use_finbert,
+                                       offline_news_only=payload.offline_news_only, design=payload.design)
+                try:
+                    result = collect_dataset(single)
+                    task["reused" if result.get("reused") else "created"] += 1
+                except Exception as error:
+                    logger.warning("batch collection failed case=%s:%s: %s", ticker, day, type(error).__name__)
+                    detail = str(error) if isinstance(error, ValueError) else f"{type(error).__name__}：資料蒐集未完成"
+                    task["failed"].append({"ticker": ticker, "analysis_date": day, "message": detail[:300]})
+                task["done"] += 1
+            task.update(stage="complete", current=None, finished_at=now())
+        threading.Thread(target=run, daemon=True, name="batch-collection").start()
+        return task
+
+    @router.get("/api/collections/batch")
+    def batch_collection_status():
+        return batch_state["task"] or {"stage": "idle"}
 
     @router.get("/api/collections/{task_id}")
     def collection_status(task_id: str):

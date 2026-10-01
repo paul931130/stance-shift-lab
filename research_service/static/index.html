@@ -94,6 +94,19 @@
     <details id="gap-inventory" class="gap-inventory"><summary>查看資料缺口與補資料指令</summary><p class="hint">只列出尚未達正式實驗門檻的案例；重新蒐集會建立新版資料集，不會改動已跑完的實驗。</p><div id="gap-inventory-body"></div></details>
 
     <h3 class="substep">1.2　選擇案例並建立資料集</h3>
+    <div class="mode-switch" role="tablist" aria-label="建立方式">
+      <button type="button" role="tab" data-data-mode="batch" aria-selected="true">多筆</button>
+      <button type="button" role="tab" data-data-mode="single" aria-selected="false" tabindex="-1">單一案例</button>
+    </div>
+    <form id="batch-collect-form" class="action-card" data-data-panel="batch">
+      <div id="collect-picker"></div>
+      <label class="check"><input id="batch-collect-finbert" type="checkbox" checked>以 FinBERT 分析新聞標題（正式實驗需要）</label>
+      <label class="check"><input id="batch-collect-refresh" type="checkbox">強制重新下載，建立新版資料集（會消耗 API 額度）</label>
+      <p class="hint">已有完整資料集的案例會直接重用，不消耗 API 額度；中斷後再按一次，只會補齊缺的案例。</p>
+      <button id="batch-collect-button">批次建立資料集</button>
+      <p id="batch-collect-progress" class="hint" role="status" aria-live="polite"></p>
+    </form>
+    <div data-data-panel="single" hidden>
     <p id="data-readiness" class="readiness">選擇股票與研究分析日後，讓四個 Agent 開始蒐集與驗證資料。</p>
     <form id="download-form" class="action-card">
       <div class="pair">
@@ -105,6 +118,7 @@
       <p class="hint">預設會重用同股票、同分析日且四個面向都齊全的既有資料集，避免重複消耗 API 額度。</p>
       <button id="download-button">啟動資料 Agent</button>
     </form>
+    </div>
 
     <h3 class="substep">1.3　設定來源與其他工具</h3>
     <div id="source-state" class="source-chips" aria-label="資料來源狀態"></div>
@@ -147,6 +161,34 @@
     </div>
     <p class="hint">主要指標：60 個交易日的方向準確率與 Sharpe。30／90 日作為穩健性檢查；報酬同時提供不計成本與扣除 Corwin–Schultz 估計價差兩種版本。</p>
 
+    <div class="mode-switch" role="tablist" aria-label="實驗方式">
+      <button type="button" role="tab" data-exp-mode="batch" aria-selected="true">多筆（正式實驗）</button>
+      <button type="button" role="tab" data-exp-mode="single" aria-selected="false" tabindex="-1">單一案例（試跑）</button>
+    </div>
+
+    <form id="plan-form" data-mode-panel="batch">
+      <h3 class="substep">2.1　選擇案例</h3>
+      <div id="plan-picker"></div>
+      <h3 class="substep">2.2　模型與設定</h3>
+      <div class="pair">
+        <label>模型<select id="plan-model"></select></label>
+        <label>或輸入其他模型（選填）<input id="plan-cloud-model" maxlength="200" placeholder="例如 gemini/gemini-2.5-flash"></label>
+      </div>
+      <details class="experiment-advanced">
+        <summary>進階設定（通常使用預設值；改了就是另一個研究協議）</summary>
+        <div class="pair">
+          <label>B 組採樣<select id="plan-voting"><option value="7">7 次 · 與 C／D 呼叫次數相同</option><option value="5">5 次</option></select></label>
+          <label>資料缺口策略<select id="plan-missing"><option value="allow_decision">保留模型決策（標記缺口）</option><option value="force_no_trade">強制 NoTrade</option></select></label>
+        </div>
+        <label class="check"><input id="plan-anonymize" type="checkbox">匿名化股票代號與公司名稱</label>
+      </details>
+      <h3 class="substep">2.3　預覽並排入</h3>
+      <p class="hint">預覽會為每個案例挑選最新的完整資料集並檢查就緒度，不會呼叫模型，GPU 關機時也能預覽。</p>
+      <button id="plan-button" type="submit">預覽案例 <span aria-hidden="true">→</span></button>
+      <div id="plan-result" aria-live="polite"></div>
+    </form>
+
+    <div data-mode-panel="single" hidden>
     <form id="job-form">
       <h3 class="substep">2.1　選擇要比較的資料集</h3>
       <label>搜尋資料集<input id="dataset-picker-search" type="search" placeholder="要改選其他股票或舊版本時再輸入" autocomplete="off"></label>
@@ -191,7 +233,8 @@
       <p class="hint">本機模型每次呼叫可能需要數十秒到數分鐘；一次完整實驗約 22 次模型呼叫（B 組 5 次時為 20 次），實際時間依模型大小與硬體而定。開始後，詳情頁會依平均耗時預估剩餘時間。</p>
       <button id="run-button" disabled>開始研究實驗 <span aria-hidden="true">→</span></button>
     </form>
-    <details><summary>批次研究 · 9 檔股票 × 20 個季末＝180 個案例</summary><p>匯入批次 JSON（含 cases 陣列），每一筆指定資料集 ID、分析日、模型與資料缺口策略。系統會先檢查全部案例，再一起排入佇列。</p><label class="check"><input id="batch-preregister" type="checkbox" checked>先鎖定這批研究樣本（事前登記）再排入佇列；正式實驗請勾選，只有鎖定後建立的實驗算正式結果</label><input id="batch-file" type="file" accept=".json,application/json" aria-label="匯入批次設定"></details>
+    <details><summary>進階：匯入批次 JSON</summary><p class="hint">給腳本產生的案例清單（<code>{"cases": [...]}</code>）。一般請用上方「多筆」。</p><label class="check"><input id="batch-preregister" type="checkbox" checked>先鎖定這批研究樣本（事前登記）再排入佇列</label><input id="batch-file" type="file" accept=".json,application/json" aria-label="匯入批次設定"></details>
+    </div>
     <details class="protocol-details"><summary>查看研究規則與資料缺口處理</summary><p class="hint">資料有缺口時，可以保留模型決策並標記為對照，也可以選保守模式一律 NoTrade。各組呼叫次數相同不代表 token 用量相同；每次呼叫都會記錄用量與提示詞雜湊。</p></details>
   </section>
 

@@ -2,7 +2,7 @@
 // honest ETA, GPU state (incl. auto-stop) and whole-study controls. This is
 // the screen for "run the 180 cases and don't waste GPU time".
 import { $, escape, notify, formatStamp } from './ui.js';
-import { api, task } from './api.js';
+import { api, task, BATCH_TIMEOUT } from './api.js';
 
 const GPU_POLL_MS = 60000;
 let studies = [], gpu = null, gpuFetchedAt = 0;
@@ -54,7 +54,8 @@ function card(study) {
     </ul>
     ${errors}
     <div class="study-actions">
-      ${actionable && p.not_created ? `<label class="button-like">排入批次檔…<input type="file" accept=".json,application/json" data-enqueue="${escape(study.protocol_hash)}" hidden></label>` : ''}
+      ${actionable && p.not_created && study.has_saved_cases ? `<button type="button" data-study-command="enqueue" data-hash="${escape(study.protocol_hash)}">排入 ${p.not_created} 案</button>` : ''}
+      ${actionable && p.not_created && !study.has_saved_cases ? `<label class="button-like">排入批次檔…<input type="file" accept=".json,application/json" data-enqueue="${escape(study.protocol_hash)}" hidden></label>` : ''}
       ${actionable && c.paused ? `<button type="button" data-study-command="resume" data-hash="${escape(study.protocol_hash)}">全部繼續（${c.paused}）</button>` : ''}
       ${p.active ? `<button type="button" class="quiet" data-study-command="pause" data-hash="${escape(study.protocol_hash)}">全部暫停</button>` : ''}
     </div>
@@ -93,7 +94,7 @@ async function enqueueFile(hash, file) {
   try { payload = JSON.parse(await file.text()); }
   catch { throw new Error('批次檔不是有效的 JSON'); }
   if (!Array.isArray(payload.cases)) throw new Error('批次檔需要 cases 陣列');
-  const result = await api(`/api/studies/${encodeURIComponent(hash)}/enqueue`, payload);
+  const result = await api(`/api/studies/${encodeURIComponent(hash)}/enqueue`, payload, 'POST', BATCH_TIMEOUT);
   notify(`已排入 ${result.created} 案${result.skipped_existing ? `，略過已建立的 ${result.skipped_existing} 案` : ''}。`);
 }
 
@@ -114,6 +115,12 @@ export function initStudyPanel(onChange) {
     const {studyCommand: command, hash} = button.dataset;
     if (command === 'pause' && !confirm('暫停這個研究的所有案例？執行中的呼叫完成後才會停下，進度都會保存。')) return;
     task(button, async () => {
+      if (command === 'enqueue') {
+        const queued = await api(`/api/studies/${encodeURIComponent(hash)}/enqueue`, undefined, 'POST', BATCH_TIMEOUT);
+        notify(`已排入 ${queued.created} 案${queued.skipped_existing ? `，略過已建立的 ${queued.skipped_existing} 案` : ''}。`);
+        await onChange();
+        return;
+      }
       const result = await api(`/api/studies/${encodeURIComponent(hash)}/${command}-all`, {});
       notify(`${command === 'pause' ? '已暫停' : '已繼續'} ${result.changed} 案。`);
       await onChange();

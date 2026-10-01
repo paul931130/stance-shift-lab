@@ -5,6 +5,7 @@ runs the same validation used when a job is created. These cases replace
 the former Node tests of the client-side copy.
 """
 import tempfile
+import time
 import unittest
 from unittest.mock import patch
 
@@ -113,6 +114,70 @@ class PreflightTests(unittest.TestCase):
                 # Creating the job still probes Ollama live rather than trusting the cache.
                 self.assertEqual(client.post("/api/jobs", json=body).status_code, 200)
         self.assertEqual(probe.call_count, 2)
+
+
+class StudyPlanTests(unittest.TestCase):
+    """Plan tickers x dates in the browser, register once, then queue with one click."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.store = Store(self.tmp.name)
+        historical = validate_dataset(fixture())
+        historical.update(kind="historical", collection_rules={"news_item_limit": "uncapped"},
+                          requested_analysis_date="2024-12-31")
+        self.dataset_id = self.store.add_dataset(historical)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def test_plan_register_and_queue_without_a_batch_file(self):
+        coverage_result = {"sentiment_quality": GOOD_SENTIMENT, "fundamental_quality": GOOD_FUNDAMENTAL}
+        def snapshot(store, ticker, day, design, datasets=None):
+            return {"id": self.dataset_id} if ticker == "NVDA" else None
+
+        with patch("research_service.web.jobs.coverage", return_value=coverage_result),              patch("research_service.web.studies.reusable_snapshot", side_effect=snapshot),              TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            plan = client.post("/api/studies/plan", json={"tickers": ["NVDA", "AAPL"], "dates": ["2024-12-31"],
+                                                          "model": "ollama/qwen3:32b"}).json()
+            self.assertEqual((plan["total"], plan["ready"]), (2, 1))
+            missing = next(row for row in plan["cases"] if row["ticker"] == "AAPL")
+            self.assertEqual(missing["reason"], "no_dataset")
+            self.assertFalse(plan["already_preregistered"])
+
+            registered = client.post("/api/studies/preregister", json={"cases": plan["ready_cases"]}).json()
+            self.assertEqual(registered["protocol_hash"], plan["protocol_hash"])
+            listed = client.get("/api/studies").json()[0]
+            self.assertTrue(listed["has_saved_cases"])
+
+            first = client.post(f"/api/studies/{plan['protocol_hash']}/enqueue")
+            self.assertEqual(first.status_code, 200, first.text)
+            self.assertEqual(first.json()["created"], 1)
+            again = client.post(f"/api/studies/{plan['protocol_hash']}/enqueue").json()
+            self.assertEqual((again["created"], again["skipped_existing"]), (0, 1))
+            replanned = client.post("/api/studies/plan", json={"tickers": ["NVDA"], "dates": ["2024-12-31"],
+                                                               "model": "ollama/qwen3:32b"}).json()
+            self.assertTrue(replanned["already_preregistered"])
+
+    def test_enqueue_without_body_needs_a_saved_case_list(self):
+        self.store.freeze("legacyhash", [self.dataset_id])
+        with TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            response = client.post("/api/studies/legacyhash/enqueue")
+        self.assertEqual(response.status_code, 422)
+        self.assertIn("批次檔", response.json()["detail"])
+
+    def test_batch_collection_reuses_complete_snapshots(self):
+        reused = {"id": self.dataset_id, "reused": True}
+        with patch("research_service.web.datasets.collect_snapshot", return_value=reused) as collect,              TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            started = client.post("/api/collections/batch", json={"tickers": ["NVDA", "AAPL"], "dates": ["2024-12-31"]})
+            self.assertEqual(started.status_code, 202, started.text)
+            for _ in range(50):
+                status = client.get("/api/collections/batch").json()
+                if status["stage"] == "complete":
+                    break
+                time.sleep(.05)
+            invalid = client.post("/api/collections/batch", json={"tickers": ["NVDA"], "dates": ["2019-01-01"]})
+        self.assertEqual((status["done"], status["reused"], status["failed"]), (2, 2, []))
+        self.assertEqual(collect.call_count, 2)
+        self.assertEqual(invalid.status_code, 422)
 
 
 if __name__ == "__main__":
