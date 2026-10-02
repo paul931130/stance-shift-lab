@@ -736,8 +736,11 @@ def messages_for(call, report, records, memory, protocol):
         f"Forecast the target's return over the next {protocol.primary_horizon} trading sessions using only the supplied report; do not use remembered future facts. "
         "Candidate action is Buy, Hold, or Sell. NoTrade is reserved for the later Gatekeeper. "
         f"Give one expected_return_pct forecast for those {protocol.primary_horizon} sessions. "
-        f"Choose Hold only when that point forecast is inside the {band_text} neutral band; otherwise choose Buy or Sell even when uncertain. "
-        "Hold is not a way to avoid committing; uncertainty lowers confidence, never substitutes for a forecast. Read decision_calibration before research summaries. "
+        + ("Your action is the decision that will be traded: Buy opens a long position, Sell a short one, Hold takes no position. "
+           "Choose the one you actually recommend; uncertainty belongs in confidence. Read decision_calibration before research summaries. "
+           if protocol.action_source == "model" else
+           f"Choose Hold only when that point forecast is inside the {band_text} neutral band; otherwise choose Buy or Sell even when uncertain. "
+           "Hold is not a way to avoid committing; uncertainty lowers confidence, never substitutes for a forecast. Read decision_calibration before research summaries. ") +
         "Target evidence is direct company evidence; context news cannot decide direction by itself. Use supplied comparative SEC metrics only as stated: never invent a growth rate, benchmark, valuation, or financial-quality label; words such as growth, decline, strong, weak, profit, loss or losses need a supplied comparison that states them. Legacy SEC point facts without a comparable period are excluded from this decision payload. "
         + numeric_claim_instruction +
         f"Use only supplied evidence IDs exactly; URLs and invented IDs are forbidden. Keep rationale under {protocol.rationale_chars or 320} characters and give at most 4 concise risks. "

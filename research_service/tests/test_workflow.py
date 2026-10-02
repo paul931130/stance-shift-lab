@@ -859,7 +859,8 @@ class WorkflowTests(unittest.TestCase):
         bull = messages_for(bull_call, {"evidence": []}, [], [], self.protocol)
         bear = messages_for(bear_call, {"evidence": []}, [], [], self.protocol)
         self.assertNotIn("risk preference", neutral[0]["content"])
-        self.assertIn("Hold is not a way to avoid committing", neutral[0]["content"])
+        # v3-1002.3+: the model's own action is traded; Hold means no position.
+        self.assertIn("Hold takes no position", neutral[0]["content"])
         self.assertIn("next 60 trading sessions", neutral[0]["content"])
         self.assertEqual(output_schema_for(neutral)["properties"]["action"]["enum"], ["Buy", "Hold", "Sell"])
         self.assertEqual(output_schema_for(bull)["properties"]["action"]["enum"], ["Buy"])

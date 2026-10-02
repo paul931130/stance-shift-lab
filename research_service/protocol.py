@@ -54,7 +54,8 @@ CANONICAL_CLAIM_VERSIONS = frozenset({"v3-1001.3", "v3-1001.4", "v3-1002.1", "v3
 LONG_OUTPUT_VERSIONS = frozenset({"v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION})
 # From v3-1002.3 agents refer to facts by evidence ID instead of restating numbers: every reader
 # also receives the evidence list with exact values. The numeric validator is unchanged and still
-# redacts any unbound number that appears anyway (v3-1002.1 redacted 3-10 claims per call).
+# records any unbound number that appears anyway; from v3-1002.3 numbers are recorded, never removed
+# (removal made research summaries unreadable in the Gemini prompt check) and never retried.
 EVIDENCE_REF_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION})
 DEFAULT_CONTEXT_LENGTH = 8192
 # From v3-0930.1 the prompt carries FinBERT indicators computed over every eligible headline instead of a
@@ -109,9 +110,9 @@ class StudyProtocol:
     news_relevance_floor: float = 0.35
     target_context_priority: bool = True
     switch_isolation: bool = True
-    # None = the version default: 0.25 from v3-1002.3 (0.5 left most qwen forecasts inside the band), 0.5 before.
+    # None = 0.5. From v3-1002.3 the band only labels the diagnostic derived_action (action_source="model").
     hold_band_sigma: float | None = None
-    action_source: Literal["model", "derived"] = "derived"
+    action_source: Literal["model", "derived"] | None = None
     spread_window: int = 20
     bootstrap_seed: int = 905
     bootstrap_replicates: int = 1999
@@ -131,7 +132,10 @@ class StudyProtocol:
         if self.max_output_tokens is None:
             object.__setattr__(self, "max_output_tokens", 2048 if self.version in LONG_OUTPUT_VERSIONS else 1024)
         if self.hold_band_sigma is None:
-            object.__setattr__(self, "hold_band_sigma", 0.25 if self.version in EVIDENCE_REF_VERSIONS else 0.5)
+            object.__setattr__(self, "hold_band_sigma", 0.5)
+        if self.action_source is None:
+            # v3-1002.3+: the model's own Buy/Hold/Sell is the decision; Hold means no position.
+            object.__setattr__(self, "action_source", "model" if self.version in EVIDENCE_REF_VERSIONS else "derived")
         if self.rationale_chars is None and self.version in EVIDENCE_REF_VERSIONS:
             object.__setattr__(self, "rationale_chars", 600)
         if self.version in FROZEN_INFERENCE_VERSIONS:

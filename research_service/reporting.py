@@ -494,13 +494,14 @@ def _numeric_validation_quality(complete):
     known = False
     for job in complete:
         version = job.get("config", {}).get("protocol", {}).get("version")
-        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2"}:
+        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", "v3-1002.3", "v3-1002.4"}:
             known = True
         records = job.get("state", {}).get("records", [])
         case_redacted_calls = 0
         for record in records:
             audit = record.get("audit", {}) or {}
-            values = audit.get("numeric_redaction", [])
+            # v3-1002.3+ records unsupported numbers without removing them.
+            values = audit.get("numeric_redaction", []) or audit.get("unsupported_numbers", [])
             claims_removed = int(audit.get("numeric_claims_removed", 0) or 0)
             if values or claims_removed:
                 case_redacted_calls += 1

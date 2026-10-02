@@ -113,6 +113,20 @@ def gate(candidate, inputs, memory, protocol):
             "volatility_ceiling": protocol.volatility_ceiling}}
 
 
+PROSE_FIELDS = ("summary", "rationale", "strongest_counterpoint", "rebutted_claim", "risks")
+
+
+def keep_prose(validated, original):
+    """The validated answer with the model's original wording (record-only numeric checks)."""
+    kept = dict(validated)
+    for field in PROSE_FIELDS:
+        if field in original:
+            kept[field] = original[field]
+    for field in ("redacted_numbers", "redacted_number_claims", "numeric_claims_removed"):
+        kept.pop(field, None)
+    return kept
+
+
 def compute_usage(records):
     """Summarize token use and client-measured latency without trusting provider units."""
     result = {}
@@ -306,7 +320,12 @@ class Engine:
                             raise error
                         audit = dict(audit)
                         audit["validation_retries"] = validation_failures
-                        audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
+                        if protocol.version in EVIDENCE_REF_VERSIONS:
+                            # v3-1002.3+: record, never remove; the model's own wording is kept.
+                            audit["unsupported_numbers"] = redacted.get("redacted_number_claims", [])
+                            redacted = keep_prose(redacted, result)
+                        else:
+                            audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
                         if redacted.get("numeric_claims_removed"):
                             audit["numeric_claims_removed"] = redacted["numeric_claims_removed"]
                         if redacted.get("redacted_number_claims"):
@@ -372,7 +391,12 @@ class Engine:
                     if redacted is not None:
                         audit = dict(audit)
                         audit["validation_retries"] = validation_failures
-                        audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
+                        if protocol.version in EVIDENCE_REF_VERSIONS:
+                            # v3-1002.3+: record, never remove; the model's own wording is kept.
+                            audit["unsupported_numbers"] = redacted.get("redacted_number_claims", [])
+                            redacted = keep_prose(redacted, result)
+                        else:
+                            audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
                         if redacted.get("numeric_claims_removed"):
                             audit["numeric_claims_removed"] = redacted["numeric_claims_removed"]
                         if redacted.get("redacted_number_claims"):

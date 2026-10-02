@@ -23,7 +23,7 @@ class ImmediateRedactionTests(unittest.TestCase):
         from research_service.storage import Store
         with tempfile.TemporaryDirectory() as directory:
             engine = Engine(Store(directory), lambda *a, **k: None)
-            protocol = StudyProtocol(dataset_kind="synthetic", bootstrap_replicates=199)
+            protocol = StudyProtocol(version="v3-1002.1", dataset_kind="synthetic", bootstrap_replicates=199)
             call = next(item for item in decision_plan(protocol) if item.key == "a-decision")
             evidence = [{"evidence_id": "rev", "domain": "technical", "claim": "return20 = 0.01", "value": 0.01}]
             answer = {"action": "Buy", "expected_return_pct": 2.0, "confidence": .6, "rationale": "Margins near 12.5",
@@ -142,5 +142,24 @@ class V3_1002_3DefaultsTests(unittest.TestCase):
     def test_new_defaults_apply_only_to_the_new_version(self):
         from research_service.protocol import StudyProtocol
         new, old = StudyProtocol(), StudyProtocol(version="v3-1002.1")
-        self.assertEqual((new.hold_band_sigma, new.rationale_chars), (0.25, 600))
-        self.assertEqual((old.hold_band_sigma, old.rationale_chars), (0.5, None))
+        self.assertEqual((new.hold_band_sigma, new.rationale_chars, new.action_source), (0.5, 600, "model"))
+        self.assertEqual((old.hold_band_sigma, old.rationale_chars, old.action_source), (0.5, None, "derived"))
+
+    def test_model_action_prompt_drops_the_neutral_band_rule(self):
+        from research_service.models import messages_for
+        from research_service.protocol import DecisionCall, StudyProtocol
+        call = DecisionCall("a-decision", "A", "decision", "decision", "NEUTRAL")
+        report = {"base_rates": {"hold_band_pct": 3.0}, "evidence": [], "research": {}}
+        text = messages_for(call, report, [], [], StudyProtocol())[0]["content"]
+        self.assertIn("Hold takes no position", text)
+        self.assertNotIn("neutral band", text)
+
+    def test_record_only_keeps_the_model_wording(self):
+        from research_service.engine import keep_prose
+        original = {"rationale": "Revenue was 999 USD (E2).", "risks": ["r 5"], "action": "Buy"}
+        redacted = {"rationale": "Revenue was [x] USD (E2).", "risks": ["r [x]"], "action": "Buy",
+                    "redacted_numbers": ["999"], "redacted_number_claims": [{"field": "rationale", "value": "999"}]}
+        kept = keep_prose(redacted, original)
+        self.assertEqual(kept["rationale"], original["rationale"])
+        self.assertEqual(kept["risks"], original["risks"])
+        self.assertNotIn("redacted_numbers", kept)
