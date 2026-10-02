@@ -16,7 +16,7 @@ from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
 from .autostop import AutoStop
-from .breaker import Breaker
+from .breaker import Breaker, is_provider_failure
 from .engine import Engine
 from .errors import NotFoundError
 from .logging_config import get_logger
@@ -78,6 +78,8 @@ def create_app(store=None, model_call=None, start_worker=True):
     remote = os.getenv("RESEARCH_REMOTE", "false") == "true"
     if remote and len(access_key) < 32:
         raise RuntimeError("Remote mode requires RESEARCH_ACCESS_KEY with at least 32 characters")
+    # An injected model_call (tests, demo) has no endpoint to probe.
+    breaker = Breaker(lambda: model_call is not None or ctx.demo_mode or probe_models(ctx).get("ready"))
     ctx = AppContext(
         store=store, settings=settings,
         engine=Engine(store, model_call) if model_call else Engine(store),
@@ -85,7 +87,8 @@ def create_app(store=None, model_call=None, start_worker=True):
         demo_mode=demo_mode, demo_model_id=demo_model_id, demo_dataset_id=demo_dataset_id,
         injected_model_call=model_call is not None,
         trusted_proxies=_env_list("RESEARCH_TRUSTED_PROXIES"),
-        autostop=AutoStop(store.active_job_count))
+        # A queue held 30 min by the breaker counts as idle, so a broken endpoint does not bill forever.
+        autostop=AutoStop(lambda: 0 if breaker.held_for(30 * 60) else store.active_job_count()))
     container_local = os.getenv("RESEARCH_CONTAINER_LOCAL", "false") == "true"
     public_origin = os.getenv("RESEARCH_PUBLIC_ORIGIN", "").rstrip("/")
     allowed_hosts = _env_list("RESEARCH_ALLOWED_HOSTS", "localhost,127.0.0.1,::1,testserver")
@@ -96,8 +99,6 @@ def create_app(store=None, model_call=None, start_worker=True):
     # running job, including ones another live service was still running.
     service_id = uuid4().hex
     worker_owner = f"worker:{service_id}"
-    # An injected model_call (tests, demo) has no endpoint to probe.
-    breaker = Breaker(lambda: model_call is not None or ctx.demo_mode or probe_models(ctx).get("ready"))
 
     def recover_orphans():
         at = datetime.now(timezone.utc)
@@ -148,7 +149,8 @@ def create_app(store=None, model_call=None, start_worker=True):
                 state = getattr(error, "state", state)
                 message = f"{type(error).__name__}: {_redact(str(error), access_key)[:700]}"
                 logger.error("job %s failed: %s", job["id"], message)
-                breaker.record(False)
+                if is_provider_failure(error):
+                    breaker.record(False)
                 state["attempts"].append({"at": now(), "status": "error", "message": message})
                 try:
                     store.save_step(job["id"], state, message, owner=worker_owner, generation=job["lease_generation"])

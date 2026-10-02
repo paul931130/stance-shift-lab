@@ -464,6 +464,8 @@ _WINDOW_AFTER = re.compile(r"^(?:-|\s)?(?:day|days|日|天|個交易日|交易�
 
 
 _MONTH_BEFORE = re.compile(r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*$", re.I)
+_YEAR_BEFORE = re.compile(r"(?:\b(?:in|on|of|since|during|by|from|to|through|until|year|fiscal|fy|q[1-4]|h[12])\s*|"
+                          r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*|\d{1,2},\s*)$", re.I)
 _ISO_DATE = re.compile(r"\b(?:19|20)\d\d-\d\d-\d\d\b")
 _VALUE_AFTER = re.compile(r"^\s*(?:%|percent|usd|\$|dollars?|billion|million|thousand|bn|mn|times|shares|億|萬|美元|元|倍)", re.I)
 
@@ -481,7 +483,9 @@ def _is_reference_label(text, start, end, number):
         return True
     if 1 <= number <= 31 and _MONTH_BEFORE.search(text[max(0, start - 12):start]):
         return True
-    return 1990 <= number <= 2035 and len(re.sub(r"\D", "", text[start:end])) == 4
+    # A bare year needs a date context ("in 2021", "March 31, 2021", "FY2021"); "revenue of 2010 (E2)" is a value.
+    return (1990 <= number <= 2035 and len(re.sub(r"\D", "", text[start:end])) == 4
+            and bool(_YEAR_BEFORE.search(text[max(0, start - 16):start])))
 
 
 def unsupported_numbers(claims, original, evidence):
@@ -1012,15 +1016,22 @@ def generate(protocol, messages, seed=None, temperature=None):
 
 
 def validate_decision(result, evidence, call=None, context=None, redact_numbers=False, claim_bound=False,
-                      strict=False, own_round1=None, canonical=None):
+                      strict=False, own_round1=None, canonical=None, adjudicator_commits=False):
     allowed_actions = ("Buy", "Hold", "Sell")
     if call is not None and call.kind == "debate":
         allowed_actions = ("Buy",) if call.stance == "BULL" else ("Sell",)
+    # v3-1002.3+: a C/D Adjudicator must take a position (the prompt and schema say so too).
+    commits = adjudicator_commits and call is not None and call.kind == "adjudication"
+    if commits:
+        allowed_actions = ("Buy", "Sell")
     if not isinstance(result, dict) or result.get("action") not in allowed_actions:
         raise ValueError("模型未輸出有效 action")
     expected_return = result.get("expected_return_pct")
     if isinstance(expected_return, bool) or not isinstance(expected_return, (float, int)) or not -60 <= expected_return <= 60:
         raise ValueError("模型 expected_return_pct 須介於 -60 與 60")
+    if commits and ((result["action"] == "Buy" and expected_return <= 0)
+                    or (result["action"] == "Sell" and expected_return >= 0)):
+        raise ValueError("裁決者的 action 與 expected_return_pct 正負號不一致")
     confidence = result.get("confidence")
     if isinstance(confidence, bool) or not isinstance(confidence, (float, int)) or not 0 <= confidence <= 1:
         raise ValueError("模型 confidence 須介於 0 與 1")

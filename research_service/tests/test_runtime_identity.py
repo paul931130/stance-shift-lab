@@ -4,7 +4,8 @@ import unittest
 from unittest.mock import patch
 
 from research_service.engine import Engine, StepFailure
-from research_service.model_identity import ModelIdentityError, resolve_ollama_identity, verify_model_identity
+from research_service.model_identity import (ModelIdentityError, ModelIdentityUnavailable, resolve_ollama_identity,
+                                             verify_model_identity)
 from research_service.protocol import StudyProtocol
 from research_service.reporting import _formal_exclusion_reason
 from research_service.storage import Store
@@ -49,6 +50,24 @@ class RuntimeIdentityTests(unittest.TestCase):
         self.assertEqual(len(calls), 4)
         self.assertEqual([item["phase"] for item in job["state"]["model_identity_checks"]],
                          ["before_step", "after_step"] * 2)
+
+    def test_an_unreachable_weight_list_after_a_step_pauses_without_sealing(self):
+        answers = iter([self.identity])
+
+        def probe(model):
+            try:
+                return next(answers)
+            except StopIteration:
+                raise ModelIdentityUnavailable("proxy 404") from None
+        engine = self.engine(probe)
+        job = self.store.create(self.config)
+        with self.assertRaises(StepFailure) as failure:
+            engine.advance(job)
+        self.assertNotIn("model_identity_failure", failure.exception.state)
+        self.store.save_step(job["id"], failure.exception.state, str(failure.exception))
+        job = self.store.get(job["id"])
+        resumed = self.engine(lambda model: self.identity)
+        resumed.advance(job)  # the next before-step check decides; no permanent seal
 
     def test_changed_weights_during_a_step_taint_and_seal_the_job(self):
         results = iter((self.identity, {**self.identity, "digest": "changed"}))

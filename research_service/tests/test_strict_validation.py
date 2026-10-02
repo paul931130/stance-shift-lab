@@ -190,3 +190,42 @@ class AdjudicatorAndRecordTests(unittest.TestCase):
             claims.append({"field": "rationale", "value": m.group(0), "start": m.start(), "end": m.end()})
         left = unsupported_numbers(claims, {"rationale": text}, evidence)
         self.assertEqual([c["value"] for c in left], ["999"])
+
+
+
+class ReviewFixTests(unittest.TestCase):
+    def test_adjudicator_hold_and_sign_mismatch_are_rejected(self):
+        from research_service.models import validate_decision
+        from research_service.protocol import DecisionCall
+        call = DecisionCall("c-adjudication", "C", "adjudication", "adjudicator", "NEUTRAL")
+        base = {"confidence": .6, "rationale": "Evidence favors upside (E1).", "evidence_ids": ["E1"], "risks": []}
+        evidence = [{"evidence_id": "E1", "claim": "x"}]
+        for action, expected in (("Hold", 0), ("Buy", -3), ("Sell", 2)):
+            with self.assertRaises(ValueError, msg=action):
+                validate_decision({**base, "action": action, "expected_return_pct": expected}, evidence, call,
+                                  adjudicator_commits=True)
+        validate_decision({**base, "action": "Hold", "expected_return_pct": 0}, evidence, call)
+
+    def test_prompt_source_is_part_of_new_hashes_only(self):
+        from unittest.mock import patch
+        from research_service.protocol import StudyProtocol
+        new, old = StudyProtocol().fingerprint, StudyProtocol(version="v3-1002.1").fingerprint
+        with patch("research_service.protocol.prompt_source_digest", return_value="edited"):
+            self.assertNotEqual(StudyProtocol().fingerprint, new)
+            self.assertEqual(StudyProtocol(version="v3-1002.1").fingerprint, old)
+
+    def test_breaker_counts_provider_failures_only(self):
+        from urllib.error import HTTPError
+        from research_service.breaker import is_provider_failure
+        from research_service.engine import StepFailure
+        self.assertTrue(is_provider_failure(StepFailure("technical: HTTPError: HTTP Error 404: Not Found", {})))
+        self.assertTrue(is_provider_failure(HTTPError("u", 524, "x", {}, None)))
+        self.assertFalse(is_provider_failure(StepFailure("c-r1-agent-a: ValueError: bad evidence id", {})))
+
+    def test_bare_year_sized_value_is_not_a_label(self):
+        from research_service.models import _is_reference_label
+        from decimal import Decimal
+        for text, label in (("revenue reached 2010 (E2)", False), ("in 2021 sales rose", True),
+                            ("March 31, 2021 close", True), ("FY2024 guidance", True)):
+            start = text.index("20")
+            self.assertEqual(_is_reference_label(text, start, start + 4, Decimal(text[start:start + 4])), label, text)

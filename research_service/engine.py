@@ -18,7 +18,8 @@ from .models import (alias_messages, compact_research_evidence, evidence_aliases
 from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
                        temperature_for)
 from .storage import now
-from .model_identity import ModelIdentityError, resolve_ollama_identity, verify_model_identity
+from .model_identity import (ModelIdentityError, ModelIdentityUnavailable, resolve_ollama_identity,
+                             verify_model_identity)
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
@@ -292,7 +293,8 @@ class Engine:
                                                 aliases)
                 result = validate_decision(result, decision_evidence, call, prompt_text(messages),
                                            claim_bound=claim_bound, strict=strict, own_round1=own_round1,
-                                           canonical=protocol.version in CANONICAL_CLAIM_VERSIONS)
+                                           canonical=protocol.version in CANONICAL_CLAIM_VERSIONS,
+                                           adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
@@ -310,29 +312,39 @@ class Engine:
                     # Last resort: a well-formed decision whose only defect is
                     # unsupported numbers in prose is kept with those numbers
                     # redacted (audited), instead of aborting the whole run.
+                    retry_other_defect = False
                     if audit is not None and "來源未支持的數字" in str(error):
                         try:
                             redacted = validate_decision(json.loads(json.dumps(result)), decision_evidence, call,
                                                      prompt_text(messages), redact_numbers=True,
                                                      claim_bound=claim_bound, strict=strict, own_round1=own_round1,
-                                                     canonical=protocol.version in CANONICAL_CLAIM_VERSIONS)
-                        except (ValueError, JsonSchemaValidationError, TypeError):
-                            raise error
-                        audit = dict(audit)
-                        audit["validation_retries"] = validation_failures
-                        if protocol.version in EVIDENCE_REF_VERSIONS:
-                            # v3-1002.3+: record, never remove; the model's own wording is kept.
-                            audit["unsupported_numbers"] = unsupported_numbers(
-                                redacted.get("redacted_number_claims", []), result, decision_evidence)
-                            redacted = keep_prose(redacted, result)
-                        else:
-                            audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
-                        if redacted.get("numeric_claims_removed"):
-                            audit["numeric_claims_removed"] = redacted["numeric_claims_removed"]
-                        if redacted.get("redacted_number_claims"):
-                            audit["redacted_number_claims"] = redacted["redacted_number_claims"]
-                        return redacted, audit
-                    raise
+                                                     canonical=protocol.version in CANONICAL_CLAIM_VERSIONS,
+                                                     adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS)
+                        except (ValueError, JsonSchemaValidationError, TypeError) as other:
+                            # Numbers were not the only defect (e.g. an invented evidence ID):
+                            # retry for that defect instead of failing the step.
+                            if attempt >= protocol.provider_retry_attempts:
+                                raise error
+                            error, retry_other_defect = other, True
+                            validation_failures.append({"attempt": attempt, "error_type": type(other).__name__,
+                                                        "message": str(other)[:200], "call_key": retry_key})
+                        if not retry_other_defect:
+                            audit = dict(audit)
+                            audit["validation_retries"] = validation_failures
+                            if protocol.version in EVIDENCE_REF_VERSIONS:
+                                # v3-1002.3+: record, never remove; the model's own wording is kept.
+                                audit["unsupported_numbers"] = unsupported_numbers(
+                                    redacted.get("redacted_number_claims", []), result, decision_evidence)
+                                redacted = keep_prose(redacted, result)
+                            else:
+                                audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
+                            if redacted.get("numeric_claims_removed"):
+                                audit["numeric_claims_removed"] = redacted["numeric_claims_removed"]
+                            if redacted.get("redacted_number_claims"):
+                                audit["redacted_number_claims"] = redacted["redacted_number_claims"]
+                            return redacted, audit
+                    if not retry_other_defect:
+                        raise
                 number_hint = ""
                 rejected_numbers = re.search(r"來源未支持的數字（([^）]*)）", str(error))
                 if rejected_numbers:
@@ -427,12 +439,26 @@ class Engine:
         if job["state"].get("model_identity_failure"):
             raise ModelIdentityError("此工作的推理後權重核對曾失敗，結果不可續跑或納入正式統計；請建立新工作")
         if check_identity:
-            check = verify_model_identity(job["config"], self.identity_probe)
+            try:
+                check = verify_model_identity(job["config"], self.identity_probe)
+            except ModelIdentityUnavailable:
+                raise  # transient: the job pauses and can resume
+            except ModelIdentityError as error:
+                # Weights differ from the frozen digest: the job can never count again.
+                job["state"]["model_identity_failure"] = {"at": now(), "phase": "before_step", "reason": str(error)}
+                error.state = job["state"]
+                raise
             job["state"].setdefault("model_identity_checks", []).append({**check, "phase": "before_step"})
         state = self.graph.invoke({"job": job, "state": job["state"]})["state"]
         if check_identity:
             try:
                 check = verify_model_identity(job["config"], self.identity_probe)
+            except ModelIdentityUnavailable as error:
+                # A proxy hiccup is not evidence that the weights changed: keep the step,
+                # pause the job, and let the next before-step check decide.
+                state.setdefault("model_identity_checks", []).append(
+                    {"checked_at": now(), "phase": "after_step", "status": "unavailable", "reason": str(error)})
+                raise StepFailure(str(error), state) from error
             except ModelIdentityError as error:
                 state["model_identity_failure"] = {"at": now(), "phase": "after_step", "reason": str(error)}
                 raise StepFailure(str(error), state) from error

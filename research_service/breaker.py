@@ -14,6 +14,25 @@ from .logging_config import get_logger
 logger = get_logger(__name__)
 
 
+PROVIDER_FAILURE_NAMES = ("HTTPError", "URLError", "TimeoutError", "timeout", "ConnectionError",
+                          "RemoteDisconnected", "ConnectionRefusedError", "ConnectionResetError", "ModelIdentityUnavailable", "APIConnectionError",
+                          "ServiceUnavailableError", "InternalServerError")
+
+
+def is_provider_failure(error) -> bool:
+    """Transport or provider trouble; a rejected answer or a data problem is not an endpoint failure.
+
+    Step failures carry the underlying errors as text ("technical: HTTPError: ..."), so the
+    names are matched in the message as well as in the exception chain.
+    """
+    seen = error
+    while seen is not None:
+        if type(seen).__name__ in PROVIDER_FAILURE_NAMES:
+            return True
+        seen = seen.__cause__ or seen.__context__
+    return any(f"{name}:" in str(error) for name in PROVIDER_FAILURE_NAMES)
+
+
 class Breaker:
     def __init__(self, probe, *, threshold=3, retry_seconds=60, clock=time.monotonic):
         self.probe = probe
@@ -57,6 +76,11 @@ class Breaker:
                 self.opened_at, self.failures = None, 0
             logger.warning("model endpoint answers again: resuming the queue")
         return ready
+
+    def held_for(self, seconds) -> bool:
+        """True once the queue has been held this long (lets the GPU auto-stop stop a broken endpoint)."""
+        with self.lock:
+            return self.opened_at is not None and self.clock() - self.opened_at >= seconds
 
     def public(self) -> dict:
         return {"open": self.open, "consecutive_failures": self.failures, "threshold": self.threshold}

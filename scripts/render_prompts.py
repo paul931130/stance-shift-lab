@@ -7,7 +7,6 @@ one call of each decision kind) to a Markdown file. Never calls a model.
     python scripts/render_prompts.py --db /tmp/copy.sqlite3 --job <id> --out prompts.md
 """
 import argparse
-import json
 from dataclasses import asdict, replace
 from pathlib import Path
 import sys

@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass
 from datetime import date, timedelta
+import functools
 import hashlib
 import json
 import re
@@ -216,6 +217,11 @@ class StudyProtocol:
         for key in ("model_context_length", "ollama_parallel", "rationale_chars"):
             if payload[key] is None:
                 del payload[key]
+        # v3-1002.3+: prompt text is part of the protocol. Editing any prompt-building or
+        # answer-checking code after a registration changes the hash, so enqueue refuses to
+        # mix the edited run with the registered one.
+        if self.version in EVIDENCE_REF_VERSIONS:
+            payload["prompt_source"] = prompt_source_digest()
         return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     @property
@@ -327,3 +333,18 @@ def validate_case(ticker: str, analysis_date: str, design: str = "quarterly") ->
         anchor = "month-end" if design == "monthly" else "quarter"
         raise ValueError(f"Case must use an approved ticker and either a 2021–2025 {anchor} anchor or today's date")
     date.fromisoformat(analysis_date)
+
+
+@functools.lru_cache(maxsize=None)
+def prompt_source_digest() -> str:
+    """sha256 of the code that writes prompts and checks answers (line endings normalized)."""
+    import inspect
+    from . import engine, models
+    parts = [inspect.getsource(item) for item in (
+        models.messages_for, models.output_schema_for, visible_history, models._compact_report,
+        models._compact_history, models._compact_memory, models.compact_research_evidence,
+        models.validate_decision, models.validate_research, models.validate_numeric_claims,
+        models.unsupported_numbers, engine.Engine.step, engine.Engine.validated_decision,
+        engine.Engine.validated_research)]
+    newline = chr(10)
+    return hashlib.sha256(newline.join(parts).replace(chr(13) + newline, newline).encode()).hexdigest()

@@ -9,6 +9,10 @@ class ModelIdentityError(RuntimeError):
     pass
 
 
+class ModelIdentityUnavailable(ModelIdentityError):
+    """The weight list could not be read (network, proxy, format); nothing says the weights changed."""
+
+
 def resolve_ollama_identity(model):
     # Import lazily: the inventory route also uses the model transport helpers.
     from .web.ollama import get_json
@@ -19,9 +23,9 @@ def resolve_ollama_identity(model):
     try:
         inventory = get_json(endpoint + "/api/tags", headers=headers)
     except Exception as error:
-        raise ModelIdentityError(f"無法核對模型權重（{type(error).__name__}）；未放行推理") from None
+        raise ModelIdentityUnavailable(f"無法核對模型權重（{type(error).__name__}）；未放行推理") from None
     if not isinstance(inventory, dict) or not isinstance(inventory.get("models"), list):
-        raise ModelIdentityError("模型清單格式無法驗證；未放行推理")
+        raise ModelIdentityUnavailable("模型清單格式無法驗證；未放行推理")
     name = model.removeprefix("ollama/")
     matches = [item for item in inventory["models"] if isinstance(item, dict) and item.get("name") == name]
     if len(matches) != 1 or not matches[0].get("digest"):

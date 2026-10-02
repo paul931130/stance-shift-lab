@@ -62,6 +62,8 @@ class MonthlyProtocolTests(unittest.TestCase):
         protocol = StudyProtocol()
         legacy = dataclasses.asdict(protocol)
         del legacy["design"]
+        from research_service.protocol import prompt_source_digest
+        legacy["prompt_source"] = prompt_source_digest()  # v3-1002.3+: prompt code is hashed too
         expected = hashlib.sha256(json.dumps(legacy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
         self.assertEqual(protocol.fingerprint, expected)
 
