@@ -5,7 +5,7 @@
 #   docker compose -p stance-shift-lab -f experiments/prompt-test-gemini.yaml up -d
 services:
   prompt-test:
-    image: stance-shift-lab-research-qwen:v3-1002.3
+    image: stance-shift-lab-research-qwen:v3-1002.3-reviewfix-20261002
     restart: "no"
     init: true
     ports:

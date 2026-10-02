@@ -95,3 +95,14 @@ v3-0930.3 要求文字中的數字與來源值相同（或四捨五入到 3 位�
 2. 敏感性分析（事先指定）：排除上列 36 個「僅沿用即時新聞」案例與 MCD 2023-12-31 後重算主要比較，檢查結論是否依賴低密度新聞的案例。
 3. Qwen 的記憶探測沒有顯示對 2022–2024 的結果記憶（`docs/knowledge-cutoff.md`），因此不依知識截止日分段。
 4. 舊版 v3-0929.1 的 180 案僅為歷史結果，不與本批混合統計。
+
+### 2026-10-02 完整 review 修正追記（工作樹候選；未事前登記、未執行）
+
+本追記記錄 `c77fc90` 之後完整 review 的程式與批次設定修正。它不會改寫任何舊登記、正式資料庫或結果；後續必須以正式服務再次預覽，確認程式來源、映像、模型 digest 與此候選一致後，才可另行登記。舊協議 hash 一律不可用於這份批次。
+
+- 修正 F1–F8：網路／權重身分無法取得可恢復，僅確認 digest 改變才永久封鎖；推理後無法核對時回復檢查點並保留雜湊與成本 audit；混合無來源數字／非法 evidence ID 仍重試；C/D 裁決者 Hold 與方向相反的預期報酬被拒；protocol hash 涵蓋決定實驗結果的 9 個模組原始碼（anonymize、backtest、data、engine、finbert、model_identity、models、protocol、storage）；介面、統計、CLI 與 scripts 不在其內，避免執行中修介面使整批無法續跑，也避免各映像複製的 scripts 不同而 hash 不一；provider breaker 僅依例外型別或明確標記判斷；斷路器停派後自動關機 watchdog 約 30 分鐘處理；年份標籤不再把 `Revenue of 2010` 誤判為年份。
+- 成本 audit 現分辨有效呼叫、失敗邏輯呼叫、provider attempts、驗證重試、未知 token／時間，包含共享研究代理人與權重核對未完成後重跑的呼叫；數字回退接受同一回覆時不重複計成本。
+- `docs/e2prime-batch-payload.json` 保留 180 個唯一 dataset ID，依日期排序，並逐案明列模型、7 票、study1、季度、匿名化 true、allow_decision、所有品質例外 false、8192 context 與單併發。主要推論固定為 D−C、60 交易日、Corwin–Schultz 成本、守門員之前的候選行動（candidate layer，避免波動度門檻同時改寫兩組）、全部案例：兩個共同主要端點為方向準確率（配對 McNemar）與 Sharpe 差（Ledoit–Wolf），Holm family 只含這兩者，兩者皆為正且 Holm 調整後 p<.05 才判定 D 優於 C；其他期間、成本、守門員後行動與方法皆為敏感性分析。本批為鎖定規則後對既有樣本的回溯比較，舊 v3-0929.1 已看過同期結果，不宣稱全新樣本外測試；unsupported number 指標明定以已稽核呼叫為分母。季度／月度 split 分母依設計計算。
+- source digest 與季度協議 hash 於最終程式 commit、映像建置後，以正式服務 `/health` 的 source_digest 與批次預覽重算，登記時寫入本節；在此之前不列預期值。
+- 本機日期排序與參數檢查不能代替正式資料 readiness。正式登記前仍須重新核對 180 案預覽、相同實際 Qwen digest、非秘密有效服務設定、自動關機 enabled、隔離 qualification 與建置後 image ID。服務私有設定可能覆寫 compose；只讀非秘密設定，不讀出任何 API key。
+- 依先前 2026-10-02 review 快照，尚未找到 `v3-1002.3` 正式登記；正式開跑前仍須即時查詢 `/api/studies`，保留既有失敗／暫停工作，且不可與此新 hash 混合。此追記沒有啟動 GPU、部署服務、登記或排入工作。
