@@ -179,8 +179,10 @@ class AdjudicatorAndRecordTests(unittest.TestCase):
     def test_record_only_ignores_labels_and_source_values(self):
         from research_service.models import unsupported_numbers
         evidence = [{"evidence_id": "E12", "claim": "return20=-0.041720",
-                     "numeric_fields": [{"metric": "return20", "period": "2021-03-30", "unit": "ratio", "value": -0.04172}]}]
-        text = "On March 30, 2021 the 20-day return was -0.041720 (E12), about 4.17%, and revenue hit 999 (E2)."
+                     "numeric_fields": [{"metric": "return20", "period": "2021-03-30", "unit": "ratio", "value": -0.04172}]},
+                    {"evidence_id": "E1", "claim": "liabilities_to_assets_pct=81.295509"}]
+        text = ("On March 30, 2021, the 20-day return was -0.041720 (E12), about 4.17%, leverage 81.29% (E1), "
+                "and revenue hit 999 (E2).")
         claims = []
         import re
         from research_service.models import NUMBER_PATTERN

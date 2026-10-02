@@ -3,7 +3,7 @@ from copy import deepcopy
 import json
 import os
 import re
-from decimal import Decimal, ROUND_HALF_UP
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 import threading
 import time
 from urllib.request import Request, urlopen
@@ -481,7 +481,7 @@ def _is_reference_label(text, start, end, number):
         return True
     if 1 <= number <= 31 and _MONTH_BEFORE.search(text[max(0, start - 12):start]):
         return True
-    return 1990 <= number <= 2035 and end - start == 4
+    return 1990 <= number <= 2035 and len(re.sub(r"\D", "", text[start:end])) == 4
 
 
 def unsupported_numbers(claims, original, evidence):
@@ -505,6 +505,7 @@ def unsupported_numbers(claims, original, evidence):
         if _is_reference_label(str(text), claim["start"], claim["end"], number):
             continue
         if any(number == value or _rounds_to_displayed_precision(value, number)
+               or _truncates_to_displayed_precision(value, number)
                or _rounds_to_significant_figures(value, number) for value in candidates):
             continue
         kept.append({"field": claim["field"], "value": claim["value"]})
@@ -524,6 +525,14 @@ def _rounds_to_displayed_precision(source, displayed):
         return False
     quantum = Decimal(1).scaleb(displayed.as_tuple().exponent)
     return source.quantize(quantum, rounding=ROUND_HALF_UP) == displayed
+
+
+def _truncates_to_displayed_precision(source, displayed):
+    """81.295509 written as 81.29: cut, not rounded, but still the source value."""
+    if displayed == 0 and source != 0:
+        return False
+    quantum = Decimal(1).scaleb(displayed.as_tuple().exponent)
+    return source.quantize(quantum, rounding=ROUND_DOWN) == displayed
 
 
 def _rounds_to_significant_figures(source, displayed, figures=3):
