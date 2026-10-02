@@ -54,7 +54,8 @@ def main():
         [content] = db.execute("SELECT config FROM jobs WHERE json_extract(config,'$.protocol_hash')=? LIMIT 1",
                                (args.registration_hash,)).fetchone()
         original = json.loads(content)
-        protocol = protocol_from({**original["protocol"], "version": QUARTERLY_VERSION})
+        protocol = protocol_from({**original["protocol"], "version": QUARTERLY_VERSION,
+                                  "anonymize_ticker": True, "action_source": "model"})
         cases = []
         for request in requests:
             ticker, content = db.execute("SELECT ticker,content FROM datasets WHERE id=?", (request["dataset_id"],)).fetchone()
@@ -105,6 +106,11 @@ def main():
     dataset_id = store.add_dataset(data)
     ctx = SimpleNamespace(store=store, demo_mode=False, injected_model_call=False)
     request = JobInput(dataset_id=dataset_id, analysis_date=selected["analysis_date"], model=protocol.model,
+                       study=protocol.study, voting_samples=protocol.voting_samples,
+                       anonymize_ticker=protocol.anonymize_ticker,
+                       missing_data_policy=protocol.missing_data_policy,
+                       allow_point_fundamental=protocol.allow_point_fundamental,
+                       allow_small_model=protocol.allow_small_model, design=protocol.design,
                        model_context_length=protocol.model_context_length, ollama_parallel=protocol.ollama_parallel)
     inventory = {"ready": True, "models": [protocol.model], "details": [manifest["model_identity"]]}
     config = prepare(ctx, request, model_probe=lambda: inventory)

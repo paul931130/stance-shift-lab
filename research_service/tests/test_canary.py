@@ -27,7 +27,12 @@ class ModelCanaryTests(unittest.TestCase):
         result = run_model_canary(protocol, fake_provider)
         self.assertEqual(result["status"], "pass")
         self.assertFalse(result["formal_data_touched"])
-        self.assertEqual([item["action"] for item in result["checks"]], ["Buy", "Buy", "Sell"])
+        # v3-1002.3: the complete 22-call plan, including both adjudicators.
+        checks = {item["call"]: item for item in result["checks"]}
+        self.assertEqual(len(checks), 22)
+        self.assertTrue(all(item["status"] == "pass" for item in checks.values()))
+        self.assertEqual((checks["d-r1-agent-a"]["action"], checks["d-r2-agent-a"]["action"]), ("Buy", "Sell"))
+        self.assertIn(checks["c-adjudication"]["action"], ("Buy", "Sell"))
 
     def test_empty_rebuttal_and_short_numeric_quotes_fail_qualification(self):
         for defect in ("rebuttal", "numeric"):
@@ -52,7 +57,7 @@ class ModelCanaryTests(unittest.TestCase):
         result = run_model_canary(StudyProtocol(dataset_kind="synthetic"), unavailable)
         self.assertEqual(result["status"], "fail")
         self.assertEqual(len(calls), 1)
-        self.assertEqual([item["status"] for item in result["checks"]], ["fail", "blocked", "blocked"])
+        self.assertEqual([item["status"] for item in result["checks"]], ["fail"] + ["blocked"] * 21)
 
     def test_numeric_canary_tells_model_to_copy_a_supported_canonical_fact(self):
         seen = []
@@ -61,9 +66,30 @@ class ModelCanaryTests(unittest.TestCase):
             seen.append(messages[0]["content"])
             return fake_provider(protocol, messages, seed)
 
-        result = run_model_canary(StudyProtocol(dataset_kind="synthetic"), capture)
+        # The canonical-statement drill belongs to v3-1001.3/v3-1002.1 only.
+        result = run_model_canary(StudyProtocol(version="v3-1002.1", dataset_kind="synthetic"), capture)
         self.assertEqual(result["status"], "pass")
         self.assertTrue(all("return20 [2024-12-31] = 0.01 decimal_return" in prompt for prompt in seen))
+
+    def test_evidence_reference_canary_does_not_ask_for_numbers(self):
+        seen = []
+
+        def capture(protocol, messages, seed=None):
+            seen.append(messages[0]["content"])
+            return fake_provider(protocol, messages, seed)
+
+        run_model_canary(StudyProtocol(dataset_kind="synthetic"), capture)
+        self.assertFalse(any("return20 [2024-12-31]" in prompt for prompt in seen))
+
+    def test_adjudicator_hold_fails_the_canary(self):
+        def holding(protocol, messages, seed=None):
+            result, audit = fake_provider(protocol, messages, seed)
+            if "The Adjudicator must choose Buy or Sell" in messages[0]["content"]:
+                result.update(action="Hold", expected_return_pct=0.0)
+            return result, audit
+
+        result = run_model_canary(StudyProtocol(dataset_kind="synthetic"), holding)
+        self.assertEqual(result["status"], "fail")
 
 
 if __name__ == "__main__":

@@ -5,7 +5,7 @@ import json
 
 from .models import generate, messages_for, prompt_text, validate_decision
 from .protocol import (CANONICAL_CLAIM_VERSIONS, NUMERIC_CLAIM_VERSIONS,
-                       STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan)
+                       EVIDENCE_REF_VERSIONS, STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan)
 
 
 def _synthetic_report():
@@ -36,38 +36,41 @@ def _synthetic_report():
 
 
 def run_model_canary(protocol: StudyProtocol, provider=generate):
-    """Run a decision, the actual D round 1, and its switched round 2.
+    """Run the complete frozen decision call plan on synthetic evidence.
 
     Use the same strict/source rules as the engine, with real prior output.
     This qualification is synthetic only, never permission for a formal batch.
     """
     report = _synthetic_report()
-    calls = [next(call for call in decision_plan(protocol) if call.key == "a-decision"),
-             next(call for call in decision_plan(protocol) if call.key == "d-r1-agent-a"),
-             next(call for call in decision_plan(protocol) if call.key == "d-r2-agent-a")]
-    checks, records, own_round1 = [], [], None
+    calls = list(decision_plan(protocol))
+    checks, records = [], []
     for index, call in enumerate(calls, start=1):
         try:
             messages = messages_for(call, report, records, [], protocol)
-            if protocol.version in NUMERIC_CLAIM_VERSIONS:
+            if (protocol.version in NUMERIC_CLAIM_VERSIONS
+                    and protocol.version not in EVIDENCE_REF_VERSIONS):
                 messages[0]["content"] += (
                     " For this synthetic check, put this exact supported source fact in rationale and include "
                     "one matching numeric_claims item (evidence_id=canary-technical, metric=return20, "
                     "period=2024-12-31, unit=decimal_return, value=0.01, quote=the exact sentence): "
                     "return20 [2024-12-31] = 0.01 decimal_return. Do not write any other numbers in prose.")
             result, audit = provider(protocol, messages, seed=protocol.inference_seed + index)
+            own_round1 = next((record for record in records
+                               if call.group == "D" and call.round == 2
+                               and record.get("group") == call.group
+                               and record.get("agent") == call.agent and record.get("round") == 1), None)
             validate_decision(result, report["evidence"], call, prompt_text(messages),
                               claim_bound=protocol.version in NUMERIC_CLAIM_VERSIONS,
                               strict=protocol.version in STRICT_VALIDATION_VERSIONS,
                               canonical=protocol.version in CANONICAL_CLAIM_VERSIONS,
-                              own_round1=own_round1 if call.round == 2 else None)
-            if protocol.version in NUMERIC_CLAIM_VERSIONS and not result.get("numeric_claims"):
+                              adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS,
+                              own_round1=own_round1)
+            if (protocol.version in NUMERIC_CLAIM_VERSIONS
+                    and protocol.version not in EVIDENCE_REF_VERSIONS and not result.get("numeric_claims")):
                 raise ValueError("資格測試須包含至少一項完整、有效的數字主張")
             record = {"key": call.key, "group": call.group, "agent": call.agent,
                       "round": call.round, "stance": call.stance, "output": result}
             records.append(record)
-            if call.round == 1:
-                own_round1 = record
             checks.append({"call": call.key, "group": call.group, "stance": call.stance,
                            "action": result["action"], "citation_count": len(result["evidence_ids"]),
                            "provider_attempts": audit.get("provider_attempts", 1), "status": "pass"})
