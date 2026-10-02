@@ -9,7 +9,7 @@ import time
 from urllib.request import Request, urlopen
 
 from .data import digest
-from .protocol import (CANONICAL_CLAIM_VERSIONS, DESIGNS, NUMERIC_CLAIM_VERSIONS,
+from .protocol import (CANONICAL_CLAIM_VERSIONS, DESIGNS, EVIDENCE_REF_VERSIONS, NUMERIC_CLAIM_VERSIONS,
                        STRICT_VALIDATION_VERSIONS, SWITCH_ROUND, visible_history)
 
 _gputw_opener = None
@@ -184,7 +184,7 @@ def compact_research_evidence(domain, items):
     return [_compact_evidence_item(item) for item in items if item.get("domain") == domain]
 
 
-def _compact_history(records):
+def _compact_history(records, rationale_chars=320):
     """Expose prior arguments, never their provider audit payloads, to a debate turn.
 
     v3-0927.1: earlier turns were cut to 60 characters and one citation, so the
@@ -197,7 +197,7 @@ def _compact_history(records):
         output = record.get("output", {})
         shown = {"action": output.get("action"), "expected_return_pct": output.get("expected_return_pct"),
                  "confidence": output.get("confidence"),
-                 "rationale": _short_text(output.get("rationale"), 320),
+                 "rationale": _short_text(output.get("rationale"), rationale_chars),
                  "evidence_ids": output.get("evidence_ids", []),
                  "numeric_claims": output.get("numeric_claims", [])[:8],
                  "strongest_counterpoint": _short_text(output.get("strongest_counterpoint"), 240)}
@@ -726,6 +726,12 @@ def messages_for(call, report, records, memory, protocol):
             "Each numeric_claims item must quote that entire standalone sentence, not a numeric fragment. "
             "Do not add words before/after it, convert units, or put other factual numbers in prose. "
             "Write other reasoning without numbers. expected_return_pct is a separate forecast, not a source fact. ")
+    if protocol.version in EVIDENCE_REF_VERSIONS:
+        numeric_claim_instruction = (
+            "Do not restate source numbers in prose: every reader also receives the evidence list with the exact "
+            "values. Refer to a fact by its evidence ID instead, e.g. \"revenue rose year over year (E7)\", and "
+            "describe a direction or comparison only when the evidence itself states it. Return numeric_claims: []. "
+            "expected_return_pct and confidence are your own forecast fields, not prose. ")
     common = ("You are a decision agent in a fixed historical experiment. "
         f"Forecast the target's return over the next {protocol.primary_horizon} trading sessions using only the supplied report; do not use remembered future facts. "
         "Candidate action is Buy, Hold, or Sell. NoTrade is reserved for the later Gatekeeper. "
@@ -734,7 +740,7 @@ def messages_for(call, report, records, memory, protocol):
         "Hold is not a way to avoid committing; uncertainty lowers confidence, never substitutes for a forecast. Read decision_calibration before research summaries. "
         "Target evidence is direct company evidence; context news cannot decide direction by itself. Use supplied comparative SEC metrics only as stated: never invent a growth rate, benchmark, valuation, or financial-quality label; words such as growth, decline, strong, weak, profit, loss or losses need a supplied comparison that states them. Legacy SEC point facts without a comparable period are excluded from this decision payload. "
         + numeric_claim_instruction +
-        "Use only supplied evidence IDs exactly; URLs and invented IDs are forbidden. Keep rationale under 320 characters and give at most 4 concise risks. "
+        f"Use only supplied evidence IDs exactly; URLs and invented IDs are forbidden. Keep rationale under {protocol.rationale_chars or 320} characters and give at most 4 concise risks. "
         "Return one compact JSON object with action (Buy, Hold, Sell), expected_return_pct (-60..60), confidence (0..1), rationale (string), evidence_ids (array of supplied IDs), risks (array of strings), numeric_claims (array; [] when no narrative number is used).")
     if call.kind == "debate":
         required_action = "Buy" if call.stance == "BULL" else "Sell"
@@ -770,7 +776,7 @@ def messages_for(call, report, records, memory, protocol):
             "Compare forecast magnitudes against that evidence. Maturity memory is prior-experiment calibration, not current-case evidence; a tie is not abstention.")
     # A and every B sample deliberately receive byte-identical prompts and no memory.
     payload = {"report": _compact_report(report),
-               "history": _compact_history(visible_history(call, records, protocol))}
+               "history": _compact_history(visible_history(call, records, protocol), protocol.rationale_chars or 320)}
     if call.kind == "adjudication":
         payload["matured_same_group_memory"] = _compact_memory(memory)
     return [{"role": "system", "content": common}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False, sort_keys=True)}]

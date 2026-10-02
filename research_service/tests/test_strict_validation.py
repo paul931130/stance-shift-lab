@@ -121,4 +121,26 @@ class OutputCapTests(unittest.TestCase):
         from research_service.protocol import StudyProtocol
         self.assertEqual(StudyProtocol().max_output_tokens, 2048)
         self.assertEqual(StudyProtocol(version="v3-1001.3").max_output_tokens, 1024)
+        self.assertEqual(StudyProtocol(version="v3-1002.1").max_output_tokens, 2048)
         self.assertEqual(StudyProtocol(version="v3-0930.3").max_output_tokens, 1024)
+
+
+class EvidenceReferencePromptTests(unittest.TestCase):
+    def test_v3_1002_3_asks_for_evidence_ids_instead_of_numbers(self):
+        from research_service.models import messages_for
+        from research_service.protocol import DecisionCall, StudyProtocol
+        call = DecisionCall("a-decision", "A", "decision", "decision", "NEUTRAL")
+        report = {"base_rates": {"hold_band_pct": 3.0}, "evidence": [], "research": {}}
+        new = messages_for(call, report, [], [], StudyProtocol())[0]["content"]
+        old = messages_for(call, report, [], [], StudyProtocol(version="v3-1002.1"))[0]["content"]
+        self.assertIn("Do not restate source numbers", new)
+        self.assertNotIn("metric [period] = value unit", new)
+        self.assertIn("metric [period] = value unit", old)
+
+
+class V3_1002_3DefaultsTests(unittest.TestCase):
+    def test_new_defaults_apply_only_to_the_new_version(self):
+        from research_service.protocol import StudyProtocol
+        new, old = StudyProtocol(), StudyProtocol(version="v3-1002.1")
+        self.assertEqual((new.hold_band_sigma, new.rationale_chars), (0.25, 600))
+        self.assertEqual((old.hold_band_sigma, old.rationale_chars), (0.5, None))

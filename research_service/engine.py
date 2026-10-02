@@ -15,7 +15,7 @@ from .backtest import evaluate
 from .data import digest, research_inputs
 from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate, messages_for,
                      prompt_text, unalias_evidence_ids, validate_decision, validate_research)
-from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
+from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
                        temperature_for)
 from .storage import now
 from .model_identity import ModelIdentityError, resolve_ollama_identity, verify_model_identity
@@ -384,6 +384,8 @@ class Engine:
                     "evidence_id, metric, period, unit and value from numeric_fields, with a verbatim prose quote. "
                     "Use exact source values or half-up rounding to at most 3 significant figures; omit any unbound "
                     "number and use numeric_claims: [] when no prose numbers remain. " if claim_bound else "")
+                if protocol.version in EVIDENCE_REF_VERSIONS:
+                    number_hint = "Remove source numbers from the prose and refer to evidence IDs instead; return numeric_claims: []. "
                 attempt_messages = [*messages, {"role": "user", "content":
                     "The previous research answer was rejected by source validation. Return a complete replacement JSON. "
                     + number_hint + "Copy evidence_ids exactly from this allowed list only; do not invent or transform any ID: "
@@ -457,6 +459,11 @@ class Engine:
                         "use a source value or supported half-up rounding. Its numeric_claims quote must be the "
                         "entire statement. Do not add words before/after it or use numeric fragments. "
                         "Write other reasoning without numbers; omit facts you cannot bind.")
+                if protocol.version in EVIDENCE_REF_VERSIONS:
+                    claim_rules = (" "
+                        "Do not restate source numbers in prose: every reader also receives the evidence list with the exact "
+                        "values. Refer to a fact by its evidence ID instead, e.g. \"revenue rose year over year (E7)\", and "
+                        "describe a direction or comparison only when the evidence itself states it. Return numeric_claims: []. ")
                 fundamental_rules = ("For fundamental evidence, retain the source metric, period and unit; do not combine periods or compute a new value. "
                     if protocol.version in NUMERIC_CLAIM_VERSIONS else
                     "For fundamental evidence, copy every financial number, unit and period exactly. Do not round, rescale, convert to millions/billions or combine periods. ")

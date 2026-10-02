@@ -113,10 +113,15 @@ class CanonicalClaimTests(unittest.TestCase):
         self.assertFalse(protocol_is_current(asdict(old)))
         call = decision_plan(current)[0]
         report = {"evidence": [SOURCE]}
-        new_prompt = messages_for(call, report, [], [], current)[0]["content"]
+        canonical = StudyProtocol(version="v3-1001.3", model="ollama/qwen3:32b")
+        new_prompt = messages_for(call, report, [], [], canonical)[0]["content"]
         old_prompt = messages_for(call, report, [], [], old)[0]["content"]
         self.assertIn("metric [period] = value unit", new_prompt)
         self.assertNotIn("metric [period] = value unit", old_prompt)
+        # Registered hashes must survive later version bumps.
+        self.assertEqual(canonical.fingerprint, "18bb53ca80accd6ac56a167eed4dae23e7a26be2af72756bec2b431aacdbb01f")
+        self.assertEqual(StudyProtocol(version="v3-1002.1", model="ollama/qwen3:32b").fingerprint,
+                         "706bc5eccf4a4ae0b385bed417af7f77fdfb134f10a235f58a800f7bff30913b")
 
 
 if __name__ == "__main__":

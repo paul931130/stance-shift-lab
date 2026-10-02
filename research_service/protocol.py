@@ -40,23 +40,27 @@ DESIGNS = {
     "quarterly": {"dates": QUARTER_DATES, "primary_horizon": 60, "horizons": (30, 60, 90), "news_window_days": 90},
     "monthly": {"dates": MONTH_END_DATES, "primary_horizon": 20, "horizons": (10, 20, 30), "news_window_days": 30},
 }
-QUARTERLY_VERSION = "v3-1002.1"
-MONTHLY_VERSION = "v3-1002.2"
-MONTHLY_VERSIONS = frozenset({"v3-0930.2", "v3-0930.4", "v3-1001.2", "v3-1001.4", MONTHLY_VERSION})
+QUARTERLY_VERSION = "v3-1002.3"
+MONTHLY_VERSION = "v3-1002.4"
+MONTHLY_VERSIONS = frozenset({"v3-0930.2", "v3-0930.4", "v3-1001.2", "v3-1001.4", "v3-1002.2", MONTHLY_VERSION})
 # From v3-1001.x the inference settings that change model output (context length,
 # concurrent Ollama calls) are protocol fields, and numeric claims and the
 # role-switch rebuttal are checked more strictly (see models.validate_*).
-FROZEN_INFERENCE_VERSIONS = frozenset({"v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION})
+FROZEN_INFERENCE_VERSIONS = frozenset({"v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION})
 STRICT_VALIDATION_VERSIONS = FROZEN_INFERENCE_VERSIONS
-CANONICAL_CLAIM_VERSIONS = frozenset({"v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION})
+CANONICAL_CLAIM_VERSIONS = frozenset({"v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION})
 # The canonical numeric sentences made qwen3:32b outputs reach the 1024-token cap
 # (truncated JSON in the first v3-1001.3 case); v3-1002.x allows 2048.
-LONG_OUTPUT_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION})
+LONG_OUTPUT_VERSIONS = frozenset({"v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION})
+# From v3-1002.3 agents refer to facts by evidence ID instead of restating numbers: every reader
+# also receives the evidence list with exact values. The numeric validator is unchanged and still
+# redacts any unbound number that appears anyway (v3-1002.1 redacted 3-10 claims per call).
+EVIDENCE_REF_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION})
 DEFAULT_CONTEXT_LENGTH = 8192
 # From v3-0930.1 the prompt carries FinBERT indicators computed over every eligible headline instead of a
 # 12-headline sample (see data.research_inputs); earlier versions keep the headline sample.
-INDICATOR_VERSIONS = ("v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION)
-NUMERIC_CLAIM_VERSIONS = frozenset({"v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION})
+INDICATOR_VERSIONS = ("v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION)
+NUMERIC_CLAIM_VERSIONS = frozenset({"v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION})
 DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
 BASE_RATE_MIN_WINDOWS = 8
 DEFAULT_RESEARCH_MODEL = "ollama/qwen3:14b"
@@ -105,7 +109,8 @@ class StudyProtocol:
     news_relevance_floor: float = 0.35
     target_context_priority: bool = True
     switch_isolation: bool = True
-    hold_band_sigma: float = 0.5
+    # None = the version default: 0.25 from v3-1002.3 (0.5 left most qwen forecasts inside the band), 0.5 before.
+    hold_band_sigma: float | None = None
     action_source: Literal["model", "derived"] = "derived"
     spread_window: int = 20
     bootstrap_seed: int = 905
@@ -117,12 +122,18 @@ class StudyProtocol:
     # Frozen inference settings (v3-1001.x); None in older versions, which read the environment.
     model_context_length: int | None = None
     ollama_parallel: int | None = None
+    # Rationale length asked for and shown to later turns (v3-1002.3+: 600; None = the old 320).
+    rationale_chars: int | None = None
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION):
             raise ValueError("Unsupported protocol version")
         if self.max_output_tokens is None:
             object.__setattr__(self, "max_output_tokens", 2048 if self.version in LONG_OUTPUT_VERSIONS else 1024)
+        if self.hold_band_sigma is None:
+            object.__setattr__(self, "hold_band_sigma", 0.25 if self.version in EVIDENCE_REF_VERSIONS else 0.5)
+        if self.rationale_chars is None and self.version in EVIDENCE_REF_VERSIONS:
+            object.__setattr__(self, "rationale_chars", 600)
         if self.version in FROZEN_INFERENCE_VERSIONS:
             if self.model_context_length is None:
                 object.__setattr__(self, "model_context_length", DEFAULT_CONTEXT_LENGTH)
@@ -198,7 +209,7 @@ class StudyProtocol:
         if payload["design"] == "quarterly":
             del payload["design"]
         # Older protocols had no frozen inference fields; their hashes stay unchanged.
-        for key in ("model_context_length", "ollama_parallel"):
+        for key in ("model_context_length", "ollama_parallel", "rationale_chars"):
             if payload[key] is None:
                 del payload[key]
         return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

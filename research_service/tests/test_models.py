@@ -81,7 +81,7 @@ class ModelReliabilityTests(unittest.TestCase):
         payload = json.loads(messages[1]["content"])
         self.assertNotIn("audit", json.dumps(payload))
         # v3-0927.1: whole arguments up to the prompt's own limits, and every citation.
-        self.assertTrue(all(len(item["output"]["rationale"]) <= 320 for item in payload["history"]))
+        self.assertTrue(all(len(item["output"]["rationale"]) <= protocol.rationale_chars for item in payload["history"]))
         self.assertTrue(all(len(item["output"]["strongest_counterpoint"]) <= 240 for item in payload["history"]))
         self.assertTrue(all(len(item["output"]["evidence_ids"]) == 8 for item in payload["history"]))
 
@@ -114,7 +114,8 @@ class ModelReliabilityTests(unittest.TestCase):
                               if item["domain"] == "sentiment"]), 4)
         self.assertEqual(payload["matured_same_group_memory"]["count"], 12)
         self.assertNotIn("raw_response", json.dumps(payload))
-        self.assertLess(len(prompt), 7000)
+        # 600-character rationales (v3-1002.3) still leave the prompt far inside an 8192-token context.
+        self.assertLess(len(prompt), 9000)
 
     def test_invalid_json_retries_with_same_audited_seed(self):
         calls = []
