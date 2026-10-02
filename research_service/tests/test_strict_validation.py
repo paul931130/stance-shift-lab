@@ -218,7 +218,9 @@ class ReviewFixTests(unittest.TestCase):
         from urllib.error import HTTPError
         from research_service.breaker import is_provider_failure
         from research_service.engine import StepFailure
-        self.assertTrue(is_provider_failure(StepFailure("technical: HTTPError: HTTP Error 404: Not Found", {})))
+        # Step failures carry an explicit flag; message text is never parsed.
+        self.assertTrue(is_provider_failure(StepFailure("technical: HTTPError: 404", {}, provider_failure=True)))
+        self.assertFalse(is_provider_failure(StepFailure("technical: HTTPError: 404", {})))
         self.assertTrue(is_provider_failure(HTTPError("u", 524, "x", {}, None)))
         self.assertFalse(is_provider_failure(StepFailure("c-r1-agent-a: ValueError: bad evidence id", {})))
 

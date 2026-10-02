@@ -1,5 +1,6 @@
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from copy import deepcopy
 from dataclasses import asdict
 import json
 import inspect
@@ -12,27 +13,19 @@ from langgraph.graph import StateGraph, START, END
 
 from .anonymize import PLACEHOLDER, anonymize
 from .backtest import evaluate
+from .breaker import is_provider_failure
 from .data import digest, research_inputs
 from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate, messages_for,
                      prompt_text, unalias_evidence_ids, unsupported_numbers, validate_decision, validate_research)
-from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
-                       temperature_for)
+from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, NUMERIC_CLAIM_VERSIONS,
+                       STRICT_VALIDATION_VERSIONS, decision_plan, decision_wave,
+                       protocol_from, protocol_is_current, protocol_matches_fingerprint, temperature_for)
 from .storage import now
-from .model_identity import (ModelIdentityError, ModelIdentityUnavailable, resolve_ollama_identity,
-                             verify_model_identity)
+from .model_identity import (ModelIdentityError, ModelIdentityMismatch, ModelIdentityUnavailable,
+                             resolve_ollama_identity, verify_model_identity)
 from .logging_config import get_logger
 
 logger = get_logger(__name__)
-
-
-def protocol_from(value):
-    value = dict(value)
-    if value.get("version") == "v3-0905.1" and "missing_data_policy" not in value:
-        value["missing_data_policy"] = "force_no_trade"
-    for key in ("horizons", "cost_models", "study_universe"):
-        if key in value:
-            value[key] = tuple(value[key])
-    return StudyProtocol(**value)
 
 
 def derive_action(expected_return_pct, hold_band_pct):
@@ -128,31 +121,125 @@ def keep_prose(validated, original):
     return kept
 
 
-def compute_usage(records):
-    """Summarize token use and client-measured latency without trusting provider units."""
+def _attach_validation_attempt_audit(error, validation_failures, audit):
+    """Attach token-safe usage for validation-exhausted calls without persisting raw output."""
+    if getattr(error, "model_attempt_audit", None) or not audit or not validation_failures:
+        return
+    final = validation_failures[-1]
+    error.model_attempt_audit = {
+        "provider_attempts": final.get("provider_attempts", 1),
+        "attempts": final.get("attempts", []),
+        "usage": final.get("usage", {}),
+        "validation_retries": validation_failures[:-1],
+        **{key: final[key] for key in ("seed", "prompt_hash", "raw_response_hash") if key in final},
+    }
+
+
+def _retry_model_audit(audit):
+    """Keep usage and hashes for unverified calls while dropping their raw model text."""
+    if not isinstance(audit, dict):
+        return {}
+    fields = ("seed", "prompt_hash", "raw_response_hash", "usage", "provider_attempts", "attempts",
+              "validation_retries", "unsupported_numbers", "numeric_redaction", "redacted_numbers",
+              "redacted_number_claims", "numeric_claims_removed")
+    compact = {key: deepcopy(audit[key]) for key in fields if key in audit}
+    if "raw_response_hash" not in compact and isinstance(audit.get("raw_response"), str):
+        compact["raw_response_hash"] = digest(audit["raw_response"])
+    return compact
+
+
+def compute_usage(records, additional_attempt_records=()):
+    """Summarize logical calls and every recorded provider attempt, including validation retries."""
     result = {}
-    for group in "ABCD":
-        group_records = [record for record in records if record.get("group") == group]
-        prompt, completion, wall, missing, missing_duration = 0, 0, 0., 0, 0
+    groups = list("ABCD")
+    if any(record.get("group") == "R" for record in [*records, *additional_attempt_records]):
+        groups.append("R")
+    for group in groups:
+        result_group = "shared_research" if group == "R" else group
+        completed_records = [record for record in records if record.get("group") == group]
+        group_records = [*completed_records, *(record for record in additional_attempt_records
+                                                if record.get("group") == group)]
+        prompt, completion, wall = 0, 0, 0.
+        provider_attempts = failed_attempts = missing_usage_attempts = missing_duration_attempts = 0
+        calls_with_missing_usage = calls_with_missing_duration = validation_retry_calls = 0
         for record in group_records:
-            usage = record.get("audit", {}).get("usage", {}) or {}
-            prompt_value, completion_value = usage.get("prompt_tokens"), usage.get("completion_tokens")
-            if not isinstance(prompt_value, (int, float)) or not isinstance(completion_value, (int, float)):
-                missing += 1
-            else:
-                prompt += int(prompt_value)
-                completion += int(completion_value)
-            duration = usage.get("client_elapsed_seconds")
-            if isinstance(duration, (int, float)) and duration >= 0:
-                wall += float(duration)
-            else:
-                missing_duration += 1
-        result[group] = {"calls": len(group_records), "prompt_tokens": prompt if not missing else None,
-                         "completion_tokens": completion if not missing else None,
-                         "wall_seconds": wall if not missing_duration else None,
-                         "missing_usage_calls": missing, "missing_duration_calls": missing_duration,
+            audit = record.get("audit", {}) or {}
+            validation_retries = audit.get("validation_retries", []) or []
+            counted_retries = [item for item in validation_retries if not item.get("accepted_as_output")]
+            validation_retry_calls += len(counted_retries)
+            # Keep accepted numeric fallbacks in the audit without counting the same provider
+            # response twice: its usage is already represented by the final output record.
+            logical_audits = [*counted_retries, audit]
+            call_missing_usage = call_missing_duration = False
+            for call_audit in logical_audits:
+                attempts = call_audit.get("attempts")
+                if not isinstance(attempts, list) or not attempts:
+                    usage = call_audit.get("usage", {}) or {}
+                    count = call_audit.get("provider_attempts", 1)
+                    count = count if isinstance(count, int) and count > 0 else 1
+                    # If an old audit reports retries but stores only the final usage, the
+                    # unrecorded attempts must remain visible as unknown rather than vanish.
+                    attempts = ([{"status": "unknown", "usage": {}} for _ in range(count - 1)]
+                                + [{"status": "complete", "usage": usage}])
+                for attempt in attempts:
+                    provider_attempts += 1
+                    if attempt.get("status") == "failed":
+                        failed_attempts += 1
+                    usage = attempt.get("usage", {}) or {}
+                    prompt_value, completion_value = usage.get("prompt_tokens"), usage.get("completion_tokens")
+                    if (not isinstance(prompt_value, (int, float))
+                            or not isinstance(completion_value, (int, float))):
+                        missing_usage_attempts += 1
+                        call_missing_usage = True
+                    else:
+                        prompt += int(prompt_value)
+                        completion += int(completion_value)
+                    duration = usage.get("client_elapsed_seconds")
+                    if isinstance(duration, (int, float)) and duration >= 0:
+                        wall += float(duration)
+                    else:
+                        missing_duration_attempts += 1
+                        call_missing_duration = True
+            calls_with_missing_usage += int(call_missing_usage)
+            calls_with_missing_duration += int(call_missing_duration)
+        failed_logical_calls = sum(1 for record in additional_attempt_records if record.get("group") == group)
+        completed_calls = len(completed_records)
+        result[result_group] = {"calls": completed_calls, "completed_calls": completed_calls,
+                         "logical_calls": completed_calls + failed_logical_calls + validation_retry_calls,
+                         "provider_attempts": provider_attempts, "failed_provider_attempts": failed_attempts,
+                         "failed_logical_calls": failed_logical_calls,
+                         "validation_retry_calls": validation_retry_calls,
+                         "prompt_tokens": prompt if not missing_usage_attempts else None,
+                         "completion_tokens": completion if not missing_usage_attempts else None,
+                         "wall_seconds": wall if not missing_duration_attempts else None,
+                         "missing_usage_calls": calls_with_missing_usage,
+                         "missing_usage_attempts": missing_usage_attempts,
+                         "missing_duration_calls": calls_with_missing_duration,
+                         "missing_duration_attempts": missing_duration_attempts,
                          "duration_source": "client_monotonic"}
     return result
+
+
+def compute_state_usage(state):
+    """Include successful shared research calls and failed/identity-discarded attempts."""
+    research_records, research_failures = [], []
+    for domain, item in state.get("research", {}).items():
+        audit = item.get("audit", {}) if isinstance(item, dict) else {}
+        if not isinstance(audit, dict):
+            continue
+        failed_audit = audit.get("failed_model_audit")
+        if failed_audit:
+            research_failures.append({"key": f"research-{domain}", "group": "R", "audit": failed_audit})
+        elif audit and not audit.get("fallback"):
+            research_records.append({"key": f"research-{domain}", "group": "R", "audit": audit})
+    failed_calls = [{**record, "group": record.get("group") or ("R" if record.get("domain") else None)}
+                    for record in state.get("failed_model_calls", [])]
+    unverified = [item for retry in state.get("model_identity_retry_audits", [])
+                 for item in (*retry.get("discarded_model_records", []),
+                              *retry.get("discarded_research_records", []),
+                              *retry.get("discarded_failed_model_calls", []))]
+    return compute_usage([*state.get("records", []), *research_records],
+                         [*unverified, *failed_calls, *research_failures])
 
 
 def _novelty_pair(records, isolated_key, reference_key, stance):
@@ -208,9 +295,10 @@ class GraphState(TypedDict):
 
 
 class StepFailure(RuntimeError):
-    def __init__(self, message, state):
+    def __init__(self, message, state, *, provider_failure=False):
         super().__init__(message)
         self.state = state
+        self.provider_failure = bool(provider_failure)
 
 
 class Engine:
@@ -301,9 +389,15 @@ class Engine:
             except (ValueError, JsonSchemaValidationError) as error:
                 failure = {"attempt": attempt, "error_type": type(error).__name__,
                            "message": str(error)[:200], "call_key": retry_key}
+                failed_provider_audit = getattr(error, "model_attempt_audit", None)
+                if failed_provider_audit:
+                    failure.update(failed_provider_audit)
                 if audit:
                     failure.update({key: audit[key] for key in ("seed", "prompt_hash") if key in audit})
                     failure["raw_response_hash"] = digest(audit.get("raw_response", ""))
+                    failure["usage"] = audit.get("usage", {})
+                    failure["provider_attempts"] = audit.get("provider_attempts", 1)
+                    failure["attempts"] = audit.get("attempts", [])
                 validation_failures.append(failure)
                 numbers_only = "來源未支持的數字" in str(error)
                 # v3-1001.x: unbound numbers are removed at once; retrying rarely binds them and
@@ -323,13 +417,15 @@ class Engine:
                         except (ValueError, JsonSchemaValidationError, TypeError) as other:
                             # Numbers were not the only defect (e.g. an invented evidence ID):
                             # retry for that defect instead of failing the step.
+                            validation_failures[-1]["fallback_validation_error"] = {
+                                "error_type": type(other).__name__, "message": str(other)[:200]}
                             if attempt >= protocol.provider_retry_attempts:
-                                raise error
+                                _attach_validation_attempt_audit(other, validation_failures, audit)
+                                raise other from error
                             error, retry_other_defect = other, True
-                            validation_failures.append({"attempt": attempt, "error_type": type(other).__name__,
-                                                        "message": str(other)[:200], "call_key": retry_key})
                         if not retry_other_defect:
                             audit = dict(audit)
+                            validation_failures[-1]["accepted_as_output"] = True
                             audit["validation_retries"] = validation_failures
                             if protocol.version in EVIDENCE_REF_VERSIONS:
                                 # v3-1002.3+: record, never remove; the model's own wording is kept.
@@ -344,6 +440,7 @@ class Engine:
                                 audit["redacted_number_claims"] = redacted["redacted_number_claims"]
                             return redacted, audit
                     if not retry_other_defect:
+                        _attach_validation_attempt_audit(error, validation_failures, audit)
                         raise
                 number_hint = ""
                 rejected_numbers = re.search(r"來源未支持的數字（([^）]*)）", str(error))
@@ -390,19 +487,30 @@ class Engine:
             except (ValueError, JsonSchemaValidationError) as error:
                 failure = {"attempt": attempt, "error_type": type(error).__name__,
                            "message": str(error)[:200], "call_key": retry_key}
+                failed_provider_audit = getattr(error, "model_attempt_audit", None)
+                if failed_provider_audit:
+                    failure.update(failed_provider_audit)
                 if audit:
                     failure.update({key: audit[key] for key in ("seed", "prompt_hash") if key in audit})
                     failure["raw_response_hash"] = digest(audit.get("raw_response", ""))
+                    failure["usage"] = audit.get("usage", {})
+                    failure["provider_attempts"] = audit.get("provider_attempts", 1)
+                    failure["attempts"] = audit.get("attempts", [])
                 validation_failures.append(failure)
+                redaction_error = None
                 if strict and audit is not None and "來源未支持的數字" in str(error):
                     try:
                         redacted = validate_research(json.loads(json.dumps(result)), items, domain,
                                                      claim_bound=claim_bound, strict=strict, redact=True,
                                                      canonical=protocol.version in CANONICAL_CLAIM_VERSIONS)
-                    except (ValueError, JsonSchemaValidationError, TypeError):
+                    except (ValueError, JsonSchemaValidationError, TypeError) as other:
+                        redaction_error = other
+                        validation_failures[-1]["fallback_validation_error"] = {
+                            "error_type": type(other).__name__, "message": str(other)[:200]}
                         redacted = None
                     if redacted is not None:
                         audit = dict(audit)
+                        validation_failures[-1]["accepted_as_output"] = True
                         audit["validation_retries"] = validation_failures
                         if protocol.version in EVIDENCE_REF_VERSIONS:
                             # v3-1002.3+: record, never remove; the model's own wording is kept.
@@ -417,7 +525,11 @@ class Engine:
                             audit["redacted_number_claims"] = redacted["redacted_number_claims"]
                         return redacted, audit
                 if attempt >= protocol.provider_retry_attempts:
-                    raise
+                    final_error = redaction_error or error
+                    _attach_validation_attempt_audit(final_error, validation_failures, audit)
+                    if redaction_error is not None:
+                        raise redaction_error from error
+                    raise error
                 number_hint = ("Every number in summary or risks must have a numeric_claims item bound to one exact "
                     "evidence_id, metric, period, unit and value from numeric_fields, with a verbatim prose quote. "
                     "Use exact source values or half-up rounding to at most 3 significant figures; omit any unbound "
@@ -430,8 +542,11 @@ class Engine:
                     f"{json.dumps(allowed_ids, ensure_ascii=False)}. Validation error: {validation_hint(error)}"}]
 
     def advance(self, job):
-        if not protocol_is_current(job["config"]["protocol"]):
+        saved_protocol = job["config"]["protocol"]
+        if not protocol_is_current(saved_protocol):
             raise ValueError("舊版實驗已隔離；請複製至新版")
+        if not protocol_matches_fingerprint(saved_protocol, job["config"].get("protocol_hash")):
+            raise ValueError("此工作的凍結協議/source fingerprint 與目前程式不符；不可續跑，請重新預覽並事前登記")
         protocol = job["config"]["protocol"]
         check_identity = (self.uses_builtin_provider and protocol.get("dataset_kind") == "historical"
                           and protocol.get("version") in CANONICAL_CLAIM_VERSIONS
@@ -443,29 +558,66 @@ class Engine:
                 check = verify_model_identity(job["config"], self.identity_probe)
             except ModelIdentityUnavailable:
                 raise  # transient: the job pauses and can resume
-            except ModelIdentityError as error:
+            except ModelIdentityMismatch as error:
                 # Weights differ from the frozen digest: the job can never count again.
                 job["state"]["model_identity_failure"] = {"at": now(), "phase": "before_step", "reason": str(error)}
                 error.state = job["state"]
                 raise
+            except ModelIdentityError:
+                # Missing or malformed frozen metadata blocks inference but does not prove
+                # that the endpoint returned different weights; do not poison the job as a mismatch.
+                raise
             job["state"].setdefault("model_identity_checks", []).append({**check, "phase": "before_step"})
+        state_before_step = deepcopy(job["state"])
         state = self.graph.invoke({"job": job, "state": job["state"]})["state"]
         if check_identity:
             try:
                 check = verify_model_identity(job["config"], self.identity_probe)
             except ModelIdentityUnavailable as error:
-                # A proxy hiccup is not evidence that the weights changed: keep the step,
-                # pause the job, and let the next before-step check decide.
-                state.setdefault("model_identity_checks", []).append(
+                # Do not keep model outputs from a step whose weights could not be verified.
+                # Retry the whole checkpoint after the next before-step digest check.
+                added_keys = {item.get("key") for item in state.get("records", [])} - {
+                    item.get("key") for item in state_before_step.get("records", [])}
+                discarded = [item for item in state.get("records", []) if item.get("key") in added_keys]
+                previous_domains = set(state_before_step.get("research", {}))
+                discarded_research = [
+                    {"key": f"research-{domain}", "group": "R",
+                     "audit": _retry_model_audit(item.get("audit", {}).get("failed_model_audit")
+                                                   or item.get("audit", {}))}
+                    for domain, item in state.get("research", {}).items()
+                    if domain not in previous_domains and isinstance(item, dict)
+                    and isinstance(item.get("audit"), dict)
+                ]
+                previous_failed_calls = len(state_before_step.get("failed_model_calls", []))
+                discarded_failed_calls = [
+                    {**item, "audit": _retry_model_audit(item.get("audit", {}))}
+                    for item in state.get("failed_model_calls", [])[previous_failed_calls:]
+                ]
+                state_before_step.setdefault("model_identity_retry_audits", []).append({
+                    "at": now(), "phase": "after_step_unavailable", "reason": str(error),
+                    "unverified_state_sha256": digest(state),
+                    "discarded_decision_keys": sorted(added_keys),
+                    "discarded_model_records": [
+                        {"key": item.get("key"), "group": item.get("group"),
+                         "audit": _retry_model_audit(item.get("audit", {}))}
+                        for item in discarded],
+                    "discarded_research_records": discarded_research,
+                    "discarded_failed_model_calls": discarded_failed_calls})
+                state_before_step.setdefault("model_identity_checks", []).append(
                     {"checked_at": now(), "phase": "after_step", "status": "unavailable", "reason": str(error)})
-                raise StepFailure(str(error), state) from error
-            except ModelIdentityError as error:
+                raise StepFailure(str(error), state_before_step, provider_failure=True) from error
+            except ModelIdentityMismatch as error:
                 state["model_identity_failure"] = {"at": now(), "phase": "after_step", "reason": str(error)}
                 raise StepFailure(str(error), state) from error
+            except ModelIdentityError:
+                # ModelIdentityUnavailable is handled above; other identity errors are
+                # configuration failures, not proof that the weights changed.
+                raise
             state.setdefault("model_identity_checks", []).append({**check, "phase": "after_step"})
         failure = state.pop("_step_error", None)
+        provider_failure = state.pop("_step_provider_failure", False)
         if failure:
-            raise StepFailure(failure, state)
+            raise StepFailure(failure, state, provider_failure=provider_failure)
         return state
 
     def step(self, graph):
@@ -483,7 +635,7 @@ class Engine:
             label = "coordinator"
         elif len(state["research"]) < 4:
             pending = [domain for domain in DOMAIN_NAMES if domain not in state["research"]]
-            completed, failures, tasks = {}, [], {}
+            completed, failures, provider_failures, tasks = {}, [], [], {}
             for domain in pending:
                 items = state["inputs"]["domains"][domain]
                 if not items:
@@ -545,7 +697,8 @@ class Engine:
                                       f"fallback_reason={type(error).__name__}"],
                             "status": "degraded", "audit": {"fallback": "deterministic_source_extract",
                             "error_type": type(error).__name__, "error_message": str(error)[:300],
-                            "prompt_hash": digest(messages)}}
+                            "prompt_hash": digest(messages),
+                            "failed_model_audit": getattr(error, "model_attempt_audit", None)}}
 
             if tasks:
                 research_workers = min(self.parallel_workers, len(tasks))
@@ -566,12 +719,20 @@ class Engine:
                         except Exception as error:
                             logger.error("research agent pool failure domain=%s: %s: %s", domain, type(error).__name__, error)
                             failures.append(f"{domain}: {type(error).__name__}: {error}")
+                            provider_failures.append(is_provider_failure(error))
+                            attempt_audit = getattr(error, "model_attempt_audit", None)
+                            if attempt_audit:
+                                state.setdefault("failed_model_calls", []).append(
+                                    {"key": f"research-{domain}", "group": "R", "domain": domain,
+                                     "audit": attempt_audit})
             for domain in DOMAIN_NAMES:
                 if domain in completed:
                     state["research"][domain] = completed[domain]
             label = "parallel_research_agents[" + ",".join(pending) + "]"
             if failures:
                 state["_step_error"] = "；".join(failures)
+                state["_step_provider_failure"] = any(provider_failures)
+            state["compute_usage"] = compute_state_usage(state)
         elif "report" not in state:
             report = {"ticker": config["ticker"], "analysis_date": config["analysis_date"],
                 "research": {d: {k: v for k, v in item.items() if k != "audit"} for d, item in state["research"].items()},
@@ -600,7 +761,7 @@ class Engine:
                 calls = calls[:protocol.ollama_parallel or self.ollama_parallel]
             snapshot = list(state["records"])
             prepared = {call.key: (call, messages_for(call, state["report"], snapshot, state["memory"][call.group], protocol)) for call in calls}
-            completed, failures = {}, []
+            completed, failures, provider_failures = {}, [], []
 
             def run_decision(call, messages):
                 # The D switch round is checked against what this same agent wrote in round 1.
@@ -627,16 +788,24 @@ class Engine:
                     except Exception as error:
                         logger.error("decision pool failure call=%s: %s: %s", key, type(error).__name__, error)
                         failures.append(f"{key}: {type(error).__name__}: {error}")
+                        provider_failures.append(is_provider_failure(error))
+                        attempt_audit = getattr(error, "model_attempt_audit", None)
+                        if attempt_audit:
+                            call = prepared[key][0]
+                            state.setdefault("failed_model_calls", []).append(
+                                {"key": key, "group": call.group, "failed_model_call": True,
+                                 "audit": attempt_audit})
             for call in decision_plan(protocol):
                 if call.key in completed:
                     key = call.key
                     result, audit = completed[key]
                     state["records"].append({**asdict(call), "output": result, "audit": audit,
                         "report_hash": state["report_hash"], "completed_at": now()})
-            state["compute_usage"] = compute_usage(state["records"])
+            state["compute_usage"] = compute_state_usage(state)
             label = "parallel_decision_wave[" + ",".join(prepared) + "]"
             if failures:
                 state["_step_error"] = "；".join(failures)
+                state["_step_provider_failure"] = any(provider_failures)
         elif "decisions" not in state:
             candidates = {}
             for group in "ABCD":

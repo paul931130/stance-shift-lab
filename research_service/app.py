@@ -87,8 +87,9 @@ def create_app(store=None, model_call=None, start_worker=True):
         demo_mode=demo_mode, demo_model_id=demo_model_id, demo_dataset_id=demo_dataset_id,
         injected_model_call=model_call is not None,
         trusted_proxies=_env_list("RESEARCH_TRUSTED_PROXIES"),
-        # A queue held 30 min by the breaker counts as idle, so a broken endpoint does not bill forever.
-        autostop=AutoStop(lambda: 0 if breaker.held_for(30 * 60) else store.active_job_count()))
+        # A queue held 15 min by the breaker counts as idle; with the 15-min auto-stop a broken
+        # endpoint stops the GPU about 30 min after the first failures.
+        autostop=AutoStop(lambda: 0 if breaker.held_for(15 * 60) else store.active_job_count()))
     container_local = os.getenv("RESEARCH_CONTAINER_LOCAL", "false") == "true"
     public_origin = os.getenv("RESEARCH_PUBLIC_ORIGIN", "").rstrip("/")
     allowed_hosts = _env_list("RESEARCH_ALLOWED_HOSTS", "localhost,127.0.0.1,::1,testserver")

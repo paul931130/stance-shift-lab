@@ -14,23 +14,25 @@ from .logging_config import get_logger
 logger = get_logger(__name__)
 
 
-PROVIDER_FAILURE_NAMES = ("HTTPError", "URLError", "TimeoutError", "timeout", "ConnectionError",
-                          "RemoteDisconnected", "ConnectionRefusedError", "ConnectionResetError", "ModelIdentityUnavailable", "APIConnectionError",
-                          "ServiceUnavailableError", "InternalServerError")
+PROVIDER_FAILURE_NAMES = ("HTTPError", "URLError", "TimeoutError", "Timeout", "ConnectTimeout", "ReadTimeout",
+                          "ConnectionError", "RemoteDisconnected", "ConnectionRefusedError", "ConnectionResetError",
+                          "ModelIdentityUnavailable", "APIConnectionError", "ServiceUnavailableError",
+                          "InternalServerError")
 
 
 def is_provider_failure(error) -> bool:
     """Transport or provider trouble; a rejected answer or a data problem is not an endpoint failure.
 
-    Step failures carry the underlying errors as text ("technical: HTTPError: ..."), so the
-    names are matched in the message as well as in the exception chain.
+    Aggregated step failures carry an explicit provider_failure flag. Exception text is
+    deliberately not inspected: provider-looking words in validation or source data must
+    not pause dispatch.
     """
     seen = error
     while seen is not None:
-        if type(seen).__name__ in PROVIDER_FAILURE_NAMES:
+        if getattr(seen, "provider_failure", False) or type(seen).__name__ in PROVIDER_FAILURE_NAMES:
             return True
         seen = seen.__cause__ or seen.__context__
-    return any(f"{name}:" in str(error) for name in PROVIDER_FAILURE_NAMES)
+    return False
 
 
 class Breaker:

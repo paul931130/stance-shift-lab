@@ -5,8 +5,11 @@ This watchdog runs on the service heartbeat. The idle clock starts only when
 the instance is *seen* RUNNING while no job is queued or running, so a GPU the
 user has just started gets the full ``RESEARCH_GPUTW_AUTOSTOP_MINUTES``
 (default 15) to load its model and receive work. A job that fails pauses
-itself, so a batch that stalls on a provider error also empties the queue and
-ends up here instead of burning GPU time.
+itself. When the endpoint breaker holds the worker with queued jobs still
+present, the service reports the queue as idle to this watchdog after the
+breaker has remained open for 15 minutes; the ordinary idle timer then starts.
+This lets a stalled batch stop billing without treating the queued cases as
+completed or removing them.
 
 It never starts an instance, and it is inert without a GPUtw key and
 GPUTW_INSTANCE_ID. A key without the instances:manage scope is tried once and

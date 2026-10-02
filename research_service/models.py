@@ -464,7 +464,8 @@ _WINDOW_AFTER = re.compile(r"^(?:-|\s)?(?:day|days|日|天|個交易日|交易�
 
 
 _MONTH_BEFORE = re.compile(r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*$", re.I)
-_YEAR_BEFORE = re.compile(r"(?:\b(?:in|on|of|since|during|by|from|to|through|until|year|fiscal|fy|q[1-4]|h[12])\s*|"
+_YEAR_BEFORE = re.compile(r"(?:\b(?:in|on|since|during|by|from|to|through|until|year|fiscal|fy|q[1-4]|h[12])\s*|"
+                          r"\bas\s+of\s+|"
                           r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*|\d{1,2},\s*)$", re.I)
 _ISO_DATE = re.compile(r"\b(?:19|20)\d\d-\d\d-\d\d\b")
 _VALUE_AFTER = re.compile(r"^\s*(?:%|percent|usd|\$|dollars?|billion|million|thousand|bn|mn|times|shares|億|萬|美元|元|倍)", re.I)
@@ -1011,6 +1012,14 @@ def generate(protocol, messages, seed=None, temperature=None):
             failures.append(type(error).__name__)
             attempt_audits.append({"attempt": attempt, "status": "failed", "error_type": type(error).__name__, "usage": usage})
             if attempt >= protocol.provider_retry_attempts:
+                try:
+                    error.model_attempt_audit = {"provider_attempts": attempt,
+                        "attempts": attempt_audits, "validation_retries": [],
+                        "usage_complete": all(isinstance(item.get("usage", {}).get("prompt_tokens"), (int, float))
+                                              and isinstance(item.get("usage", {}).get("completion_tokens"), (int, float))
+                                              for item in attempt_audits)}
+                except Exception:
+                    pass
                 raise
             time.sleep(.5 * attempt)
 
