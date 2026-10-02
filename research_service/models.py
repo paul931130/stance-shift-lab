@@ -452,7 +452,8 @@ def validate_numeric_claims(result, evidence, redact=False, strict=False, canoni
         result["numeric_claims"] = valid
         result["numeric_claims_removed"] = invalid_claim_count
         result["redacted_numbers"] = sorted({item["value"] for item in unsupported})
-        result["redacted_number_claims"] = [{"field": item["field"], "value": item["value"]}
+        result["redacted_number_claims"] = [{"field": item["field"], "value": item["value"],
+                                             "start": item["start"], "end": item["end"]}
                                             for item in unsupported]
     elif invalid_claim_count:
         # A schema-valid but unused claim is not evidence; never retain it as if validated.
@@ -460,6 +461,54 @@ def validate_numeric_claims(result, evidence, redact=False, strict=False, canoni
 
 
 _WINDOW_AFTER = re.compile(r"^(?:-|\s)?(?:day|days|日|天|個交易日|交易日|session|sessions|trading|week|weeks|週|month|months|個月|月|quarter|quarters|季|year|years|年)", re.I)
+
+
+_MONTH_BEFORE = re.compile(r"(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s*$", re.I)
+_ISO_DATE = re.compile(r"\b(?:19|20)\d\d-\d\d-\d\d\b")
+_VALUE_AFTER = re.compile(r"^\s*(?:%|percent|usd|\$|dollars?|billion|million|thousand|bn|mn|times|shares|億|萬|美元|元|倍)", re.I)
+
+
+def _is_reference_label(text, start, end, number):
+    """'20-day', 'March 31, 2021' or '2021-03-31' name a window or a date, not a value.
+
+    A year-sized number followed by a unit, currency, scale or percent ('2000 USD') is a value.
+    """
+    if number != number.to_integral_value() or _VALUE_AFTER.match(text[end:end + 12]):
+        return False
+    if any(m.start() <= start and end <= m.end() for m in _ISO_DATE.finditer(text)):
+        return True
+    if 0 < number <= 365 and _WINDOW_AFTER.match(text[end:end + 16]):
+        return True
+    if 1 <= number <= 31 and _MONTH_BEFORE.search(text[max(0, start - 12):start]):
+        return True
+    return 1990 <= number <= 2035 and end - start == 4
+
+
+def unsupported_numbers(claims, original, evidence):
+    """v3-1002.3+ record-only check: numbers in the model's prose that no source value supports.
+
+    A number counts as supported when it equals, or rounds from, any value in the frozen
+    evidence (also as a percent or without its sign); window lengths and dates are labels.
+    """
+    values = set()
+    for item in evidence:
+        for field in item.get("numeric_fields") or []:
+            if isinstance(field.get("value"), (int, float)):
+                values.add(Decimal(str(field["value"])))
+        values.update(number for _, _, number, _ in _numeric_tokens(item.get("claim", "")))
+    candidates = values | {v * 100 for v in values} | {abs(v) for v in values} | {abs(v) * 100 for v in values}
+    kept = []
+    for claim in claims:
+        match = re.fullmatch(r"risks\[(\d+)\]", claim["field"])
+        text = (original.get("risks") or [])[int(match.group(1))] if match else original.get(claim["field"], "")
+        number = Decimal(claim["value"].replace(",", ""))
+        if _is_reference_label(str(text), claim["start"], claim["end"], number):
+            continue
+        if any(number == value or _rounds_to_displayed_precision(value, number)
+               or _rounds_to_significant_figures(value, number) for value in candidates):
+            continue
+        kept.append({"field": claim["field"], "value": claim["value"]})
+    return kept
 
 
 def _is_label_number(text, start, end, number):
@@ -777,6 +826,9 @@ def messages_for(call, report, records, memory, protocol):
             "an argument counts only as far as the cited evidence actually supports it, and a claim with no supporting evidence counts for nothing. "
             "Decide from the original evidence and calibration, using the debate to find which evidence matters, not from how forcefully or how often a side argued. "
             "Compare forecast magnitudes against that evidence. Maturity memory is prior-experiment calibration, not current-case evidence; a tie is not abstention.")
+        if protocol.version in EVIDENCE_REF_VERSIONS:
+            common += (" The Adjudicator must choose Buy or Sell: synthesize what both sides agree the evidence shows "
+                       "and pick the direction it supports more; Hold is not available to the Adjudicator.")
     # A and every B sample deliberately receive byte-identical prompts and no memory.
     payload = {"report": _compact_report(report),
                "history": _compact_history(visible_history(call, records, protocol), protocol.rationale_chars or 320)}
@@ -799,6 +851,8 @@ def output_schema_for(messages):
         schema["properties"]["action"]["enum"] = ["Sell"]
         schema["properties"]["expected_return_pct"] = {"type": "number", "minimum": -60, "exclusiveMaximum": 0}
         schema["required"].append("strongest_counterpoint")
+    if "The Adjudicator must choose Buy or Sell" in system:
+        schema["properties"]["action"]["enum"] = ["Buy", "Sell"]
     if "role-switch round" in system:
         schema["properties"]["rebutted_claim"] = {"type": "string", "minLength": 1, "maxLength": 240}
         schema["properties"]["confidence_shift"] = {"type": "number", "minimum": -1, "maximum": 1}

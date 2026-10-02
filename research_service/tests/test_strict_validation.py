@@ -163,3 +163,28 @@ class V3_1002_3DefaultsTests(unittest.TestCase):
         self.assertEqual(kept["rationale"], original["rationale"])
         self.assertEqual(kept["risks"], original["risks"])
         self.assertNotIn("redacted_numbers", kept)
+
+
+class AdjudicatorAndRecordTests(unittest.TestCase):
+    def test_v3_1002_3_adjudicator_must_choose_buy_or_sell(self):
+        from research_service.models import messages_for, output_schema_for
+        from research_service.protocol import StudyProtocol, decision_plan
+        report = {"base_rates": {"hold_band_pct": 3.0}, "evidence": [], "research": {}}
+        for version, enum in (("v3-1002.3", ["Buy", "Sell"]), ("v3-1002.1", ["Buy", "Hold", "Sell"])):
+            protocol = StudyProtocol(version=version)
+            call = next(c for c in decision_plan(protocol) if c.key == "d-adjudication")
+            schema = output_schema_for(messages_for(call, report, [], [], protocol))
+            self.assertEqual(schema["properties"]["action"]["enum"], enum, version)
+
+    def test_record_only_ignores_labels_and_source_values(self):
+        from research_service.models import unsupported_numbers
+        evidence = [{"evidence_id": "E12", "claim": "return20=-0.041720",
+                     "numeric_fields": [{"metric": "return20", "period": "2021-03-30", "unit": "ratio", "value": -0.04172}]}]
+        text = "On March 30, 2021 the 20-day return was -0.041720 (E12), about 4.17%, and revenue hit 999 (E2)."
+        claims = []
+        import re
+        from research_service.models import NUMBER_PATTERN
+        for m in re.finditer(NUMBER_PATTERN, text):
+            claims.append({"field": "rationale", "value": m.group(0), "start": m.start(), "end": m.end()})
+        left = unsupported_numbers(claims, {"rationale": text}, evidence)
+        self.assertEqual([c["value"] for c in left], ["999"])

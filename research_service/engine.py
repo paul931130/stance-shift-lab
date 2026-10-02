@@ -14,7 +14,7 @@ from .anonymize import PLACEHOLDER, anonymize
 from .backtest import evaluate
 from .data import digest, research_inputs
 from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate, messages_for,
-                     prompt_text, unalias_evidence_ids, validate_decision, validate_research)
+                     prompt_text, unalias_evidence_ids, unsupported_numbers, validate_decision, validate_research)
 from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, NUMERIC_CLAIM_VERSIONS, STRICT_VALIDATION_VERSIONS, StudyProtocol, decision_plan, decision_wave, protocol_is_current,
                        temperature_for)
 from .storage import now
@@ -322,7 +322,8 @@ class Engine:
                         audit["validation_retries"] = validation_failures
                         if protocol.version in EVIDENCE_REF_VERSIONS:
                             # v3-1002.3+: record, never remove; the model's own wording is kept.
-                            audit["unsupported_numbers"] = redacted.get("redacted_number_claims", [])
+                            audit["unsupported_numbers"] = unsupported_numbers(
+                                redacted.get("redacted_number_claims", []), result, decision_evidence)
                             redacted = keep_prose(redacted, result)
                         else:
                             audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
@@ -393,7 +394,8 @@ class Engine:
                         audit["validation_retries"] = validation_failures
                         if protocol.version in EVIDENCE_REF_VERSIONS:
                             # v3-1002.3+: record, never remove; the model's own wording is kept.
-                            audit["unsupported_numbers"] = redacted.get("redacted_number_claims", [])
+                            audit["unsupported_numbers"] = unsupported_numbers(
+                                redacted.get("redacted_number_claims", []), result, items)
                             redacted = keep_prose(redacted, result)
                         else:
                             audit["numeric_redaction"] = redacted.get("redacted_numbers", [])
