@@ -865,6 +865,10 @@ def output_schema_for(messages):
         schema["properties"]["action"]["enum"] = ["Sell"]
         schema["properties"]["expected_return_pct"] = {"type": "number", "minimum": -60, "exclusiveMaximum": 0}
         schema["required"].append("strongest_counterpoint")
+    if "Keep rationale under 600 characters" in system:
+        # v3-1002.3+: 600 is the requested length; reject only clear overruns (Gemini's D switch
+        # turn went past 700 three times). Later turns still see 600 characters of it.
+        schema["properties"]["rationale"] = {"type": "string", "maxLength": 1500}
     if "The Adjudicator must choose Buy or Sell" in system:
         schema["properties"]["action"]["enum"] = ["Buy", "Sell"]
     if "role-switch round" in system:

@@ -231,3 +231,15 @@ class ReviewFixTests(unittest.TestCase):
                             ("March 31, 2021 close", True), ("FY2024 guidance", True)):
             start = text.index("20")
             self.assertEqual(_is_reference_label(text, start, start + 4, Decimal(text[start:start + 4])), label, text)
+
+
+class RationaleLengthTests(unittest.TestCase):
+    def test_new_version_tolerates_overruns_and_old_versions_keep_700(self):
+        from research_service.models import messages_for, output_schema_for
+        from research_service.protocol import StudyProtocol, decision_plan
+        report = {"base_rates": {"hold_band_pct": 3.0}, "evidence": [], "research": {}}
+        for version, limit in (("v3-1002.3", 1500), ("v3-1002.1", 700)):
+            protocol = StudyProtocol(version=version)
+            call = next(c for c in decision_plan(protocol) if c.key == "d-r2-agent-a")
+            schema = output_schema_for(messages_for(call, report, [], [], protocol))
+            self.assertEqual(schema["properties"]["rationale"]["maxLength"], limit, version)
