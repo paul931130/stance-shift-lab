@@ -15,7 +15,7 @@ def _synthetic_report():
          "numeric_fields": [{"metric": "return20", "period": "2024-12-31",
                              "unit": "decimal_return", "value": .01}]},
         {"evidence_id": "canary-fundamental", "domain": "fundamental",
-         "comparative": True, "claim": "Synthetic comparable metric: current=10 units; prior=9 units."},
+         "comparative": True, "claim": "Synthetic fundamental metric improved compared with the prior period."},
         {"evidence_id": "canary-sentiment", "domain": "sentiment",
          "headline": "Synthetic target headline", "claim": "Synthetic target headline",
          "evidence_scope": "target",
@@ -50,7 +50,11 @@ def run_model_canary(protocol: StudyProtocol, provider=generate):
         try:
             messages = messages_for(call, report, records, [], protocol)
             if protocol.version in NUMERIC_CLAIM_VERSIONS:
-                messages[0]["content"] += " For this synthetic check, include one supported numerical fact with numeric_claims."
+                messages[0]["content"] += (
+                    " For this synthetic check, put this exact supported source fact in rationale and include "
+                    "one matching numeric_claims item (evidence_id=canary-technical, metric=return20, "
+                    "period=2024-12-31, unit=decimal_return, value=0.01, quote=the exact sentence): "
+                    "return20 [2024-12-31] = 0.01 decimal_return. Do not write any other numbers in prose.")
             result, audit = provider(protocol, messages, seed=protocol.inference_seed + index)
             validate_decision(result, report["evidence"], call, prompt_text(messages),
                               claim_bound=protocol.version in NUMERIC_CLAIM_VERSIONS,
@@ -71,9 +75,10 @@ def run_model_canary(protocol: StudyProtocol, provider=generate):
             checks.append({"call": call.key, "group": call.group, "stance": call.stance,
                            "status": "fail", "error_type": type(error).__name__,
                            "message": str(error)[:240]})
-            if call.round == 1:
-                checks.append({"call": calls[-1].key, "status": "blocked", "message": "第 1 輪未通過，不能驗證交換轮"})
-                break
+            for blocked_call in calls[index:]:
+                checks.append({"call": blocked_call.key, "status": "blocked",
+                               "message": f"前置 canary {call.key} 未通過，後續呼叫不執行"})
+            break
     return {"status": "pass" if all(item["status"] == "pass" for item in checks) else "fail",
             "qualification": "synthetic_only", "formal_data_touched": False,
             "model": protocol.model, "protocol_hash": protocol.fingerprint,

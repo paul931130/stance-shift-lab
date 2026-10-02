@@ -494,7 +494,7 @@ def _numeric_validation_quality(complete):
     known = False
     for job in complete:
         version = job.get("config", {}).get("protocol", {}).get("version")
-        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4"}:
+        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2"}:
             known = True
         records = job.get("state", {}).get("records", [])
         case_redacted_calls = 0

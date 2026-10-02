@@ -42,6 +42,29 @@ class ModelCanaryTests(unittest.TestCase):
                 result = run_model_canary(StudyProtocol(dataset_kind="synthetic"), broken)
                 self.assertEqual(result["status"], "fail")
 
+    def test_failed_first_call_blocks_remaining_paid_model_calls(self):
+        calls = []
+
+        def unavailable(protocol, messages, seed=None):
+            calls.append(messages[0]["content"])
+            raise TimeoutError("provider unavailable")
+
+        result = run_model_canary(StudyProtocol(dataset_kind="synthetic"), unavailable)
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual([item["status"] for item in result["checks"]], ["fail", "blocked", "blocked"])
+
+    def test_numeric_canary_tells_model_to_copy_a_supported_canonical_fact(self):
+        seen = []
+
+        def capture(protocol, messages, seed=None):
+            seen.append(messages[0]["content"])
+            return fake_provider(protocol, messages, seed)
+
+        result = run_model_canary(StudyProtocol(dataset_kind="synthetic"), capture)
+        self.assertEqual(result["status"], "pass")
+        self.assertTrue(all("return20 [2024-12-31] = 0.01 decimal_return" in prompt for prompt in seen))
+
 
 if __name__ == "__main__":
     unittest.main()

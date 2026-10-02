@@ -114,3 +114,11 @@ class SelfRebuttalTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OutputCapTests(unittest.TestCase):
+    def test_v3_1002_allows_2048_tokens_and_older_versions_keep_1024(self):
+        from research_service.protocol import StudyProtocol
+        self.assertEqual(StudyProtocol().max_output_tokens, 2048)
+        self.assertEqual(StudyProtocol(version="v3-1001.3").max_output_tokens, 1024)
+        self.assertEqual(StudyProtocol(version="v3-0930.3").max_output_tokens, 1024)

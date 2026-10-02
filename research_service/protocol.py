@@ -40,20 +40,23 @@ DESIGNS = {
     "quarterly": {"dates": QUARTER_DATES, "primary_horizon": 60, "horizons": (30, 60, 90), "news_window_days": 90},
     "monthly": {"dates": MONTH_END_DATES, "primary_horizon": 20, "horizons": (10, 20, 30), "news_window_days": 30},
 }
-QUARTERLY_VERSION = "v3-1001.3"
-MONTHLY_VERSION = "v3-1001.4"
-MONTHLY_VERSIONS = frozenset({"v3-0930.2", "v3-0930.4", "v3-1001.2", MONTHLY_VERSION})
+QUARTERLY_VERSION = "v3-1002.1"
+MONTHLY_VERSION = "v3-1002.2"
+MONTHLY_VERSIONS = frozenset({"v3-0930.2", "v3-0930.4", "v3-1001.2", "v3-1001.4", MONTHLY_VERSION})
 # From v3-1001.x the inference settings that change model output (context length,
 # concurrent Ollama calls) are protocol fields, and numeric claims and the
 # role-switch rebuttal are checked more strictly (see models.validate_*).
-FROZEN_INFERENCE_VERSIONS = frozenset({"v3-1001.1", "v3-1001.2", QUARTERLY_VERSION, MONTHLY_VERSION})
+FROZEN_INFERENCE_VERSIONS = frozenset({"v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION})
 STRICT_VALIDATION_VERSIONS = FROZEN_INFERENCE_VERSIONS
-CANONICAL_CLAIM_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION})
+CANONICAL_CLAIM_VERSIONS = frozenset({"v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION})
+# The canonical numeric sentences made qwen3:32b outputs reach the 1024-token cap
+# (truncated JSON in the first v3-1001.3 case); v3-1002.x allows 2048.
+LONG_OUTPUT_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION})
 DEFAULT_CONTEXT_LENGTH = 8192
 # From v3-0930.1 the prompt carries FinBERT indicators computed over every eligible headline instead of a
 # 12-headline sample (see data.research_inputs); earlier versions keep the headline sample.
-INDICATOR_VERSIONS = ("v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", QUARTERLY_VERSION, MONTHLY_VERSION)
-NUMERIC_CLAIM_VERSIONS = frozenset({"v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", QUARTERLY_VERSION, MONTHLY_VERSION})
+INDICATOR_VERSIONS = ("v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION)
+NUMERIC_CLAIM_VERSIONS = frozenset({"v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION})
 DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
 BASE_RATE_MIN_WINDOWS = 8
 DEFAULT_RESEARCH_MODEL = "ollama/qwen3:14b"
@@ -85,7 +88,8 @@ class StudyProtocol:
     allow_small_model: bool = False
     temperature: float = 0.2
     voting_temperature: float = 0.8
-    max_output_tokens: int = 1024
+    # None = the version default: 2048 from v3-1002.x, 1024 before (hashes of older versions unchanged).
+    max_output_tokens: int | None = None
     max_rounds: int = 3
     voting_samples: Literal[5, 7] = 7
     primary_horizon: int = 60
@@ -115,8 +119,10 @@ class StudyProtocol:
     ollama_parallel: int | None = None
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", QUARTERLY_VERSION, MONTHLY_VERSION):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", QUARTERLY_VERSION, MONTHLY_VERSION):
             raise ValueError("Unsupported protocol version")
+        if self.max_output_tokens is None:
+            object.__setattr__(self, "max_output_tokens", 2048 if self.version in LONG_OUTPUT_VERSIONS else 1024)
         if self.version in FROZEN_INFERENCE_VERSIONS:
             if self.model_context_length is None:
                 object.__setattr__(self, "model_context_length", DEFAULT_CONTEXT_LENGTH)
