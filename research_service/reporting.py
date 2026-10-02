@@ -489,46 +489,129 @@ def _temporal_split_results(complete, protocol):
 
 
 def _numeric_validation_quality(complete):
-    by_flag = {"no_redaction": [], "redaction": []}
-    redacted_calls = redacted_values = removed_claims = 0
-    known = False
+    def new_bucket():
+        return {"cases": set(), "calls": 0, "audited_calls": 0,
+                "calls_with_unsupported_numbers": 0, "unsupported_number_mentions": 0,
+                "legacy_redacted_calls": 0, "legacy_removed_numbers": 0,
+                "legacy_removed_claims": 0}
+
+    decision = {group: new_bucket() for group in GROUPS}
+    research = {domain: new_bucket() for domain in ("technical", "fundamental", "sentiment", "macro")}
+
+    def record(bucket, case_id, audit):
+        bucket["cases"].add(case_id)
+        bucket["calls"] += 1
+        if not isinstance(audit, dict):
+            return
+        bucket["audited_calls"] += 1
+        unsupported = audit.get("unsupported_numbers") or []
+        if not isinstance(unsupported, list):
+            unsupported = []
+        if unsupported:
+            bucket["calls_with_unsupported_numbers"] += 1
+            bucket["unsupported_number_mentions"] += len(unsupported)
+        legacy = audit.get("numeric_redaction") or []
+        if not isinstance(legacy, list):
+            legacy = [legacy]
+        removed = int(audit.get("numeric_claims_removed", 0) or 0)
+        if legacy or removed:
+            bucket["legacy_redacted_calls"] += 1
+            bucket["legacy_removed_numbers"] += len(legacy)
+            bucket["legacy_removed_claims"] += removed
+
     for job in complete:
-        version = job.get("config", {}).get("protocol", {}).get("version")
-        if version in {"v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", "v3-1002.3", "v3-1002.4"}:
-            known = True
-        records = job.get("state", {}).get("records", [])
-        case_redacted_calls = 0
-        for record in records:
-            audit = record.get("audit", {}) or {}
-            # v3-1002.3+ records unsupported numbers without removing them.
-            values = audit.get("numeric_redaction", []) or audit.get("unsupported_numbers", [])
-            claims_removed = int(audit.get("numeric_claims_removed", 0) or 0)
-            if values or claims_removed:
-                case_redacted_calls += 1
-                redacted_calls += 1
-                redacted_values += len(values)
-                removed_claims += claims_removed
-        by_flag["redaction" if case_redacted_calls else "no_redaction"].append(job)
-    strata = {}
-    for name, jobs in by_flag.items():
-        by_group = {}
-        for group in "ABCD":
-            rows = [_primary_candidate_row(job, group) for job in jobs]
-            rows = [row for row in rows if row is not None]
-            directional = [row for row in rows if row.get("correct") is not None]
-            by_group[group] = {"cases": len(rows), "directional_cases": len(directional),
-                               "coverage": len(directional) / len(rows) if rows else None,
-                               "selective_accuracy": (sum(bool(row["correct"]) for row in directional) / len(directional)
-                                                      if directional else None),
-                               "mean_net_return": (statistics.fmean(float(row["net_return"]) for row in rows
-                                                   if isinstance(row.get("net_return"), (int, float)))
-                                                   if any(isinstance(row.get("net_return"), (int, float)) for row in rows) else None)}
-        strata[name] = {"cases": len(jobs), "by_group": by_group}
-    return {"status": "available" if known else "not_recorded",
-            "redacted_cases": len(by_flag["redaction"]), "redacted_calls": redacted_calls,
-            "redacted_numeric_tokens": redacted_values, "removed_numeric_claims": removed_claims,
-            "strata": strata,
-            "note": "依每案任一決策呼叫曾移除數字分層；僅作品質／選擇診斷，不代表移除數字造成或未造成決策改變。"}
+        config = job.get("config", {})
+        case_id = config.get("dataset_id") or f"{config.get('ticker', '?')}:{config.get('analysis_date', '?')}"
+        state = job.get("state", {})
+        for item in state.get("records", []):
+            group = item.get("group")
+            if group in decision:
+                record(decision[group], case_id, item.get("audit"))
+        for domain, item in state.get("research", {}).items():
+            bucket = research.get(domain)
+            audit = item.get("audit") or {}
+            # Deterministic source-locked summaries are not model outputs.
+            if bucket is not None and (audit.get("prompt_hash") or audit.get("fallback")):
+                record(bucket, case_id, audit)
+
+    def summarize(buckets):
+        result = {}
+        for name, bucket in buckets.items():
+            denominator = bucket["audited_calls"]
+            result[name] = {
+                "cases": len(bucket["cases"]), "calls": bucket["calls"],
+                "audited_calls": denominator,
+                "calls_with_unsupported_numbers": bucket["calls_with_unsupported_numbers"],
+                "unsupported_call_rate": (bucket["calls_with_unsupported_numbers"] / denominator
+                                          if denominator else None),
+                "unsupported_number_mentions": bucket["unsupported_number_mentions"],
+                "legacy_redacted_calls": bucket["legacy_redacted_calls"],
+                "legacy_removed_numbers": bucket["legacy_removed_numbers"],
+                "legacy_removed_claims": bucket["legacy_removed_claims"],
+            }
+        return result
+
+    decision_summary, research_summary = summarize(decision), summarize(research)
+    totals = new_bucket()
+    for group in GROUPS:
+        bucket = decision[group]
+        for key in ("calls", "audited_calls", "calls_with_unsupported_numbers", "unsupported_number_mentions",
+                    "legacy_redacted_calls", "legacy_removed_numbers", "legacy_removed_claims"):
+            totals[key] += bucket[key]
+        totals["cases"].update(bucket["cases"])
+    denominator = totals["audited_calls"]
+    return {"status": "available" if totals["calls"] else "not_recorded",
+            "unit": "model_output_call",
+            "decision_by_group": decision_summary, "research_by_domain": research_summary,
+            "decision_overall": {"cases": len(totals["cases"]), "calls": totals["calls"],
+                "audited_calls": denominator,
+                "calls_with_unsupported_numbers": totals["calls_with_unsupported_numbers"],
+                "unsupported_call_rate": (totals["calls_with_unsupported_numbers"] / denominator
+                                          if denominator else None),
+                "unsupported_number_mentions": totals["unsupported_number_mentions"],
+                "legacy_redacted_calls": totals["legacy_redacted_calls"],
+                "legacy_removed_numbers": totals["legacy_removed_numbers"],
+                "legacy_removed_claims": totals["legacy_removed_claims"]},
+            "note": ("unsupported_call_rate 的分母是有audit紀錄的模型輸出次數；每次呼叫只要至少一個未匹配來源數字即計一次。"
+                     "數字出現次數另列；這不是所有數字的token比例，也不等於事實正確率。舊版移除數字另列，不併入新版指標。")}
+
+
+def _primary_inference(comparisons, protocol):
+    """One fixed Holm family for the two preregistered D-vs-C co-primary endpoints."""
+    horizon = protocol.get("primary_horizon", 60)
+    primary = next((item for item in comparisons
+                    if item.get("groups") == ["D", "C"] and item.get("horizon") == horizon
+                    and item.get("cost_model") == "corwin_schultz"
+                    and item.get("decision_layer") == "candidate" and item.get("portfolio_basis") == "all"), None)
+    endpoints = (
+        ("direction_accuracy", "mcnemar", "accuracy_difference"),
+        ("risk_adjusted_return", "ledoit_wolf", "annualized_difference"),
+    )
+    rows = []
+    for name, method, effect_key in endpoints:
+        result = (primary or {}).get(method, {})
+        pvalue = result.get("pvalue")
+        rows.append({"endpoint": name, "method": method,
+                     "effect_difference": result.get(effect_key),
+                     "pvalue": pvalue if isinstance(pvalue, (int, float)) else None,
+                     "status": result.get("status", "ok" if isinstance(pvalue, (int, float))
+                                           else "not_estimable")})
+    # Keep the family size at two even when an endpoint is not estimable. Treating
+    # its missing p-value as 1 prevents the remaining endpoint from escaping correction.
+    adjusted = holm_adjust([row["pvalue"] if row["pvalue"] is not None else 1.0 for row in rows])
+    for row, value in zip(rows, adjusted):
+        row["holm_pvalue"] = value if row["pvalue"] is not None else None
+        if primary is not None:
+            primary[row["method"]]["primary_holm_pvalue"] = row["holm_pvalue"]
+    estimable = all(row["pvalue"] is not None and isinstance(row["effect_difference"], (int, float))
+                    for row in rows)
+    success = (all(row["effect_difference"] > 0 and row["holm_pvalue"] < .05 for row in rows)
+               if estimable else None)
+    return {"status": "estimable" if estimable else "pending_or_not_estimable",
+            "family": "D_vs_C_primary_direction_accuracy_and_risk_adjusted_return",
+            "family_size": 2, "alpha": .05, "endpoints": rows, "success": success,
+            "rule": "兩個端點都須為正向且Holm校正p<0.05，才支持主要假說；任一端點不可估計則不判定成功。",
+            "note": "方向端點用雙側 exact McNemar；風險調整報酬端點用 studentized circular block bootstrap。兩者皆為同一預先指定主要family。"}
 
 
 def _sentiment_coverage_report(complete):
@@ -642,6 +725,7 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
                                   and comparison[method].get("pvalue") is not None]
                         for item, adjusted in zip(family, holm_adjust([item["pvalue"] for item in family])):
                             item["holm_pvalue"] = adjusted
+    primary_inference = _primary_inference(comparisons, protocol)
     inferred = include_inference and len(complete) >= MIN_CASES_FOR_INFERENCE
     completion["inference_ready"] = inferred
     completion["inference_minimum_cases"] = MIN_CASES_FOR_INFERENCE
@@ -654,6 +738,7 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
             "excluded_nonformal_runs": excluded["nonformal"],
             "excluded_nonformal_reasons": excluded["nonformal_reasons"], "summary": summary,
             "comparisons": comparisons, "completeness": _completeness(complete),
+            "primary_inference": primary_inference,
             "completion": completion,
             "temporal_split_results": _temporal_split_results(complete, protocol),
             "numeric_validation_quality": _numeric_validation_quality(complete),
@@ -671,7 +756,8 @@ def study_report(jobs, *, include_inference=True, formal_only=True, eligible_dat
                 "Compute matching is by call count (A=1, B=7, C=7, D=7); token counts differ by arm and are reported, not equalised",
                 "First valid completed run per ticker/date is fixed for aggregate analysis; later reruns remain separate audit artifacts",
                 "McNemar uses mutually directional cases; paired date-cluster and contiguous-date-block percentile intervals are an additional direction-accuracy sensitivity analysis, not a second p-value",
-                "Holm correction is applied within each horizon/cost/layer/basis/method p-value family",
+                "Primary claim is D vs C at the primary horizon, Corwin-Schultz cost, candidate layer and all-sleeve basis; both direction accuracy and Ledoit-Wolf Sharpe differences must be positive and below 0.05 after Holm adjustment across the fixed two-endpoint family",
+                "Secondary Holm families contain the D-vs-A/B/C contrasts within each horizon/cost/layer/basis/method combination; they do not replace the fixed primary family",
                 "Formal inference is withheld until at least 30 unique completed historical cases are available",
                 "Inference readiness is not the same as all jobs complete, quality passing, or a complete preregistered sample",
                 "Runs using deterministic research-source fallback are excluded from formal aggregate statistics",

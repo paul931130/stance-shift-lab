@@ -57,10 +57,28 @@ function temporalSplitBlock(result) {
   return `<section class="stats-substep"><div class="section-label">Training／Validation／Test 分開呈現</div><p class="hint">各年度區段僅報描述統計，分母與下注覆蓋分開列示；Test 僅供最終評估，不用於調參。</p><div class="table-wrap"><table><thead><tr><th>切分</th><th>方法</th><th>完成/目標</th><th>有方向案例</th><th>覆蓋率</th><th>條件準確率</th><th>平均成本後報酬</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
 }
 
+function primaryInferenceBlock(result) {
+  if (!result) return '';
+  const rows = (result.endpoints || []).map(item => {
+    const effect = item.endpoint === 'direction_accuracy'
+      ? percentage(item.effect_difference) : number(item.effect_difference);
+    const label = item.endpoint === 'direction_accuracy' ? '方向準確率差（D − C）' : '年化 Sharpe 差（D − C）';
+    return `<tr><td>${label}</td><td>${effect}</td><td>${item.pvalue == null ? '不可估計' : number(item.pvalue)}</td><td>${item.holm_pvalue == null ? '—' : number(item.holm_pvalue)}</td></tr>`;
+  }).join('');
+  const verdict = result.success === true ? '兩個主要端點都達到預先指定條件'
+    : result.success === false ? '未達到預先指定的共同成功條件'
+      : '主要端點尚未全部可估計';
+  return `<section class="stats-substep"><div class="section-label">預先指定的主要假說</div><p class="hint">${escape(verdict)}。D 對 C；方向準確率與年化 Sharpe 差皆須為正，且同一個兩端點 family 經 Holm 校正後 p &lt; ${result.alpha}。${escape(result.note || '')}</p><div class="table-wrap"><table><thead><tr><th>端點</th><th>差值</th><th>原始 p</th><th>Holm p</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+}
+
 function numericQualityBlock(q) {
   if (!q || q.status !== 'available') return '';
-  const body = Object.entries(q.strata || {}).map(([name, stratum]) => `<tr><td>${name === 'redaction' ? '移除數字或丟棄數字主張' : '無數字修補'}</td><td>${stratum.cases}</td>${['A', 'B', 'C', 'D'].map(group => `<td>${stratum.by_group?.[group]?.cases ? `${percentage(stratum.by_group[group].selective_accuracy)} · ${stratum.by_group[group].directional_cases}/${stratum.by_group[group].cases}` : '—'}</td>`).join('')}</tr>`).join('');
-  return `<section class="stats-substep"><div class="section-label">數字驗證品質分層</div><p class="hint">${q.redacted_cases} 個案例、${q.redacted_calls} 個決策呼叫曾移除數字或丟棄數字主張（${q.redacted_numeric_tokens} 個數字、${q.removed_numeric_claims || 0} 項主張）。分層是品質／選擇診斷，不證明修補是否改變決策。</p><div class="table-wrap"><table><thead><tr><th>品質層</th><th>案例數</th><th>A 準確率 · n</th><th>B 準確率 · n</th><th>C 準確率 · n</th><th>D 準確率 · n</th></tr></thead><tbody>${body}</tbody></table></div></section>`;
+  const decisionRows = Object.entries(q.decision_by_group || {}).map(([group, item]) =>
+    `<tr><td>${escape(group)}</td><td>${item.cases}</td><td>${item.calls_with_unsupported_numbers}/${item.audited_calls}</td><td>${percentage(item.unsupported_call_rate)}</td><td>${item.unsupported_number_mentions}</td><td>${item.legacy_redacted_calls}</td></tr>`).join('');
+  const researchRows = Object.entries(q.research_by_domain || {}).map(([domain, item]) =>
+    `<tr><td>${escape(domain)}</td><td>${item.cases}</td><td>${item.calls_with_unsupported_numbers}/${item.audited_calls}</td><td>${percentage(item.unsupported_call_rate)}</td><td>${item.unsupported_number_mentions}</td><td>${item.legacy_redacted_calls}</td></tr>`).join('');
+  const overall = q.decision_overall || {};
+  return `<section class="stats-substep"><div class="section-label">未匹配來源數字品質指標</div><p class="hint">決策輸出 ${overall.calls_with_unsupported_numbers || 0}/${overall.audited_calls || 0} 次呼叫含至少一項未匹配來源數字（${percentage(overall.unsupported_call_rate)}；${overall.unsupported_number_mentions || 0} 次數值出現）。舊協議移除數字的呼叫另列 ${overall.legacy_redacted_calls || 0} 次。分母以有 audit 紀錄的模型輸出呼叫計；這不是所有數字 token 的比例，也不是事實正確率。</p><div class="table-wrap"><table><thead><tr><th>決策組</th><th>案例</th><th>有未匹配數字呼叫/已稽核呼叫</th><th>呼叫比例</th><th>數值出現次數</th><th>舊版移除呼叫</th></tr></thead><tbody>${decisionRows}</tbody></table></div><p class="hint">研究輸出依領域記錄：</p><div class="table-wrap"><table><thead><tr><th>領域</th><th>案例</th><th>有未匹配數字呼叫/已稽核呼叫</th><th>呼叫比例</th><th>數值出現次數</th><th>舊版移除呼叫</th></tr></thead><tbody>${researchRows}</tbody></table></div></section>`;
 }
 
 function sentimentCoverageBlock(report) {
@@ -109,9 +127,9 @@ export async function showStatistics() {
   element.innerHTML = `<section class="stats-substep"><div class="section-label">4.1 / 回測摘要</div><h2>同協議研究比較</h2><p class="hint">只比較用同一套研究規則（同協議版本）跑出的結果。以下為 ${primaryHorizon} 個交易日、扣除估計交易成本（Corwin–Schultz）、各案例等權重的結果，共 ${report.unique_cases || 0} 個完成的案例；同一案例重跑的紀錄會保留但不重複計算。</p>${insufficient}${preregBlock}
     <div class="chart-pair">${comparisonBars(primary, 'selective_accuracy', '有下注時的方向準確率', percentage)}${comparisonBars(primary, 'sharpe', 'Sharpe', number)}</div>
     <div class="table-wrap"><table><thead><tr><th>方法</th><th>下注比例</th><th>有下注時準確率</th><th>Hold 比例</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div></section>
-    ${completion}${directionBlocks}${splits}${numericQuality}${newsCoverage}${knowledgeCutoffBlock(report.knowledge_cutoff)}
+    ${completion}${primaryInferenceBlock(report.primary_inference)}${directionBlocks}${splits}${numericQuality}${newsCoverage}${knowledgeCutoffBlock(report.knowledge_cutoff)}
     <section class="stats-substep"><div class="section-label">4.2 / 品質與匯出</div><p class="hint">試跑檢查（pilot）：${pilot.verdict === 'proceed' ? '通過，可以開始正式批次' : pilot.verdict === 'blocked' ? '尚未通過' : '—'}。這是正式批次前的健檢，用來確認各組結果沒有異常（例如全部都 Hold）。「Hold 門檻」的敏感度分析是用既有預測重算，不會重新呼叫模型。</p>${pilotReasons(pilot.blocking_reasons)}<div class="actions"><a href="/api/studies/${protocol}/summary.csv">下載摘要表（summary.csv）</a><a href="/api/studies/${protocol}" download="statistics.json">下載完整統計（statistics.json）</a></div></section>
-    <section class="stats-substep"><div class="section-label">4.3 / 詳細稽核</div><details><summary>試跑檢查、門檻、切分、新聞與數字品質（原始數據）</summary>${copyablePre(JSON.stringify({pilot, hold_band: band, completeness: report.completeness, completion: report.completion, temporal_split_results: report.temporal_split_results, numeric_validation_quality: report.numeric_validation_quality, sentiment_coverage: report.sentiment_coverage}, null, 2))}</details><details><summary>統計檢定結果與計算方式（原始數據）</summary>${copyablePre(JSON.stringify({comparisons: report.comparisons, conventions: report.conventions}, null, 2))}</details></section>`;
+    <section class="stats-substep"><div class="section-label">4.3 / 詳細稽核</div><details><summary>試跑檢查、門檻、切分、新聞與數字品質（原始數據）</summary>${copyablePre(JSON.stringify({pilot, hold_band: band, completeness: report.completeness, completion: report.completion, temporal_split_results: report.temporal_split_results, numeric_validation_quality: report.numeric_validation_quality, sentiment_coverage: report.sentiment_coverage}, null, 2))}</details><details><summary>統計檢定結果與計算方式（原始數據）</summary>${copyablePre(JSON.stringify({primary_inference: report.primary_inference, comparisons: report.comparisons, conventions: report.conventions}, null, 2))}</details></section>`;
   requestAnimationFrame(() => { for (const bar of element.querySelectorAll('.bar-track i')) bar.style.width = `${bar.dataset.width}%`; });
 }
 
