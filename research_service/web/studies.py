@@ -10,6 +10,7 @@ from .jobs import prepare, probe_once
 from ..collect import reusable_snapshot
 from ..errors import PreflightError
 from ..progress import study_progress
+from ..protocol import EVIDENCE_REF_VERSIONS, protocol_matches_fingerprint
 from ..reporting import csv_text, hold_band_sensitivity, pilot_diagnostics, stability_report, study_report
 
 
@@ -52,6 +53,10 @@ def build_router(ctx):
         return study_progress(store.preregistration(protocol_hash), store.study_rows(protocol_hash),
                               meta=store.registration_meta(protocol_hash))
 
+    def real_weights_expected():
+        """An injected model (tests) or the demo provider has no weight digest to freeze."""
+        return not (ctx.injected_model_call or ctx.demo_mode)
+
     @router.post("/api/studies/{protocol_hash}/enqueue")
     def enqueue(protocol_hash: str, payload: BatchInput | None = None):
         """Queue a preregistered study. Safe to repeat: cases that already have a job are skipped.
@@ -73,6 +78,14 @@ def build_router(ctx):
         probe = probe_once(ctx)
         prepared = [prepare(ctx, item, model_probe=probe) for item in payload.cases]
         wrong = [item["dataset_id"] for item in prepared if item["protocol_hash"] != protocol_hash]
+        frozen_digest = (meta or {}).get("model_digest")
+        protocol = prepared[0]["protocol"] if prepared else {}
+        digest_required = (protocol.get("version") in EVIDENCE_REF_VERSIONS and real_weights_expected()
+                           and str(protocol.get("model", "")).startswith("ollama/"))
+        if digest_required and not frozen_digest:
+            raise ValueError("此正式協議未凍結模型權重 digest；請用目前版本重新事前登記")
+        if frozen_digest and any((item.get("model_identity") or {}).get("digest") != frozen_digest for item in prepared):
+            raise ValueError("模型權重 digest 與事前登記時不同；全部未排入")
         if wrong:
             raise ValueError(f"{len(wrong)} 個案例的協議與登記不符（例如設定或模型不同），全部未排入")
         outside = [item["dataset_id"] for item in prepared if item["dataset_id"] not in frozen]
@@ -139,6 +152,13 @@ def build_router(ctx):
         if command == "resume" and not study_progress(store.preregistration(protocol_hash), rows,
                                                       meta=store.registration_meta(protocol_hash))["current"]:
             raise ValueError("這是舊版協議的研究，不能用目前的引擎續跑；結果保留供查看")
+        if command == "resume":
+            stale = [job["id"] for job in store.jobs(protocol_hash)
+                     if job["status"] in ("queued", "running", "paused")
+                     and not protocol_matches_fingerprint(job["config"].get("protocol", {}),
+                                                          job["config"].get("protocol_hash"))]
+            if stale:
+                raise ValueError("此研究的凍結協議/source fingerprint 與目前程式不符；不可續跑，請重新預覽並事前登記")
         movable = ("queued", "running") if command == "pause" else ("paused",)
         changed = 0
         for row in rows:
@@ -162,11 +182,20 @@ def build_router(ctx):
         if len(hashes) != 1:
             raise ValueError("批次內的案例必須使用同一套研究協議（相同模型與設定）才能一起鎖定樣本")
         [protocol_hash] = hashes
+        protocol = prepared[0]["protocol"]
+        if protocol["version"] in EVIDENCE_REF_VERSIONS and not protocol.get("anonymize_ticker"):
+            raise ValueError("v3-1002.3 起的正式研究須匿名化股票代號；請勾選匿名化後重新預覽")
+        model_digest = (prepared[0].get("model_identity") or {}).get("digest")
+        if (protocol["version"] in EVIDENCE_REF_VERSIONS and protocol["model"].startswith("ollama/")
+                and real_weights_expected()):
+            if not model_digest or any((item.get("model_identity") or {}).get("digest") != model_digest
+                                       for item in prepared):
+                raise ValueError("正式登記必須取得所有案例一致的模型權重 digest；尚未鎖定樣本")
         frozen = store.freeze(protocol_hash, {item["dataset_id"] for item in prepared})
         store.save_registered_cases(protocol_hash, [item.model_dump() for item in payload.cases])
-        protocol = prepared[0]["protocol"]
         store.save_registration_meta(protocol_hash, protocol["version"], protocol["model"],
-                                     protocol.get("design", "quarterly"))
+                                     protocol.get("design", "quarterly"),
+                                     model_digest)
         return {**frozen, "cases": len(prepared)}
 
     @router.post("/api/studies/{protocol_hash}/freeze")

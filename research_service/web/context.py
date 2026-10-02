@@ -88,7 +88,7 @@ class JobInput(BaseModel):
     model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
     voting_samples: int = 7
     study: str = "study1"
-    anonymize_ticker: bool = False
+    anonymize_ticker: bool | None = None
     missing_data_policy: str = "allow_decision"
     allow_point_fundamental: bool = False
     allow_small_model: bool = False
@@ -110,7 +110,7 @@ class PlanInput(BaseModel):
     model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
     voting_samples: int = 7
     study: str = "study1"
-    anonymize_ticker: bool = False
+    anonymize_ticker: bool | None = None
     missing_data_policy: str = "allow_decision"
     design: str = "quarterly"
     model_context_length: int | None = None

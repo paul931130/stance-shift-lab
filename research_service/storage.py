@@ -56,6 +56,8 @@ class Store:
             self._ensure_steps_column(db)
             self._ensure_owner_column(db)
             self._ensure_lease_generation_column(db)
+            if "model_digest" not in {row["name"] for row in db.execute("PRAGMA table_info(preregistration_meta)")}:
+                db.execute("ALTER TABLE preregistration_meta ADD COLUMN model_digest TEXT")
         self.backfill_case_results()
 
     @staticmethod
@@ -457,14 +459,14 @@ class Store:
             db.execute("INSERT OR IGNORE INTO preregistration_cases VALUES(?,?,?)",
                        (protocol_hash, json.dumps(cases, ensure_ascii=False), now()))
 
-    def save_registration_meta(self, protocol_hash, version, model, design):
+    def save_registration_meta(self, protocol_hash, version, model, design, model_digest=None):
         with self.connect() as db:
-            db.execute("INSERT OR IGNORE INTO preregistration_meta VALUES(?,?,?,?)",
-                       (protocol_hash, version, model, design))
+            db.execute("INSERT OR IGNORE INTO preregistration_meta(protocol_hash, version, model, design, model_digest) "
+                       "VALUES(?,?,?,?,?)", (protocol_hash, version, model, design, model_digest))
 
     def registration_meta(self, protocol_hash):
         with self.connect() as db:
-            row = db.execute("SELECT version, model, design FROM preregistration_meta WHERE protocol_hash=?",
+            row = db.execute("SELECT version, model, design, model_digest FROM preregistration_meta WHERE protocol_hash=?",
                              (protocol_hash,)).fetchone()
         return dict(row) if row else None
 

@@ -11,7 +11,7 @@ from fastapi.responses import Response
 from ..data import research_inputs
 from ..errors import NotFoundError, PreflightError
 from ..protocol import (DEFAULT_RESEARCH_MODEL, FORMAL_SMALL_MODEL_ALLOWLIST, SMALL_MODEL_PATTERN,
-                        StudyProtocol, protocol_is_current, validate_case)
+                        StudyProtocol, protocol_is_current, protocol_matches_fingerprint, validate_case)
 from ..readiness import coverage
 from ..reporting import export_job, study_report
 from ..splits import classify_analysis_date
@@ -160,7 +160,7 @@ def clone_request(ctx, original):
                                or legacy)
     payload = JobInput(dataset_id=old["dataset_id"], analysis_date=old["analysis_date"],
         model=model, study=p.get("study", "study1"), voting_samples=p.get("voting_samples", 7),
-        anonymize_ticker=p.get("anonymize_ticker", False), design=p.get("design", "quarterly"),
+        anonymize_ticker=p.get("anonymize_ticker"), design=p.get("design", "quarterly"),
         missing_data_policy=p.get("missing_data_policy", "allow_decision"),
         allow_point_fundamental=allow_point_fundamental,
         allow_small_model=allow_small, allow_low_quality_sentiment=allow_low_quality)
@@ -242,6 +242,14 @@ def build_router(ctx):
     def control(key: str, command: str):
         if command not in ("pause", "resume", "cancel"):
             raise HTTPException(404)
+        if command == "resume":
+            job = store.get(key)
+            config = job["config"]
+            protocol = config.get("protocol", {})
+            if not protocol_is_current(protocol):
+                raise ValueError("舊版實驗已隔離；請複製至新版")
+            if not protocol_matches_fingerprint(protocol, config.get("protocol_hash")):
+                raise ValueError("此工作的凍結協議/source fingerprint 與目前程式不符；不可續跑，請重新預覽並事前登記")
         store.control(key, command)
         return store.get(key)
 

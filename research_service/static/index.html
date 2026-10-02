@@ -180,7 +180,7 @@
           <label>B 組採樣<select id="plan-voting"><option value="7">7 次 · 與 C／D 呼叫次數相同</option><option value="5">5 次</option></select></label>
           <label>資料缺口策略<select id="plan-missing"><option value="allow_decision">保留模型決策（標記缺口）</option><option value="force_no_trade">強制 NoTrade</option></select></label>
         </div>
-        <label class="check"><input id="plan-anonymize" type="checkbox">匿名化股票代號與公司名稱</label>
+        <label class="check"><input id="plan-anonymize" type="checkbox" checked>匿名化股票代號與公司名稱</label>
       </details>
       <h3 class="substep">2.3　預覽並排入</h3>
       <p class="hint">預覽會為每個案例挑選最新的完整資料集並檢查就緒度，不會呼叫模型，GPU 關機時也能預覽。</p>
@@ -217,7 +217,7 @@
         </div>
         <label>資料缺口策略<select id="missing-policy"><option value="allow_decision">實驗對照 · 保留模型決策</option><option value="force_no_trade">保守門檻 · 強制 NoTrade</option></select></label>
         <p class="hint">選「保留模型決策」時仍會記錄缺了哪些面向與引用率，但不改動模型決策；兩種策略會分開統計，不會混在一起。</p>
-        <label class="check"><input id="anonymize" type="checkbox">匿名化：以 ASSET 替換股票代號、公司名稱與執行長姓名</label>
+        <label class="check"><input id="anonymize" type="checkbox" checked>匿名化：以 ASSET 替換股票代號、公司名稱與執行長姓名</label>
         <p class="hint">A/B/C/D 使用同一模型。匿名化用來檢查訓練記憶污染：模型若不知道分析的是哪家公司仍表現相近，代表它是在讀證據而非回想股價。產品與品牌名稱（例如 iPhone、Azure）不會替換，報告時請一併說明。</p>
       </details>
       <details id="quality-overrides">

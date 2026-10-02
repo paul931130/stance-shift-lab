@@ -101,7 +101,8 @@ class StudyProtocol:
     primary_horizon: int = 60
     horizons: tuple[int, ...] = (30, 60, 90)
     cost_models: tuple[str, ...] = ("zero", "corwin_schultz")
-    anonymize_ticker: bool = False
+    # None = the version default: anonymized from v3-1002.3, not before (older hashes unchanged).
+    anonymize_ticker: bool | None = None
     dataset_kind: Literal["historical", "synthetic"] = "historical"
     missing_data_policy: Literal["allow_decision", "force_no_trade"] = "allow_decision"
     allow_point_fundamental: bool = False
@@ -130,6 +131,8 @@ class StudyProtocol:
     def __post_init__(self):
         if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION):
             raise ValueError("Unsupported protocol version")
+        if self.anonymize_ticker is None:
+            object.__setattr__(self, "anonymize_ticker", self.version in EVIDENCE_REF_VERSIONS)
         if self.max_output_tokens is None:
             object.__setattr__(self, "max_output_tokens", 2048 if self.version in LONG_OUTPUT_VERSIONS else 1024)
         if self.hold_band_sigma is None:
@@ -240,6 +243,27 @@ class DecisionCall:
     sample: int | None = None
 
 
+def protocol_from(value: dict) -> StudyProtocol:
+    """Rebuild a frozen protocol from JSON data saved with a job."""
+    value = dict(value)
+    if value.get("version") == "v3-0905.1" and "missing_data_policy" not in value:
+        value["missing_data_policy"] = "force_no_trade"
+    for key in ("horizons", "cost_models", "study_universe"):
+        if key in value:
+            value[key] = tuple(value[key])
+    return StudyProtocol(**value)
+
+
+def protocol_matches_fingerprint(protocol: dict, stored_hash: str | None) -> bool:
+    """Fail closed when a prompt/source-frozen protocol no longer matches this checkout."""
+    if protocol.get("version") not in EVIDENCE_REF_VERSIONS:
+        return True  # Earlier versions did not include a source digest in their fingerprint.
+    try:
+        return bool(stored_hash) and protocol_from(protocol).fingerprint == stored_hash
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 def decision_plan(protocol: StudyProtocol) -> tuple[DecisionCall, ...]:
     calls = [DecisionCall("a-decision", "A", "decision", "decision", "NEUTRAL")]
     calls.extend(DecisionCall(f"b-sample-{sample}", "B", "sample", "decision", "NEUTRAL", sample=sample) for sample in range(1, protocol.voting_samples + 1))
@@ -335,16 +359,21 @@ def validate_case(ticker: str, analysis_date: str, design: str = "quarterly") ->
     date.fromisoformat(analysis_date)
 
 
+# Modules that shape a case's inputs, prompts, answer checks, memory or backtest. Editing any of
+# them after a registration changes the v3-1002.3+ hash and blocks resuming its jobs. UI,
+# statistics, CLI and scripts are left out on purpose: fixing them mid-run must not void a
+# study, and they are not all copied into every image (scripts/ differs between images).
+PROTOCOL_SOURCE_MODULES = ("anonymize", "backtest", "data", "engine", "finbert", "model_identity",
+                           "models", "protocol", "storage")
+
+
 @functools.lru_cache(maxsize=None)
 def prompt_source_digest() -> str:
-    """sha256 of the code that writes prompts and checks answers (line endings normalized)."""
-    import inspect
-    from . import engine, models
-    parts = [inspect.getsource(item) for item in (
-        models.messages_for, models.output_schema_for, visible_history, models._compact_report,
-        models._compact_history, models._compact_memory, models.compact_research_evidence,
-        models.validate_decision, models.validate_research, models.validate_numeric_claims,
-        models.unsupported_numbers, engine.Engine.step, engine.Engine.validated_decision,
-        engine.Engine.validated_research)]
-    newline = chr(10)
-    return hashlib.sha256(newline.join(parts).replace(chr(13) + newline, newline).encode()).hexdigest()
+    """sha256 of the experiment-defining modules (line endings normalized, same in every image)."""
+    from pathlib import Path
+    package = Path(__file__).resolve().parent
+    digest = hashlib.sha256()
+    for name in PROTOCOL_SOURCE_MODULES:
+        text = (package / f"{name}.py").read_bytes().replace(bytes([13, 10]), bytes([10]))
+        digest.update(f"research_service/{name}.py".encode() + bytes([0]) + text + bytes([0]))
+    return digest.hexdigest()
