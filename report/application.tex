@@ -291,7 +291,7 @@ Using the open-weight model qwen3:32b on 180 quarterly cases (nine large U.S. st
 
 \subsection{評估方法}
 
-於分析日後第一個交易日開盤進場、持有 60 個交易日後開盤出場，並扣除 Corwin--Schultz 估計之買賣價差成本 \citep{corwin2012spread}。主要比較事前指定為 \grp{D} 對 \grp{C}，兩個共同主要指標為方向準確率（配對 McNemar 檢定 \citep{mcnemar1947}）與年化 Sharpe 比率差（Ledoit--Wolf 檢定 \citep{ledoit2008sharpe}），並以 Holm 法 \citep{holm1979} 校正；兩者皆顯著為正才判定 \grp{D} 較佳。30 與 90 日、不計成本、排除低新聞量案例與以日期為群聚之信賴區間為敏感性分析。實驗模型為開源模型 qwen3:32b，部署於租用之 RTX 5090 GPU。
+於分析日後第一個交易日開盤進場、持有 60 個交易日後開盤出場，並扣除 Corwin--Schultz 估計之買賣價差成本 \citep{corwin2012spread}。主要比較事前指定為 \grp{D} 對 \grp{C}，兩個共同主要指標為方向準確率（配對 McNemar 檢定 \citep{mcnemar1947}）與年化 Sharpe 比率差（Ledoit--Wolf 檢定 \citep{ledoit2008sharpe}），並以 Holm 法 \citep{holm1979} 校正；兩者皆顯著為正才判定 \grp{D} 較佳。30 與 90 日、不計成本、排除低新聞量案例與以日期為群聚之信賴區間為敏感性分析。實驗模型為開源模型 qwen3:32b。
 
 %% =====================================================================
 \section{實驗結果}
