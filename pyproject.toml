@@ -13,7 +13,7 @@ dependencies = [
   "fastapi==0.141.1",
   "uvicorn==0.52.4",
   "langgraph==1.2.11",
-  "litellm==1.99.0",
+  "litellm==1.103.1",
   "yfinance==1.7.0",
   "pandas==3.0.1",
   "numpy==2.3.5",
