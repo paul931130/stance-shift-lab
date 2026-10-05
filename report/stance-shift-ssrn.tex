@@ -105,7 +105,7 @@
 
 多代理人辯論是否優於強單模型或模型集成仍有爭議 \citep{smit2023mad,zhang2025stop}；立場交換雖已用於問答與事實查核 \citep{liu2025roleswitch,chowdhury2026proclaim}，尚缺乏在無前視偏差、呼叫預算對齊之投資回測中的檢驗。因此本研究不預設立場交換有效，而在嚴格設計下檢驗之。本研究之立場交換以「自我反駁」為核心：交換輪中代理人改持相反立場、僅讀自己第一輪的論述，並須引用且反駁自己的原主張；RQ1 即比較此自我反駁機制（D）與一般固定立場辯論（C）。
 
-正式 RQ1 以 qwen3:32b、季度協議 v3-1002.3 於 2026 年 10 月 2 日事前登記 180 個案例後執行：標的匿名化、買賣持有由模型直接決定、辯論組裁決者須擇一方向，並凍結程式原始碼與模型權重之雜湊。主要比較為 \grp{D} 對 \grp{C} 之 60 日方向準確率與 Sharpe 比率（兩者經 Holm 校正後皆顯著且為正方判定 \grp{D} 較佳）。180 案全數完成。\grp{D} 之方向準確率為 55.0\%，\grp{C} 為 58.3\%（差 $-3.3$ 個百分點，McNemar $p=0.21$）；年化 Sharpe 比率 \grp{D} 為 0.54、\grp{C} 為 0.59（差 $-0.05$，Ledoit--Wolf $p=0.80$），經 Holm 校正後皆不顯著，故不支持自我反駁機制優於固定立場辯論；此結論在 30／90 日、零成本、守門員後決策與排除低新聞密度案例下皆一致。四組均未勝過同期買進持有（Sharpe 1.01）。前導研究（舊版協議 v3-0929.1，180 案）中，\grp{D} 與 \grp{C} 未見可區分差異，四組亦未勝過同期買進持有。
+正式 RQ1 以 qwen3:32b、季度協議 v3-1002.3 於 2026 年 10 月 2 日事前登記 180 個案例後執行：標的匿名化、買賣持有由模型直接決定、辯論組裁決者須擇一方向，並凍結程式原始碼與模型權重之雜湊。主要比較為 \grp{D} 對 \grp{C} 之 60 日方向準確率與 Sharpe 比率（兩者經 Holm 校正後皆顯著且為正方判定 \grp{D} 較佳）。180 案全數完成。\grp{D} 之方向準確率為 55.0\%，\grp{C} 為 58.3\%（差 $-3.3$ 個百分點，McNemar $p=0.21$）；年化 Sharpe 比率 \grp{D} 為 0.54、\grp{C} 為 0.59（差 $-0.05$，Ledoit--Wolf $p=0.80$），經 Holm 校正後皆不顯著，故不支持自我反駁機制優於固定立場辯論；此結論在 30／90 日、零成本、守門員後決策與排除低新聞密度案例下皆一致。四組均未勝過同期買進持有（Sharpe 1.01）。探索性分析中，以 Gemini 3 Flash 重跑同一批案例得到相同結論，且兩模型各組準確率皆低於一律看多（62.2\%），顯示限制可能來自輸入資訊。
 
 \vspace{0.6cm}
 \noindent 關鍵詞：大型語言模型、多代理人辯論、立場交換、投資決策、回測、前視偏差
@@ -122,11 +122,11 @@
 \end{center}
 \vspace{0.3cm}
 
-\noindent This project designs and tests a Coordinator-centered multi-agent \emph{role-switching debate} workflow for investment decision support. Given a ticker and an analysis date, the Coordinator fixes the data boundary and dispatches sentiment, fundamental, technical and macro agents, whose outputs are merged into one neutral research report that contains no investment conclusion. Four decision mechanisms then read the same report under the same model-call budget: a single decision, self-consistency voting, fixed-role debate and role-switch debate. A Gatekeeper checks the outputs and 30- to 90-day backtests score them. In arm D, the switched-round agent sees only its own first-round argument, whereas arm C sees both first-round arguments, and the agent must quote and rebut its own earlier claim; D--C therefore estimates this self-rebuttal mechanism as a whole.
+\noindent Using investment decision support as the application, this project designs and tests a multi-agent \emph{role-switching debate} workflow. After the user enters a ticker and an analysis date, the Coordinator sets the data time boundary and dispatches tasks; sentiment, fundamental, technical and macro agents organize the evidence, which is merged into a neutral research report that contains no investment conclusion. Four decision mechanisms---a single decision, independent voting, fixed-role debate and role-switching debate---then read the same data for comparison (independent voting and the two debate arms use the same number of decision calls). Finally, a Gatekeeper checks the outputs, and backtests over 30 to 90 trading days evaluate them.
 
-Whether multi-agent debate beats a strong single model or a simple ensemble is contested, and role switching has so far been tested on question answering and claim verification rather than on leak-free, budget-matched investment backtests. The study therefore does not presume that role switching helps.
+Whether multi-agent debate outperforms a strong single model or a model ensemble remains contested \citep{smit2023mad,zhang2025stop}; role switching has been applied to question answering and fact-checking \citep{liu2025roleswitch,chowdhury2026proclaim}, but has not been tested in investment backtests that are free of look-ahead bias and matched in call budget. This study therefore does not presume that role switching is effective, and instead tests it under a strict design. The role switch here centers on self-rebuttal: in the switched round, each agent takes the opposite stance, reads only its own first-round argument, and must quote and rebut its own original claim. RQ1 compares this self-rebuttal mechanism (D) with ordinary fixed-role debate (C).
 
-The formal RQ1 run uses qwen3:32b under quarterly protocol v3-1002.3, preregistered for 180 cases on 2 October 2026: tickers are anonymized, the model's own Buy/Hold/Sell is traded, debate adjudicators must commit to a direction, and the source code and model weights are frozen by hash. The primary comparison is D versus C on 60-day direction accuracy and Sharpe ratio; D is judged better only if both differences are positive and significant after Holm adjustment. All 180 cases completed. Direction accuracy was 55.0\% for D and 58.3\% for C (difference $-3.3$ points, McNemar $p=0.21$); the annualized Sharpe ratio was 0.54 for D and 0.59 for C (difference $-0.05$, Ledoit--Wolf $p=0.80$). Neither difference is significant after Holm adjustment, so the self-rebuttal mechanism did not outperform fixed-role debate; the conclusion holds at 30 and 90 days, without costs, after the Gatekeeper and after excluding low-news cases. No arm beat buy-and-hold (Sharpe 1.01). A pilot under the earlier protocol v3-0929.1 (180 cases) showed no measurable difference between D and C, and no arm beat buy-and-hold. The 540-case monthly analysis (RQ2) and a matched Gemini Flash comparison (RQ3) follow.
+The formal RQ1 run used qwen3:32b under quarterly protocol v3-1002.3, with 180 cases preregistered on 2 October 2026: tickers were anonymized, Buy/Hold/Sell was decided directly by the model, debate adjudicators had to choose a direction, and hashes of the source code and model weights were frozen. The primary comparison is D versus C on 60-day direction accuracy and Sharpe ratio (D is judged better only if both are positive and significant after Holm adjustment). All 180 cases were completed. Direction accuracy was 55.0\% for D and 58.3\% for C (difference $-3.3$ percentage points, McNemar $p=0.21$); the annualized Sharpe ratio was 0.54 for D and 0.59 for C (difference $-0.05$, Ledoit--Wolf $p=0.80$). Neither is significant after Holm adjustment, so the results do not support the self-rebuttal mechanism outperforming fixed-role debate; this conclusion is consistent at 30 and 90 days, with zero costs, for post-Gatekeeper decisions and when low-news-density cases are excluded. No arm outperformed buy-and-hold over the same period (Sharpe 1.01). In an exploratory analysis, rerunning the same cases with Gemini 3 Flash led to the same conclusion, and every arm of both models had lower accuracy than always predicting a rise (62.2\%), suggesting that the limitation may lie in the input information.
 
 \clearpage
 \pagenumbering{arabic}
@@ -161,17 +161,17 @@ LLM 的訓練資料可能涵蓋回測期間，使模型直接記得後續走勢 
 \begin{enumerate}[label=RQ\arabic*：,leftmargin=4em]
   \item 同一模型內之組間比較：在相同資料與相同決策呼叫次數下，自我反駁式立場交換辯論（\grp{D}；交換輪改持相反立場、僅讀自身第一輪並反駁之）之方向準確率與風險調整後報酬是否優於固定立場辯論（\grp{C}）？並以獨立投票（\grp{B}）與單次判斷（\grp{A}）比較其他決策流程。
   \item 跨時間尺度比較：RQ1 所得之四組結果與排序，在以季為單位（每季一次分析日、60 個交易日預測期間）與以月為單位（每月一次分析日、20 個交易日預測期間）之設計下是否一致？
-  \item 跨模型比較：新版 RQ1 所得之四組結果與排序，在 qwen3:32b 與 Gemini Flash（\texttt{gemini/gemini-2.5-flash}）之間是否一致？跨模型案例需使用相同資料集 ID 與驗證政策，按股票與分析日配對，不合併兩模型的協議統計。
+  \item 跨模型比較：新版 RQ1 所得之四組結果與排序，在 qwen3:32b 與 Gemini 3 Flash 之間是否一致？跨模型案例需使用相同資料集 ID 與驗證政策，按股票與分析日配對，不合併兩模型的協議統計。
 \end{enumerate}
 
-\noindent RQ1 的核心比較為 \grp{D} 對 \grp{C}。\grp{D} 交換輪隔離對手論述是刻意設計：若同時看得到對手，代理人易轉為回應對手，而非檢討自己的主張。因此立場互換、隔離對手與強制引用自身原主張共同構成處理，\grp{D} 對 \grp{C} 估計的是此自我反駁機制相對一般辯論的效果。若要區分「換到相反立場」與「暫時不看對手」各自的貢獻，需另設消融組（例如僅讀自身歷史但不換立場），列為後續研究。\grp{B} 與 \grp{A} 比較其他決策流程。RQ2 與 RQ3 以新版季度結果為基準；舊版 v3-0929.1 之 180 案作為前導研究，不與新版合併統計。
+\noindent RQ1 的核心比較為 \grp{D} 對 \grp{C}。\grp{D} 交換輪隔離對手論述是刻意設計：若同時看得到對手，代理人易轉為回應對手，而非檢討自己的主張。因此立場互換、隔離對手與強制引用自身原主張共同構成處理，\grp{D} 對 \grp{C} 估計的是此自我反駁機制相對一般辯論的效果。若要區分「換到相反立場」與「暫時不看對手」各自的貢獻，需另設消融組（例如僅讀自身歷史但不換立場），列為後續研究。\grp{B} 與 \grp{A} 比較其他決策流程。RQ2 與 RQ3 以新版季度結果為基準。
 
 \subsection{研究貢獻}
 
 \begin{enumerate}[label=\arabic*.]
   \item 將立場交換辯論應用於投資決策，並設計 \grp{B}、\grp{C}、\grp{D} 決策呼叫次數對齊、\grp{A} 為單次基準之四組流程比較；\grp{D} 以立場互換、隔離對手與強制引用自身原主張實現自我反駁，與一般辯論比較；不宣稱區分其中各要素的個別貢獻。本研究並非首次提出立場交換 \citep{liu2025roleswitch,chowdhury2026proclaim}，貢獻在於在金融情境中以明確界定的機制比較檢驗之。
   \item 建立具時間邊界、可追溯之多代理人回測框架：所有決策機制使用同一份不可變資料快照，模型輸出經逐項引用與數字驗證，研究樣本於執行前事前登記，每個案例可匯出完整稽核紀錄。
-  \item 提供事前登記之實證：以 qwen3:32b 於 180 個季度案例檢驗自我反駁機制，未觀察到相對固定立場辯論之改善（方向準確率差 $-3.3$ 個百分點、Sharpe 差 $-0.05$，皆不顯著）；前導研究（舊版協議）未觀察到可測得之改善，且辯論產生新論點卻少改變決策。
+  \item 提供事前登記之實證：以 qwen3:32b 於 180 個季度案例檢驗自我反駁機制，未觀察到相對固定立場辯論之改善（方向準確率差 $-3.3$ 個百分點、Sharpe 差 $-0.05$，皆不顯著）。
 \end{enumerate}
 
 \subsection{研究範圍}
@@ -253,7 +253,7 @@ LLM 的訓練資料可能涵蓋回測期間，使模型直接記得後續走勢 
 \midrule
 技術面 & 調整後日行情 & 近 20 日報酬、20 日與 60 日均線相對位置、年化波動度；僅使用分析日前之價格。 \\
 基本面 & SEC XBRL 財報 & 營收、淨利、營業現金流與前一年同期比較，以及負債對資產比率；依申報日期篩選，僅保留分析日前已公開者。 \\
-情緒面 & 金融新聞標題（FNSPID、Alpha Vantage） & 分析日前 90 天內之全部新聞標題（不設則數上限），以固定版本之 FinBERT 逐則評分，目標公司與背景新聞分開彙整為平均分數與正負比例；前導研究（舊版）僅取 12 則標題摘要。 \\
+情緒面 & 金融新聞標題（FNSPID、Alpha Vantage） & 分析日前 90 天內之全部新聞標題（不設則數上限），以固定版本之 FinBERT 逐則評分，目標公司與背景新聞分開彙整為平均分數與正負比例。 \\
 總經面 & FRED／ALFRED & 使用歷史版本資料，僅採用分析日當時實際已發布之數值，排除事後修正。 \\
 \bottomrule
 \end{tabularx}
@@ -354,7 +354,7 @@ LLM 的訓練資料可能涵蓋回測期間，使模型直接記得後續走勢 
 
 持有視為棄權，另以覆蓋率（下注比例）、條件準確率（有下注時之準確率）與持有機會成本呈現；因 \grp{C}、\grp{D} 之裁決者必須下注而 \grp{A}、\grp{B} 可持有，與 \grp{A}、\grp{B} 之比較另以「兩組皆下注」之配對案例呈現。180 案共享 20 個分析日，故另報告以日期為群聚之信賴區間，並排除 37 個低新聞密度案例重算主要比較。所有結論等 180 個登記案例全數完成後才產生，不因中途結果提前停止。
 
-RQ1 以 60 日為事前指定之主要期間，於同一模型內比較四組；30 與 90 個交易日為期間穩健性檢查，檢定與 Holm 校正於各期間內進行。RQ2 與 RQ3 沿用相同之比較，分別改變分析頻率與模型，屬後續研究。
+RQ1 以 60 日為事前指定之主要期間，於同一模型內比較四組；30 與 90 個交易日為期間穩健性檢查，檢定與 Holm 校正於各期間內進行。RQ2 與 RQ3 沿用相同之比較，分別改變分析頻率與模型；RQ3 已以探索性分析完成（第~\ref{sec:exploratory} 節），RQ2 屬後續研究。
 
 %% =====================================================================
 \section{系統設計與實作}
@@ -426,7 +426,7 @@ Coordinator & 依股票與分析日派發任務，固定協議版本與模型，
 \begin{itemize}
   \item 提示詞中之證據以短代稱（E1、E2、$\ldots$）呈現，回答後由程式對映回真實識別碼，避免模型抄寫長識別碼出錯，同時不使識別碼中之申報編號洩漏公司身分。
   \item 引用之證據必須存在；引用不存在之證據或格式錯誤時，以明確訊息要求重試，最多三次。
-  \item 數字檢查：新版要求代理人以證據代稱指稱事實、不重述數字；敘述中仍出現之數字若無任何證據數值支持（期間名稱、日期、來源值之四捨五入或截位不計），僅記錄並依組別報告比例，不重試、不修改文字。前導研究（舊版）則要求數字原樣出現於輸入，否則重試並移除。
+  \item 數字檢查：新版要求代理人以證據代稱指稱事實、不重述數字；敘述中仍出現之數字若無任何證據數值支持（期間名稱、日期、來源值之四捨五入或截位不計），僅記錄並依組別報告比例，不重試、不修改文字。
   \item 凍結與身分核對：每一步推理前後皆核對模型權重之 digest，無法取得時暫停並可續跑，確認不同時則該案永久作廢；程式原始碼之雜湊納入協議雜湊，改動即拒絕續跑。連線故障連續發生時暫停派發新案例，並於停滯過久時自動關閉 GPU 主機。
   \item 每個案例可匯出完整紀錄：協議設定、中立報告、證據登錄、執行軌跡、記憶、決策、逐案例回測與彙總指標，以及辯論逐字稿。
 \end{itemize}
@@ -459,7 +459,7 @@ Coordinator & 依股票與分析日派發任務，固定協議版本與模型，
 \label{sec:results}
 %% =====================================================================
 
-本節先報告正式 RQ1（v3-1002.3），再報告前導研究（舊版協議 v3-0929.1）。兩者規則不同，不合併統計。
+本節報告正式 RQ1（v3-1002.3）之結果、案例示範與探索性分析。
 
 \subsection{正式 RQ1：自我反駁機制與固定立場辯論之比較}
 \label{sec:formalresults}
@@ -540,159 +540,52 @@ Coordinator & 依股票與分析日派發任務，固定協議版本與模型，
 
 \paragraph{分歧案例之整體模式。} 180 案中 \grp{C} 與 \grp{D} 方向不同之 16 案裡，\grp{D} 有 12 案判斷賣出，正確 5 案、錯誤 11 案。兩個案例中皆可觀察到交換輪強調反面證據（多為基本面衰退），且最終決策轉為看空，此模式與自我反駁之設計目的相符；但少數案例不足以確認其因果機制。可能的解釋是：本研究期間以上漲為主，基本面疲弱而股價續漲之情形較多，較常看空反而不利。立場交換改變了辯論內容與部分決策，但未帶來更準確的結果。
 
-\paragraph{對 RQ1 之回答。} 在事前登記之 180 個季度案例中，自我反駁式立場交換辯論（\grp{D}）未優於固定立場辯論（\grp{C}）：兩個共同主要端點之點估計皆略偏向 \grp{C}（準確率 $-3.3$ 個百分點、Sharpe $-0.05$），但皆不顯著，各敏感性分析亦未提供 \grp{D} 較佳之顯著證據。要求代理人站到對面反駁自己後，可觀察到其引用不同證據、決策較常轉為看空，但未轉化為更準確或風險調整後更佳之決策。四組皆未勝過同期買進持有；辯論兩組之 Sharpe 雖高於 \grp{A}、\grp{B}，但兩組必須下注，在以上漲為主之樣本期間較少持有，差異不能歸因於辯論本身。此結果與前導研究一致。
+\paragraph{對 RQ1 之回答。} 在事前登記之 180 個季度案例中，自我反駁式立場交換辯論（\grp{D}）未優於固定立場辯論（\grp{C}）：兩個共同主要端點之點估計皆略偏向 \grp{C}（準確率 $-3.3$ 個百分點、Sharpe $-0.05$），但皆不顯著，各敏感性分析亦未提供 \grp{D} 較佳之顯著證據。要求代理人站到對面反駁自己後，可觀察到其引用不同證據、決策較常轉為看空，但未轉化為更準確或風險調整後更佳之決策。四組皆未勝過同期買進持有；辯論兩組之 Sharpe 雖高於 \grp{A}、\grp{B}，但兩組必須下注，在以上漲為主之樣本期間較少持有，差異不能歸因於辯論本身。
 
-\subsection{前導研究：舊版協議 v3-0929.1}
-\label{sec:mainresults}
+\subsection{探索性分析：跨模型複製與基準比較}
+\label{sec:exploratory}
 
-前導研究以 qwen3:32b 於舊版協議 v3-0929.1 執行同一組 180 個案例，全數完成，無重複、未完成或研究代理人降級而排除之案例。舊版之行動由預期報酬相對於中性帶推導、未匿名化標的、新聞僅取 12 則標題，且數字驗證規則不同，故僅作為設計與規模之前導，不與正式 RQ1 合併。以下為該舊版的主要分析設定：候選決策層、60 個交易日、扣除 Corwin--Schultz 交易成本、四組等權重。
+以下分析皆於主要結果揭曉後進行，未列入事前登記，依 \citet{wagenmakers2012agenda} 與 \citet{nosek2018prereg} 之區分屬探索性分析，僅用於產生後續研究之假說，不作為確認性證據。
 
-\begin{table}[H]
-\centering\small
-\caption{前導研究結果（qwen3:32b，v3-0929.1，180 個案例，60 日，扣除交易成本）}
-\label{tab:main}
-\begin{tabular}{@{}lcccccc@{}}
-\toprule
-組別 & 覆蓋率 & 條件準確率 & 持有機會成本 & 總報酬 & 最大回撤 & 年化 Sharpe \\
-\midrule
-\grp{A}\ 單次判斷 & 75.0\% & 57.8\% & 7.34 & 3.09\% & $-1.67\%$ & 0.80 \\
-\grp{B}\ 獨立投票 & 80.0\% & 55.6\% & 8.00 & 2.66\% & $-1.71\%$ & 0.64 \\
-\grp{C}\ 固定立場辯論 & 81.1\% & 59.6\% & 9.93 & 3.57\% & $-1.52\%$ & 0.92 \\
-\grp{D}\ 立場交換辯論 & 79.4\% & 55.9\% & 7.66 & 2.79\% & $-1.26\%$ & 0.79 \\
-\midrule
-買進持有（相同期間） & -- & -- & -- & 5.60\% & $-1.58\%$ & 1.02 \\
-\bottomrule
-\end{tabular}
-\par\smallskip
-\raggedright\footnotesize 覆蓋率為買進或賣出（非持有）之案例比例；條件準確率為有下注案例之方向準確率；持有機會成本為選擇持有時錯失之平均絕對報酬（百分點）。報酬為 180 個案例等權重組合於 1,200 個交易日之結果，未作槓桿。
-\end{table}
-
-\paragraph{組間檢定。}
-表~\ref{tab:tests} 為 \grp{D} 對其餘三組之配對檢定。三項比較之方向準確率差異均在 1 個百分點以內，McNemar 檢定之 $p$ 值皆為 1；兩組皆有下注之案例中，決策方向不一致者僅 6 至 10 個。Sharpe 比率方面，\grp{D} 略低於 \grp{C}（年化差 $-0.13$），略高於 \grp{B}（$+0.15$），與 \grp{A} 幾乎相同，Ledoit--Wolf 區塊自助檢定之 $p$ 值介於 0.45 至 0.93，經 Holm 校正後皆為 1。
+\paragraph{跨模型複製。} 以 Gemini 3 Flash 依相同流程、相同 180 案與相同匿名化設定重跑四組（表~\ref{tab:flash}）。結果與 qwen3:32b 一致：\grp{D} 之準確率仍略低於 \grp{C}，\grp{C}、\grp{D} 方向不同之案例僅 9 案（\grp{D} 單獨正確 3 案、\grp{C} 單獨正確 6 案，McNemar $p=0.51$）。兩模型之決策高度相似，\grp{C}、\grp{D} 分別有 165 與 162 案方向相同。
 
 \begin{table}[H]
 \centering\small
-\caption{立場交換辯論（\grp{D}）與其餘三組之配對檢定（60 日）}
-\label{tab:tests}
-\begin{tabular}{@{}lcccccc@{}}
+\caption{跨模型比較：方向準確率（60 日、候選決策、有出手之案例）}
+\label{tab:flash}
+\begin{tabular}{@{}lcc@{}}
 \toprule
-比較 & 配對案例 & 不一致 & 準確率差 & McNemar $p$ & 年化 Sharpe 差 & Ledoit--Wolf $p$（Holm） \\
+組別 & qwen3:32b & Gemini 3 Flash \\
 \midrule
-\grp{D} 對 \grp{C} & 129 & 10 & 0.0 & 1.00 & $-0.13$ & 0.45（1.00） \\
-\grp{D} 對 \grp{B} & 126 & 9 & $+0.8$ & 1.00 & $+0.15$ & 0.53（1.00） \\
-\grp{D} 對 \grp{A} & 119 & 6 & 0.0 & 1.00 & $-0.01$ & 0.93（1.00） \\
-\bottomrule
-\end{tabular}
-\par\smallskip
-\raggedright\footnotesize 準確率差單位為百分點，以兩組皆下注之案例計算。
-\end{table}
-
-其他預測期間之結果見下節之期間穩健性檢查。
-
-\paragraph{決策分布與一致性。}
-180 個案例中，114 個（63\%）四組做出完全相同之決策，57 個出現兩種決策，僅 9 個出現三種。四組皆以買進為主（\grp{A} 114、\grp{B} 116、\grp{C} 131、\grp{D} 120 個案例），賣出僅 15 至 28 個，模型整體呈現偏多傾向。交換輪引用的證據與參照輪不同：「引用證據 ID 新穎率」（第二輪引用、但參照輪未引用之證據 ID 比例）\grp{D} 平均為 0.42，\grp{C} 為 0.01。此指標只量測引用集合的差異，不量測文字內容，也不能證明產生了有效的新論點；且兩組參照不同（\grp{D} 對照對手第一輪、\grp{C} 對照自己第一輪），不宜直接比較大小。這些差異多未改變裁決者之最終方向。
-
-\paragraph{年度分布。}
-表~\ref{tab:years} 為各年度之條件準確率。2022 年市場下跌、多數案例之 60 日報酬為負，四組準確率皆低，其中 \grp{D} 為 36\%，高於 \grp{C} 之 14\%；2023 與 2024 年則 \grp{D} 低於 \grp{C}。各年度下注案例僅約 20 至 33 個，此為描述性結果，未作檢定。
-
-\begin{table}[H]
-\centering\small
-\caption{各年度條件準確率（60 日，括號內為下注案例數）}
-\label{tab:years}
-\begin{tabular}{@{}lcccc@{}}
-\toprule
-年度 & \grp{A} & \grp{B} & \grp{C} & \grp{D} \\
+\grp{A} 單次判斷 & 56.0\% & 57.6\% \\
+\grp{B} 獨立投票 & 55.9\% & 56.7\% \\
+\grp{C} 固定立場辯論 & 58.3\% & 57.8\% \\
+\grp{D} 立場交換辯論 & 55.0\% & 56.1\% \\
 \midrule
-2021 & 63\%（30） & 61\%（31） & 71\%（31） & 67\%（33） \\
-2022 & 21\%（19） & 22\%（23） & 14\%（22） & 36\%（25） \\
-2023 & 74\%（27） & 71\%（28） & 76\%（29） & 61\%（28） \\
-2024 & 53\%（30） & 50\%（32） & 56\%（32） & 41\%（29） \\
-2025 & 66\%（29） & 67\%（30） & 69\%（32） & 71\%（28） \\
+一律看多（事後參照） & \multicolumn{2}{c}{62.2\%} \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-\paragraph{驗證與數字移除。}
-3,960 次模型呼叫中，1,351 次（34\%）至少重試一次後通過驗證；重試三次後仍含來源未支持數字而移除者共 122 次，分布於 75 個案例（180 案的 41.7\%）。移除發生在文字輸出階段，未回寫修改已產生的決策欄位；然而這不能證明那些數字未影響模型原先的決策。既有資料應補做「有／無移除」品質分層，且須與新版驗證結果分開報告。
+\paragraph{與一律看多之比較。} 180 案中 112 案於 60 日內上漲（62.2\%）。兩模型四組之準確率皆低於一律看多；68 個下跌案例中，各組僅判斷正確 14--15 案（約 21\%）。此一參照需在事後才能得知，但顯示現有輸入對下跌幾乎沒有辨識力。
 
-\paragraph{前導研究小結。}
-在 qwen3:32b 舊版 v3-0929.1 的 180 案中，D 組自我反駁機制未優於 C 組固定立場辯論，也未呈現相對 A、B 的可區分改善；此比較針對自我反駁機制整體，不區分立場互換與資訊隔離各自的貢獻。舊版四組均未勝過同期買進持有。立場交換流程產生新論點，但未觀察到相應的決策提升；這是舊版流程的描述性結論，由正式 RQ1 確認。
+\paragraph{被否證之解釋。} 本研究原推測 \grp{D} 較常看空，因而在多頭期吃虧、在空頭期應較佳。將 20 個分析日依九檔平均 60 日報酬分為 6 個空頭季與 14 個多頭季後，\grp{D} 在空頭季之準確率亦未高於 \grp{C}（qwen 24.1\% 對 25.9\%；Flash 25.9\% 對 27.8\%），此推測不成立。
 
-\subsection{前導研究之穩健性檢查：預測期間}
-\label{sec:horizon}
-
-本節將 RQ1 之四組比較於 30、60、90 個交易日三種預測期間重複，60 日為主要期間，用以檢查 RQ1 之結論是否依賴特定的預測期間；分析日仍為每季一次，與 RQ2 之月度設計不同。表~\ref{tab:horizon} 為 qwen3:32b 之條件準確率與 Sharpe 比率，表~\ref{tab:horizontests} 為 30 與 90 日之配對檢定（60 日見表~\ref{tab:tests}）。
-
-\begin{table}[H]
-\centering\small
-\caption{不同預測期間之表現（qwen3:32b，扣除交易成本）}
-\label{tab:horizon}
-\begin{tabular}{@{}lccccc@{}}
-\toprule
-預測期間 & \grp{A} & \grp{B} & \grp{C} & \grp{D} & 買進持有 \\
-\midrule
-\multicolumn{6}{@{}l}{條件準確率（\%）} \\
-30 個交易日 & 57.0 & 55.6 & 61.0 & 57.3 & -- \\
-60 個交易日 & 57.8 & 55.6 & 59.6 & 55.9 & -- \\
-90 個交易日 & 61.5 & 59.7 & 63.0 & 60.1 & -- \\
-\midrule
-\multicolumn{6}{@{}l}{年化 Sharpe 比率} \\
-30 個交易日 & 0.26 & $-0.06$ & 0.75 & 0.41 & 1.40 \\
-60 個交易日 & 0.80 & 0.64 & 0.92 & 0.79 & 1.02 \\
-90 個交易日 & 0.84 & 0.53 & 1.06 & 0.94 & 1.11 \\
-\bottomrule
-\end{tabular}
-\end{table}
-
-\begin{table}[H]
-\centering\small
-\caption{立場交換辯論（\grp{D}）與其餘三組之配對檢定（30 與 90 日）}
-\label{tab:horizontests}
-\begin{tabular}{@{}llcccc@{}}
-\toprule
-期間 & 比較 & 準確率差 & McNemar $p$ & 年化 Sharpe 差 & Ledoit--Wolf $p$（Holm） \\
-\midrule
-30 日 & \grp{D} 對 \grp{C} & $-1.6$ & 0.75 & $-0.35$ & 0.19（0.56） \\
-30 日 & \grp{D} 對 \grp{B} & $+2.4$ & 0.51 & $+0.47$ & 0.23（0.56） \\
-30 日 & \grp{D} 對 \grp{A} & 0.0 & 1.00 & $+0.14$ & 0.64（0.64） \\
-\midrule
-90 日 & \grp{D} 對 \grp{C} & 0.0 & 1.00 & $-0.12$ & 0.43（0.87） \\
-90 日 & \grp{D} 對 \grp{B} & $-0.8$ & 1.00 & $+0.41$ & 0.17（0.50） \\
-90 日 & \grp{D} 對 \grp{A} & 0.0 & 1.00 & $+0.10$ & 0.60（0.87） \\
-\bottomrule
-\end{tabular}
-\par\smallskip
-\raggedright\footnotesize 準確率差單位為百分點，以兩組皆下注之案例計算。
-\end{table}
-
-三種期間呈現一致的模式。第一，條件準確率以 90 日最高，30 與 60 日相近，四組皆然。第二，Sharpe 比率大致隨期間拉長而上升（\grp{B} 在 90 日略低於 60 日除外）；\grp{C} 在三種期間皆最高（0.75、0.92、1.06），\grp{B} 皆最低，\grp{D} 在 30 與 90 日居第二、60 日居第三。第三，\grp{D} 與 \grp{C} 之年化 Sharpe 差在三個期間皆為負（$-0.35$、$-0.13$、$-0.12$），且隨期間拉長而縮小，但沒有任何比較達統計顯著；未校正之最小 $p$ 值為 0.11（90 日 \grp{D} 對 \grp{B} 之 Jobson--Korkie 檢定），Holm 校正後最小為 0.50。第四，四組在三種期間皆未勝過同期買進持有，30 日差距最大（四組最高之 Sharpe 為 0.75，買進持有為 1.40），90 日差距最小（\grp{C} 為 1.06，買進持有為 1.11）。
-
-90 日預測期間長於季度分析日之間隔（約 63 個交易日），同一檔股票相鄰兩季之持有期重疊，且 180 個案例共享 20 個分析日期。Ledoit--Wolf 區塊自助法處理報酬日期相依，但舊版 McNemar 檢定未校正日期群聚，故舊版方向檢定 $p$ 值宜保守解讀；新版另加日期群聚／連續日期區塊區間敏感性分析。
-
-\paragraph{小結。}
-在 qwen3:32b 舊版下，三種預測期間呈現相似的相對排序，且未見統計上可區分的組間差異。此排序解讀為自我反駁機制與固定立場辯論的比較。
+\paragraph{後續假說。} 綜合上述，推理結構（立場交換）與模型能力之改變皆未改善決策，而四組均低於一律看多，可能之解釋為限制來自輸入資訊之預測力。此與部分文獻發現辯論可提升推理任務表現 \citep{du2023debate,liang2023divergent} 不同，可能原因在於本研究為高雜訊之預測任務，惟本研究未檢驗此差異。後續研究將保持流程不變、僅擴充資訊集（如跨標的聯動訊號），並依 \citet{nosek2018prereg} 之建議，於新期間或新標的之資料上事前登記檢驗，以避免在產生假說之同一批資料上驗證。
 
 \subsection{研究限制}
 
 第一，研究範圍為九檔美國大型股，結果未必能推廣至其他市場或小型股。第二，D 的自我反駁機制由立場互換、隔離對手與強制引用自身主張組成，本研究未以消融組區分各要素的個別貢獻。第三，標的匿名化僅隱藏代號與公司名稱，財報數值與日期仍可見，模型仍可能推知標的；且 2021--2025 年可能在模型訓練資料內，本研究以匿名化與記憶探測降低、但無法排除前視偏差。第四，本批為規則鎖定後對既有樣本之回溯比較，前導研究已看過同期結果，不宣稱全新之樣本外表現。第五，\grp{C}、\grp{D} 裁決者必須下注且可讀取已到期之歷史記憶，\grp{A}、\grp{B} 可持有且無記憶，故 \grp{D} 對 \grp{A}、\grp{B} 之差異混合多項設計差異，只有 \grp{D} 對 \grp{C} 為主要比較。第六，180 案共享 20 個日期，90 日預測期間又長於季度間隔，方向檢定另以日期群聚區間檢查。第七，新聞來源混用 FNSPID 與 Alpha Vantage，36 案僅有即時標題，新聞密度與年份、個股相關。本研究未對每個案例重複執行，無法評估同案重跑變異。
 
 %% =====================================================================
-\section{研究進度與後續工作}
-\label{sec:pendingsec}
-%% =====================================================================
-
-正式 RQ1（qwen3:32b、季度 v3-1002.3、180 案）已於 2026 年 10 月 2 日事前登記並開始執行，依分析日順序進行，已於 2026 年 10 月 4 日全數完成（約 10 小時 GPU 時間、約 4,500 次模型呼叫，租用成本約 6 美元）。完成後再執行 qwen3:32b 月度 v3-1002.4 之 540 案（RQ2）；月度結果不與季度樣本混合。季度與月度分析完成後，以相同季度資料集與規則執行 Gemini Flash 跨模型配對比較（RQ3）。
-
-%% =====================================================================
 \section{結論與未來研究}
 \label{sec:conclusion}
 %% =====================================================================
 
-正式 RQ1（qwen3:32b，v3-1002.3，180 個事前登記案例）之結果為：\grp{D} 自我反駁機制未優於 \grp{C} 固定立場辯論，方向準確率 55.0\% 對 58.3\%（$p=0.21$）、年化 Sharpe 0.54 對 0.59（$p=0.80$），經 Holm 校正後皆不顯著，30／90 日、零成本、守門員後與排除低新聞案例之敏感性分析亦未提供 D 較佳之顯著證據；四組均未勝過同期買進持有（Sharpe 1.01）。可觀察到自我反駁使代理人引用較多新證據、決策較常看空，但未帶來更好之決策。
+正式 RQ1（qwen3:32b，v3-1002.3，180 個事前登記案例）於 2026 年 10 月 2 日登記、10 月 4 日全數完成（約 10 小時 GPU 時間、約 4,500 次模型呼叫），結果為：\grp{D} 自我反駁機制未優於 \grp{C} 固定立場辯論，方向準確率 55.0\% 對 58.3\%（$p=0.21$）、年化 Sharpe 0.54 對 0.59（$p=0.80$），經 Holm 校正後皆不顯著，30／90 日、零成本、守門員後與排除低新聞案例之敏感性分析亦未提供 D 較佳之顯著證據；四組均未勝過同期買進持有（Sharpe 1.01）。可觀察到自我反駁使代理人引用較多新證據、決策較常看空，但未帶來更好之決策。
 
-前導研究（v3-0929.1，180 案）未觀察到 D 自我反駁機制相對 C 固定立場辯論的可測得提升；四組方向準確率介於 55.6\% 至 59.6\%，年化 Sharpe 為 0.64 至 0.92，且均未勝過同期買進持有（1.02）。D 交換輪的引用證據 ID 新穎率較高（0.42，C 為 0.01；兩組參照不同，且此指標不衡量論點品質），但 63\% 案例四組決策相同。
 
-未來研究依序進行月度擴充（v3-1002.4，540 案）與跨模型配對比較。若要區分立場互換與資訊隔離各自的貢獻，另須新增消融組（例如僅讀自身歷史但不換立場）並重新事前登記。
+RQ3 之跨模型比較已以 Gemini 3 Flash 於同一批 180 案完成，惟未事前登記，僅作探索性分析：其結論與 qwen3:32b 相同，且兩模型各組準確率皆低於一律看多，顯示限制可能來自輸入資訊。RQ2 之月度擴充（v3-1002.4，540 案）尚未執行。未來研究將於新期間或新標的上事前登記，檢驗擴充資訊集（如跨標的聯動訊號）之效果。若要區分立場互換與資訊隔離各自的貢獻，另須新增消融組（例如僅讀自身歷史但不換立場）並重新事前登記。
 
 \vspace{0.8cm}
 \noindent\small 本文為國立陽明交通大學管理科學系專題研究之成果，僅供學術研究與教學使用，不構成任何投資建議。
