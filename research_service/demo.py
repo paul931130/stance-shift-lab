@@ -85,6 +85,14 @@ def demo_model(protocol, messages, seed=None, temperature=None):
         result = {"summary": "Deterministic demo summary of the supplied synthetic evidence.",
                   "evidence_ids": evidence_ids or ["demo-technical-1"],
                   "risks": ["這是合成展示資料，不代表真實研究結論。"], "numeric_claims": []}
+    elif "Domain View synthesizer" in system:
+        # RQ3 domain judge: a deterministic Buy view citing the domain's first item.
+        evidence = json.loads(messages[1]["content"]).get("report", {}).get("evidence", [])
+        cited = [item["evidence_id"] for item in evidence[:1]]
+        result = {"direction": "Buy" if cited else "InsufficientInfo", "expected_return_pct": 4.0 if cited else None,
+                  "confidence": .6, "supporting_evidence_ids": cited, "counter_evidence_ids": [],
+                  "uncertainty": "Synthetic demo view.", "information_gaps": ["合成展示資料"],
+                  "rationale": "Deterministic demo Domain View; not a research conclusion."}
     else:
         payload = json.loads(messages[1]["content"])
         evidence = payload.get("report", {}).get("evidence", [])
