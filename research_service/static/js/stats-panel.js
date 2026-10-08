@@ -6,7 +6,47 @@ import { flow } from './flow.js';
 import { setTab } from './nav.js';
 
 const GROUP_TONES = {A: 'a', B: 'b', C: 'c', D: 'd'};
+const GROUP_NAMES = {A: '單次判斷', B: '獨立投票', C: '固定立場辯論', D: '立場交換辯論'};
+const BENCHMARK = 'BuyAndHoldActiveWindows';
 let loadedFor = null;
+
+const points = value => value == null ? '—' : `${value >= 0 ? '+' : '−'}${Math.abs(value * 100).toFixed(1)}`;
+const signed = value => value == null ? '—' : `${value >= 0 ? '+' : '−'}${Math.abs(value).toFixed(2)}`;
+const pvalue = value => value == null ? '—' : Number(value).toFixed(2);
+const pct2 = value => value == null ? '—' : `${(value * 100).toFixed(2)}%`;
+const sharpe2 = value => value == null ? '—' : Number(value).toFixed(2);
+
+// Report table「四組績效」: candidate decisions, primary horizon, net of cost,
+// with the same-window buy-and-hold reference as its own row.
+function performanceTable(primary, benchmark, horizon) {
+  const row = r => `<tr><th scope="row"><span class="group-chip tone-${GROUP_TONES[r.group]}">${escape(r.group)}</span>${escape(GROUP_NAMES[r.group] || r.group)}</th><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${pct2(r.total_return)}</td><td>${pct2(r.max_drawdown)}</td><td>${r.sharpe == null ? '—' : r.sharpe.toFixed(2)}</td></tr>`;
+  const reference = benchmark ? `<tr class="reference-row"><th scope="row">買進持有（同案同期間）</th><td>—</td><td>—</td><td>${pct2(benchmark.total_return)}</td><td>${pct2(benchmark.max_drawdown)}</td><td>${benchmark.sharpe == null ? '—' : benchmark.sharpe.toFixed(2)}</td></tr>` : '';
+  return `<div class="table-wrap"><table class="report-table"><caption>四組績效（${horizon} 個交易日，扣除交易成本）</caption><thead><tr><th>組別</th><th>出手率</th><th>條件準確率</th><th>累積報酬</th><th>最大回撤</th><th>年化 Sharpe</th></tr></thead><tbody>${primary.map(row).join('')}${reference}</tbody></table></div>
+    <p class="hint">決策為守門員之前之候選決策。出手率為買進或賣出（非持有）之比例；條件準確率以有出手之案例計算。組合將每個「股票×分析日」案例視為固定權重之部位，僅於該案持有期間依決策做多或放空，其餘時間以零報酬現金計。買進持有參照採相同配置，於每案相同期間做多該股票。</p>`;
+}
+
+// Report table「立場交換組之配對檢定」: D against C (primary), B and A.
+function pairedTestsTable(comparisons, horizon, primaryInference) {
+  const rows = ['C', 'B', 'A'].map(group => (comparisons || []).find(item => item.groups?.[1] === group && item.horizon === horizon
+    && item.cost_model === 'corwin_schultz' && item.decision_layer === 'candidate' && item.portfolio_basis === 'all')).filter(Boolean);
+  if (!rows.length) return '';
+  const body = rows.map(item => {
+    const m = item.mcnemar || {}, lw = item.ledoit_wolf || {}, group = item.groups[1];
+    return `<tr${group === 'C' ? ' class="primary-row"' : ''}><th scope="row">D 對 ${escape(group)}${group === 'C' ? '（主要）' : ''}</th><td>${m.n ?? '—'}</td><td>${m.discordant ?? '—'}</td><td>${points(m.accuracy_difference)}</td><td>${pvalue(m.pvalue)}</td><td>${signed(lw.annualized_difference)}</td><td>${pvalue(lw.pvalue)}</td></tr>`;
+  }).join('');
+  const holm = (primaryInference?.endpoints || []).map(item => `${item.endpoint === 'direction_accuracy' ? '準確率' : 'Sharpe'} ${pvalue(item.holm_pvalue)}`).join('、');
+  return `<div class="table-wrap"><table class="report-table"><caption>立場交換組（D）之配對檢定（${horizon} 個交易日）</caption><thead><tr><th>比較</th><th>配對案例</th><th>方向不同</th><th>準確率差</th><th>McNemar p</th><th>Sharpe 差</th><th>Ledoit–Wolf p</th></tr></thead><tbody>${body}</tbody></table></div>
+    <p class="hint">準確率差單位為百分點。${holm ? `主要比較經 Holm 校正後之 p 值為 ${holm}。` : ''}與 A、B 之比較以兩組皆出手之案例計算。</p>`;
+}
+
+// Verdict against the preregistered success rule, phrased the way the report
+// states it: not reaching superiority is not evidence of equivalence.
+function verdictBlock(result, ready) {
+  if (!ready || !result) return `<div class="verdict pending"><b>尚未判定</b><p>主要比較需要足夠的完成案例與可估計的兩個端點；目前僅能檢視描述統計。</p></div>`;
+  if (result.success === true) return `<div class="verdict pass"><b>達到預先指定之優越性判準</b><p>D 對 C 之方向準確率與年化 Sharpe 差皆為正，且經 Holm 校正後 p &lt; ${result.alpha}。仍屬鎖定規則下之結果，需搭配敏感性分析解讀。</p></div>`;
+  if (result.success === false) return `<div class="verdict fail"><b>未達預先指定之優越性判準</b><p>不支持立場交換辯論（D）優於固定立場辯論（C）。未事前訂定等效／非劣性界值，故不能由未顯著推論兩組等效。</p></div>`;
+  return `<div class="verdict pending"><b>主要端點尚未全部可估計</b><p>${escape(result.note || '請檢查完成案例數與資料品質。')}</p></div>`;
+}
 
 // Horizontal bars make the A/B/C/D comparison readable at a glance; the
 // table below keeps the exact values.
@@ -68,7 +108,7 @@ function primaryInferenceBlock(result) {
   const verdict = result.success === true ? '兩個主要端點都達到預先指定條件'
     : result.success === false ? '未達到預先指定的共同成功條件'
       : '主要端點尚未全部可估計';
-  return `<section class="stats-substep"><div class="section-label">預先指定的主要假說</div><p class="hint">${escape(verdict)}。D 對 C；方向準確率與年化 Sharpe 差皆須為正，且同一個兩端點 family 經 Holm 校正後 p &lt; ${result.alpha}。${escape(result.note || '')}</p><div class="table-wrap"><table><thead><tr><th>端點</th><th>差值</th><th>原始 p</th><th>Holm p</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
+  return `<section class="stats-substep"><div class="section-label">預先指定的主要假說（D 對 C，Holm 校正）</div><p class="hint">${escape(verdict)}。D 對 C；方向準確率與年化 Sharpe 差皆須為正，且同一個兩端點 family 經 Holm 校正後 p &lt; ${result.alpha}。${escape(result.note || '')}</p><div class="table-wrap"><table><thead><tr><th>端點</th><th>差值</th><th>原始 p</th><th>Holm p</th></tr></thead><tbody>${rows}</tbody></table></div></section>`;
 }
 
 function numericQualityBlock(q) {
@@ -124,12 +164,17 @@ export async function showStatistics() {
   const splits = temporalSplitBlock(report.temporal_split_results);
   const numericQuality = numericQualityBlock(report.numeric_validation_quality);
   const newsCoverage = sentimentCoverageBlock(report);
-  element.innerHTML = `<section class="stats-substep"><div class="section-label">4.1 / 回測摘要</div><h2>同協議研究比較</h2><p class="hint">只比較用同一套研究規則（同協議版本）跑出的結果。以下為 ${primaryHorizon} 個交易日、扣除估計交易成本（Corwin–Schultz）、各案例等權重的結果，共 ${report.unique_cases || 0} 個完成的案例；同一案例重跑的紀錄會保留但不重複計算。</p>${insufficient}${preregBlock}
-    <div class="chart-pair">${comparisonBars(primary, 'selective_accuracy', '有下注時的方向準確率', percentage)}${comparisonBars(primary, 'sharpe', 'Sharpe', number)}</div>
-    <div class="table-wrap"><table><thead><tr><th>方法</th><th>下注比例</th><th>有下注時準確率</th><th>Hold 比例</th><th>Sharpe</th><th>總報酬</th></tr></thead><tbody>${primary.map(r => `<tr><td>${escape(r.group)}</td><td>${percentage(r.coverage)}</td><td>${percentage(r.selective_accuracy)}</td><td>${percentage(r.hold_rate)}</td><td>${number(r.sharpe)}</td><td>${percentage(r.total_return)}</td></tr>`).join('')}</tbody></table></div></section>
-    ${completion}${primaryInferenceBlock(report.primary_inference)}${directionBlocks}${splits}${numericQuality}${newsCoverage}${knowledgeCutoffBlock(report.knowledge_cutoff)}
-    <section class="stats-substep"><div class="section-label">4.2 / 品質與匯出</div><p class="hint">試跑檢查（pilot）：${pilot.verdict === 'proceed' ? '通過，可以開始正式批次' : pilot.verdict === 'blocked' ? '尚未通過' : '—'}。這是正式批次前的健檢，用來確認各組結果沒有異常（例如全部都 Hold）。「Hold 門檻」的敏感度分析是用既有預測重算，不會重新呼叫模型。</p>${pilotReasons(pilot.blocking_reasons)}<div class="actions"><a href="/api/studies/${protocol}/summary.csv">下載摘要表（summary.csv）</a><a href="/api/studies/${protocol}" download="statistics.json">下載完整統計（statistics.json）</a></div></section>
-    <section class="stats-substep"><div class="section-label">4.3 / 詳細稽核</div><details><summary>試跑檢查、門檻、切分、新聞與數字品質（原始數據）</summary>${copyablePre(JSON.stringify({pilot, hold_band: band, completeness: report.completeness, completion: report.completion, temporal_split_results: report.temporal_split_results, numeric_validation_quality: report.numeric_validation_quality, sentiment_coverage: report.sentiment_coverage}, null, 2))}</details><details><summary>統計檢定結果與計算方式（原始數據）</summary>${copyablePre(JSON.stringify({primary_inference: report.primary_inference, comparisons: report.comparisons, conventions: report.conventions}, null, 2))}</details></section>`;
+  const groups = primary.filter(r => GROUP_NAMES[r.group]);
+  const benchmark = primary.find(r => r.group === BENCHMARK);
+  const ready = report.status !== 'insufficient_cases' && Boolean(report.primary_inference);
+  element.innerHTML = `<section class="stats-substep"><div class="section-label">4.1 / 實驗結果</div><h2>四組績效與主要比較</h2><p class="hint">只比較同一套研究規則（同協議版本）跑出的結果：${primaryHorizon} 個交易日、開盤對開盤、扣除 Corwin–Schultz 估計之買賣價差，共 ${report.unique_cases || 0} 個完成的案例；同一案例重跑的紀錄會保留但不重複計算。</p>${insufficient}${preregBlock}
+    ${verdictBlock(report.primary_inference, ready)}
+    <div class="chart-pair">${comparisonBars(groups, 'selective_accuracy', '條件準確率', percentage)}${comparisonBars(groups, 'sharpe', `年化 Sharpe${benchmark?.sharpe != null ? `（買進持有參照 ${benchmark.sharpe.toFixed(2)}）` : ''}`, sharpe2)}</div>
+    ${performanceTable(groups, benchmark, primaryHorizon)}</section>
+    <section class="stats-substep"><div class="section-label">4.2 / 配對檢定</div>${pairedTestsTable(report.comparisons, primaryHorizon, report.primary_inference) || '<p class="hint">完成案例達最低統計門檻後，才會計算 D 對 C、B、A 之配對檢定。</p>'}${primaryInferenceBlock(report.primary_inference)}${directionBlocks}</section>
+    <details class="stats-group"><summary>4.3 / 敏感性分析與資料品質（完成狀態、年度切分、數字品質、新聞覆蓋、知識截止日）</summary>${completion}${splits}${numericQuality}${newsCoverage}${knowledgeCutoffBlock(report.knowledge_cutoff)}</details>
+    <section class="stats-substep"><div class="section-label">4.4 / 品質與匯出</div><p class="hint">試跑檢查（pilot）：${pilot.verdict === 'proceed' ? '通過，可以開始正式批次' : pilot.verdict === 'blocked' ? '尚未通過' : '—'}。這是正式批次前的健檢，用來確認各組結果沒有異常（例如全部都 Hold）。「Hold 門檻」的敏感度分析是用既有預測重算，不會重新呼叫模型。</p>${pilotReasons(pilot.blocking_reasons)}<div class="actions"><a href="/api/studies/${protocol}/summary.csv">下載摘要表（summary.csv）</a><a href="/api/studies/${protocol}" download="statistics.json">下載完整統計（statistics.json）</a></div></section>
+    <section class="stats-substep"><div class="section-label">4.5 / 詳細稽核</div><details><summary>試跑檢查、門檻、切分、新聞與數字品質（原始數據）</summary>${copyablePre(JSON.stringify({pilot, hold_band: band, completeness: report.completeness, completion: report.completion, temporal_split_results: report.temporal_split_results, numeric_validation_quality: report.numeric_validation_quality, sentiment_coverage: report.sentiment_coverage}, null, 2))}</details><details><summary>統計檢定結果與計算方式（原始數據）</summary>${copyablePre(JSON.stringify({primary_inference: report.primary_inference, comparisons: report.comparisons, conventions: report.conventions}, null, 2))}</details></section>`;
   requestAnimationFrame(() => { for (const bar of element.querySelectorAll('.bar-track i')) bar.style.width = `${bar.dataset.width}%`; });
 }
 

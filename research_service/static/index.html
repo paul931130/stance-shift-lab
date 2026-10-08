@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="description" content="多代理人立場交換研究工作台：歷史資料、四組實驗、配對統計與可追溯輸出。">
+<meta name="description" content="多代理人立場交換辯論應用於投資決策：資料快照、研究代理人、四組決策機制、守門員、回測與配對統計。">
 <title>立場交換研究室</title>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="/assets/app.css">
@@ -15,7 +15,7 @@
 <header class="topbar">
   <a class="brand" href="/" aria-label="立場交換研究室首頁">
     <svg class="brand-mark" viewBox="0 0 40 40" aria-hidden="true"><path class="bm-a" d="M6 14h22l-5-5"/><path class="bm-b" d="M34 26H12l5 5"/></svg>
-    <span>立場交換研究室<small>STANCE SHIFT · RESEARCH WORKSPACE</small></span>
+    <span>立場交換研究室<small>MULTI-AGENT ROLE-SWITCHING DEBATE</small></span>
   </a>
   <span id="model-state" class="model-status" role="status">正在檢查模型連線…</span>
   <span id="protocol-tag" class="tag">v3 研究協議</span>
@@ -30,25 +30,18 @@
 
 <div class="workspace" id="workspace">
 
-<!-- Formal studies first: batch progress, ETA and GPU state are what a run needs at a glance. -->
-<section class="panel study-panel" aria-labelledby="study-title">
-  <div class="panel-heading">
-    <div><div class="section-label">FORMAL STUDIES</div><h2 id="study-title">正式實驗</h2></div>
-    <button id="gpu-refresh" class="quiet" type="button" title="重新讀取 GPU 狀態">GPU 狀態 ↻</button>
-  </div>
-  <div id="studies" aria-live="polite"><p class="hint">讀取中…</p></div>
-</section>
-
 <!-- Main view: the live pipeline map. Clicking a node or band opens that step below. -->
 <section class="flow-hero" aria-labelledby="flow-title">
   <div class="flow-head">
     <div>
-      <div class="section-label">LIVE PIPELINE</div>
-      <h1 id="flow-title">資料流向</h1>
+      <div class="section-label">研究架構 · LIVE PIPELINE</div>
+      <h1 id="flow-title">多代理人立場交換辯論應用於投資決策</h1>
+      <p class="research-question"><b>RQ1</b><span>在相同資料與相同決策呼叫次數下，自我反駁式「立場交換辯論」（D）之方向準確率與風險調整後報酬，是否優於「固定立場辯論」（C）？</span></p>
+      <ul id="research-scope" class="research-scope" aria-label="研究範圍"></ul>
       <p id="flow-caption" class="flow-caption" role="status" aria-live="polite">等待資料來源與研究案例…</p>
     </div>
     <dl class="flow-metrics">
-      <div><dt>資料集</dt><dd id="flow-metric-datasets">—</dd></div>
+      <div><dt>資料快照</dt><dd id="flow-metric-datasets">—</dd></div>
       <div><dt>本案例證據數</dt><dd id="flow-metric-evidence">—</dd></div>
       <div><dt>模型輸出</dt><dd id="flow-metric-outputs">—</dd></div>
       <div><dt>已完成案例</dt><dd id="flow-metric-cases">—</dd></div>
@@ -59,7 +52,7 @@
     <ul class="flow-legend" aria-label="圖例">
       <li class="lg-active">進行中</li><li class="lg-done">完成</li><li class="lg-ready">可用</li><li class="lg-warn">缺口／待成熟</li><li class="lg-idle">尚未開始</li>
     </ul>
-    <span class="flow-tip">點選節點或區塊即可開啟對應步驟</span>
+    <span class="flow-tip">四組讀取同一份鎖定報告後才分流 · 點選節點或區塊即可開啟對應步驟</span>
   </div>
 </section>
 
@@ -69,7 +62,7 @@
   <nav class="tabs" role="tablist" aria-label="研究步驟">
     <button type="button" data-tab-button="data" role="tab" aria-selected="true" aria-controls="panel-data"><i>1</i><span>資料準備</span></button>
     <button type="button" data-tab-button="experiment" role="tab" aria-selected="false" aria-controls="panel-experiment" tabindex="-1"><i>2</i><span>建立實驗</span></button>
-    <button type="button" data-tab-button="runs" role="tab" aria-selected="false" aria-controls="panel-runs" tabindex="-1"><i>3</i><span>Agent 執行</span></button>
+    <button type="button" data-tab-button="runs" role="tab" aria-selected="false" aria-controls="panel-runs" tabindex="-1"><i>3</i><span>代理人執行</span></button>
     <button type="button" data-tab-button="stats" role="tab" aria-selected="false" aria-controls="panel-stats" tabindex="-1"><i>4</i><span>統計結果</span></button>
   </nav>
 
@@ -78,15 +71,21 @@
       <div class="section-label">第一次使用</div>
       <ol>
         <li>展開「設定資料來源與模型」，填入至少一組資料來源金鑰。</li>
-        <li>選股票與研究分析日，按「啟動資料 Agent」蒐集資料。</li>
+        <li>選股票與研究分析日，按「啟動資料代理人」建立分析日前的資料快照。</li>
         <li>資料完整後會自動切到「建立實驗」，按「開始研究實驗」。</li>
-        <li>在「Agent 執行」看進度；完成後到「統計結果」比較四組。</li>
+        <li>在「代理人執行」看進度；完成後到「統計結果」比較四組。</li>
       </ol>
       <button id="dismiss-first-time-guide" class="quiet" type="button">知道了，不用再顯示</button>
     </div>
     <div class="section-label">01 / 資料</div>
     <h2>準備研究資料</h2>
-    <p class="step-intro">選擇股票與分析日，系統會蒐集並檢查技術、基本面、情緒、總經四個面向的資料。</p>
+    <p class="step-intro">選擇股票與分析日，資料代理人只蒐集分析日前已公開的資料，建立以內容雜湊識別、不可變的資料快照；四組決策讀取同一份快照。</p>
+    <div class="source-table" aria-label="資料來源與處理方式">
+      <article class="tone-technical"><b>技術面</b><span>調整後日行情</span><small>近 20 日報酬、均線相對位置、年化波動度</small></article>
+      <article class="tone-fundamental"><b>基本面</b><span>SEC 財報</span><small>營收、淨利、營業現金流與去年同期比較；依申報日篩選</small></article>
+      <article class="tone-sentiment"><b>情緒面</b><span>FNSPID、Alpha Vantage</span><small>分析日前 90 天新聞標題，以 FinBERT 逐則評分後彙整</small></article>
+      <article class="tone-macro"><b>總經面</b><span>FRED／ALFRED</span><small>失業率、利率、物價等，僅採分析日當時已發布之版本</small></article>
+    </div>
     <button class="quiet" type="button" data-open-settings>設定模型與金鑰</button>
 
     <h3 class="substep">1.1　確認資料可用性</h3>
@@ -107,7 +106,7 @@
       <p id="batch-collect-progress" class="hint" role="status" aria-live="polite"></p>
     </form>
     <div data-data-panel="single" hidden>
-    <p id="data-readiness" class="readiness">選擇股票與研究分析日後，讓四個 Agent 開始蒐集與驗證資料。</p>
+    <p id="data-readiness" class="readiness">選擇股票與研究分析日後，讓四個資料代理人開始蒐集與驗證資料。</p>
     <form id="download-form" class="action-card">
       <div class="pair">
         <label>股票<select id="ticker"></select></label>
@@ -116,7 +115,7 @@
       <label class="check"><input id="refresh-data" type="checkbox">強制重新向資料來源下載，建立新版資料集</label>
       <label class="check"><input id="download-finbert" type="checkbox">下載完成後，以 FinBERT 分析新聞標題</label>
       <p class="hint">預設會重用同股票、同分析日且四個面向都齊全的既有資料集，避免重複消耗 API 額度。</p>
-      <button id="download-button">啟動資料 Agent</button>
+      <button id="download-button">啟動資料代理人</button>
     </form>
     </div>
 
@@ -152,14 +151,20 @@
   <section id="panel-experiment" class="panel step-panel" data-panel="experiment" role="tabpanel" hidden>
     <div class="section-label">02 / 實驗</div>
     <h2>設定比較實驗</h2>
-    <p class="step-intro">選好資料集與模型後，系統會用 A/B/C/D 四種方法分析同一個案例，四組使用相同資料與呼叫次數，只有決策流程不同（D 與 C 的差異包含交換立場與交換輪可見的內容）：</p>
-    <div class="methods" aria-label="四種決策機制">
-      <article class="m-a"><b>A</b><div><h3>單次判斷</h3><p>1 次獨立決策</p></div></article>
-      <article class="m-b"><b>B</b><div><h3>獨立投票</h3><p>7 次相同提示</p></div></article>
-      <article class="m-c"><b>C</b><div><h3>固定立場</h3><p>3 輪辯論＋裁決</p></div></article>
-      <article class="m-d treatment"><b>D</b><div><h3>立場交換</h3><p>第 2 輪交換且只看自己第 1 輪，第 3 輪換回</p></div></article>
+    <p class="step-intro">四組決策機制讀取同一份鎖定的中立研究報告，只有決策流程不同。B、C、D 的決策呼叫次數對齊（各 7 次），A 為單次判斷基準；呼叫次數相同不代表 token 或運算量相同。</p>
+    <div class="methods" aria-label="四組決策機制">
+      <article class="m-a"><header><b>A</b><em>1 次</em></header><h3>單次判斷</h3><p>讀取報告後直接決策</p></article>
+      <article class="m-b"><header><b>B</b><em>7 次</em></header><h3>獨立投票</h3><p>同一提示獨立取樣七次，多數決</p></article>
+      <article class="m-c"><header><b>C</b><em>7 次</em></header><h3>固定立場辯論</h3><p>看多與看空辯論三輪（每輪可見雙方論述），再由裁決者決策</p></article>
+      <article class="m-d treatment"><header><b>D</b><em>7 次</em></header><h3>立場交換辯論</h3><p>第 2 輪交換立場、只見自己第 1 輪並須反駁之，第 3 輪換回，再由裁決者決策</p></article>
     </div>
-    <p class="hint">主要指標：60 個交易日的方向準確率與 Sharpe。30／90 日作為穩健性檢查；報酬同時提供不計成本與扣除 Corwin–Schultz 估計價差兩種版本。</p>
+    <ol class="rounds" aria-label="立場交換辯論之三輪流程">
+      <li><b>第 1 輪</b><span>看多與看空代理人各自提出論點並引用證據</span></li>
+      <li class="swap"><b>第 2 輪 · 交換</b><span>改持相反立場，只看得到自己第 1 輪的論述，須引用並反駁自己的原主張</span></li>
+      <li><b>第 3 輪</b><span>換回原立場，整合前兩輪之論點與反駁</span></li>
+      <li><b>裁決</b><span>逐項核對雙方引用之證據，在買進與賣出之間擇一</span></li>
+    </ol>
+    <p class="hint">主要比較為 D 對 C：60 個交易日之方向準確率（McNemar）與年化 Sharpe 差（Ledoit–Wolf），以 Holm 校正；兩端點差異皆為正且校正後 p &lt; 0.05 才判定 D 較佳。30／90 日、不計成本、以日期為群聚之區間為敏感性分析。估計量為整套 D 流程對 C 的複合效果，未以消融分離立場交換本身。</p>
 
     <div class="mode-switch" role="tablist" aria-label="實驗方式">
       <button type="button" role="tab" data-exp-mode="batch" aria-selected="true">多筆（正式實驗）</button>
@@ -180,7 +185,7 @@
           <label>B 組採樣<select id="plan-voting"><option value="7">7 次 · 與 C／D 呼叫次數相同</option><option value="5">5 次</option></select></label>
           <label>資料缺口策略<select id="plan-missing"><option value="allow_decision">保留模型決策（標記缺口）</option><option value="force_no_trade">強制 NoTrade</option></select></label>
         </div>
-        <label class="check"><input id="plan-anonymize" type="checkbox" checked>匿名化股票代號與公司名稱</label>
+        <label class="check"><input id="plan-anonymize" type="checkbox" checked>匿名化股票代號與公司名稱（降低模型憑記憶辨識標的）</label>
       </details>
       <h3 class="substep">2.3　預覽並排入</h3>
       <p class="hint">預覽會為每個案例挑選最新的完整資料集並檢查就緒度，不會呼叫模型，GPU 關機時也能預覽。</p>
@@ -208,7 +213,7 @@
       </div>
       <p id="cloud-model-state" class="hint">可直接輸入 LiteLLM 模型名稱；金鑰可在資料步驟的「設定資料來源與模型」填入。</p>
       <button class="quiet" type="button" data-goto="data" data-open-settings>設定模型與金鑰</button>
-      <p class="hint">正式研究預設使用 14B 以上的模型；qwen3:8b 已通過相容性測試，是唯一可正式使用的小模型。模型設定只影響新建立的實驗，建立後就固定不變。</p>
+      <p class="hint">正式實驗使用開源模型 qwen3:32b；研究規則要求 14B 以上的模型（qwen3:8b 已通過相容性測試，是唯一例外）。模型於事前登記時鎖定，建立後就固定不變。</p>
       <details class="experiment-advanced">
         <summary>進階實驗選項（通常使用預設值）</summary>
         <div class="pair">
@@ -230,7 +235,7 @@
 
       <h3 class="substep">2.3　啟動實驗</h3>
       <p id="experiment-guard" class="readiness guard">尚未選擇資料集，因此不能啟動實驗。</p>
-      <p class="hint">本機模型每次呼叫可能需要數十秒到數分鐘；一次完整實驗約 22 次模型呼叫（B 組 5 次時為 20 次），實際時間依模型大小與硬體而定。開始後，詳情頁會依平均耗時預估剩餘時間。</p>
+      <p class="hint">一個案例的決策呼叫共 22 次（A 1 次＋B、C、D 各 7 次；B 組 5 次時為 20 次），另有四個研究代理人的呼叫；本機模型每次呼叫可能需要數十秒到數分鐘。開始後，詳情頁會依平均耗時預估剩餘時間。</p>
       <button id="run-button" disabled>開始研究實驗 <span aria-hidden="true">→</span></button>
     </form>
     <details><summary>進階：匯入批次 JSON</summary><p class="hint">給腳本產生的案例清單（<code>{"cases": [...]}</code>）。一般請用上方「多筆」。</p><label class="check"><input id="batch-preregister" type="checkbox" checked>先鎖定這批研究樣本（事前登記）再排入佇列</label><input id="batch-file" type="file" accept=".json,application/json" aria-label="匯入批次設定"></details>
@@ -239,10 +244,18 @@
   </section>
 
   <section id="panel-runs" class="panel step-panel" data-panel="runs" role="tabpanel" hidden>
+    <!-- Formal studies: batch progress, ETA and GPU state for preregistered samples. -->
+    <section class="study-panel" aria-labelledby="study-title">
+      <div class="panel-heading">
+        <div><div class="section-label">03 / 正式實驗</div><h2 id="study-title">事前登記樣本進度</h2></div>
+        <button id="gpu-refresh" class="quiet" type="button" title="重新讀取 GPU 狀態">GPU 狀態 ↻</button>
+      </div>
+      <div id="studies" aria-live="polite"><p class="hint">讀取中…</p></div>
+    </section>
     <div id="run-empty" class="empty-state">
-      <div class="section-label">03 / AGENT 執行</div>
+      <div class="section-label">03 / 代理人執行</div>
       <h2>尚未選擇研究</h2>
-      <p>從右側「研究佇列」選一筆研究，或到第 2 步建立新實驗。執行中的研究會即時更新上方的資料流向圖。</p>
+      <p>從右側「研究佇列」選一筆研究，或到第 2 步建立新實驗。執行中的研究會即時更新上方的研究架構圖。</p>
       <button type="button" class="quiet" data-goto="experiment">前往建立實驗 →</button>
     </div>
     <div id="run-detail" hidden></div>
@@ -253,7 +266,7 @@
       <div class="section-label">04 / 統計結果</div>
       <h2>尚未選擇已完成的研究</h2>
       <p>統計會依選定研究的協議彙整所有同協議案例。從右側佇列選一筆「已完成」的研究即可載入。</p>
-      <button type="button" class="quiet" data-goto="runs">前往 Agent 執行 →</button>
+      <button type="button" class="quiet" data-goto="runs">前往代理人執行 →</button>
     </div></div>
   </section>
 </section>
@@ -262,11 +275,11 @@
 <aside class="side" aria-label="即時狀態">
   <section class="panel agent-console-panel" aria-labelledby="agent-console-title">
     <div class="panel-heading">
-      <div><div class="section-label">AGENT SHELL</div><h2 id="agent-console-title">執行終端</h2></div>
+      <div><div class="section-label">COORDINATOR</div><h2 id="agent-console-title">執行終端</h2></div>
       <span class="terminal-live"><i></i> LIVE</span>
     </div>
     <div class="terminal-chrome"><span></span><span></span><span></span><small>coordinator@stance-shift</small></div>
-    <div id="agent-terminal-output" class="terminal-screen" role="log" aria-live="polite" aria-label="資料 Agent 執行紀錄"><div class="terminal-line"><time>--:--:--</time><b>[SYSTEM]</b><span>正在啟動 Agent Shell…</span></div></div>
+    <div id="agent-terminal-output" class="terminal-screen" role="log" aria-live="polite" aria-label="協調者與代理人執行紀錄"><div class="terminal-line"><time>--:--:--</time><b>[SYSTEM]</b><span>正在啟動協調者…</span></div></div>
   </section>
   <section class="panel queue-panel" aria-labelledby="queue-title">
     <div class="panel-heading">
@@ -283,6 +296,6 @@
 </div>
 </div>
 </main>
-<footer>研究與教育用途 · 不執行交易 · 尚未完成的正式實驗不代表任何方法具有績效優勢</footer>
+<footer>國立陽明交通大學管理科學系專題研究 · 僅供學術研究與教學使用，不執行交易，不構成任何投資建議</footer>
 </body>
 </html>

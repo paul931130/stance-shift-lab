@@ -15,12 +15,13 @@ const DOMAINS = ['technical', 'fundamental', 'sentiment', 'macro'];
 const GROUPS = ['A', 'B', 'C', 'D'];
 const reduceMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
 
-const STAGES = ['01 來源', '02 資料 Agent', '03 資料集', '04 研究 Agent', '05 報告', '06 決策組', '07 風控', '08 回測', '09 統計'];
+// Stage names follow the research-architecture figure in the project report.
+const STAGES = ['01 資料來源', '02 資料代理人', '03 資料快照', '04 研究代理人', '05 中立報告', '06 四組決策', '07 守門員', '08 回測', '09 統計'];
 // Each band is one workflow step; clicking it opens that step's panel.
 const BANDS = [
   {from: 0, to: 1, tab: 'data', label: '1 · 資料準備'},
   {from: 2, to: 2, tab: 'experiment', label: '2 · 實驗'},
-  {from: 3, to: 7, tab: 'runs', label: '3 · Agent 執行與回測'},
+  {from: 3, to: 7, tab: 'runs', label: '3 · 代理人執行與回測'},
   {from: 8, to: 8, tab: 'stats', label: '4 · 統計'},
 ];
 
@@ -33,19 +34,19 @@ const nodes = [
   {id: 'da-fundamental', col: 1, y: ROWS[1], label: 'FUND', sub: '基本面資料', tone: 'fundamental', tab: 'data'},
   {id: 'da-sentiment', col: 1, y: ROWS[2], label: 'SENT', sub: '情緒資料', tone: 'sentiment', tab: 'data'},
   {id: 'da-macro', col: 1, y: ROWS[3], label: 'MACRO', sub: '總經資料', tone: 'macro', tab: 'data'},
-  {id: 'snapshot', col: 2, y: MID, h: 86, label: '資料集', sub: '建立後不再變動', tone: 'core', tab: 'experiment'},
+  {id: 'snapshot', col: 2, y: MID, h: 86, label: '資料快照', sub: '分析日前 · 不可變', tone: 'core', tab: 'experiment'},
   {id: 'ra-technical', col: 3, y: ROWS[0], label: '技術研究', sub: '等待分析', tone: 'technical', tab: 'runs'},
   {id: 'ra-fundamental', col: 3, y: ROWS[1], label: '基本面研究', sub: '等待分析', tone: 'fundamental', tab: 'runs'},
   {id: 'ra-sentiment', col: 3, y: ROWS[2], label: '情緒研究', sub: '等待分析', tone: 'sentiment', tab: 'runs'},
   {id: 'ra-macro', col: 3, y: ROWS[3], label: '總經研究', sub: '等待分析', tone: 'macro', tab: 'runs'},
-  {id: 'report', col: 4, y: MID, h: 86, label: '中立報告', sub: '鎖定後分派', tone: 'core', tab: 'runs'},
-  {id: 'g-A', col: 5, y: ROWS[0], label: 'A 單次', sub: '0/1', tone: 'A', tab: 'runs', progress: true},
-  {id: 'g-B', col: 5, y: ROWS[1], label: 'B 投票', sub: '0/7', tone: 'B', tab: 'runs', progress: true},
+  {id: 'report', col: 4, y: MID, h: 86, label: '中立報告', sub: '鎖定後分流', tone: 'core', tab: 'runs'},
+  {id: 'g-A', col: 5, y: ROWS[0], label: 'A 單次判斷', sub: '0/1', tone: 'A', tab: 'runs', progress: true},
+  {id: 'g-B', col: 5, y: ROWS[1], label: 'B 獨立投票', sub: '0/7', tone: 'B', tab: 'runs', progress: true},
   {id: 'g-C', col: 5, y: ROWS[2], label: 'C 固定立場', sub: '0/7', tone: 'C', tab: 'runs', progress: true},
   {id: 'g-D', col: 5, y: ROWS[3], label: 'D 立場交換', sub: '0/7', tone: 'D', tab: 'runs', progress: true},
-  {id: 'gate', col: 6, y: MID, h: 86, label: 'Gatekeeper', sub: '引用與門檻', tone: 'core', tab: 'runs'},
-  {id: 'backtest', col: 7, y: MID, h: 86, label: '回測', sub: '30／60／90 日', tone: 'core', tab: 'runs'},
-  {id: 'stats', col: 8, y: MID, h: 86, label: '統計', sub: '配對檢定', tone: 'core', tab: 'stats'},
+  {id: 'gate', col: 6, y: MID, h: 86, label: '守門員', sub: '引用 · 波動度', tone: 'core', tab: 'runs'},
+  {id: 'backtest', col: 7, y: MID, h: 86, label: '回測', sub: '60 日 · 扣成本', tone: 'core', tab: 'runs'},
+  {id: 'stats', col: 8, y: MID, h: 86, label: '統計', sub: '配對檢定 · Holm', tone: 'core', tab: 'stats'},
 ];
 const byId = new Map(nodes.map(n => [n.id, n]));
 
@@ -91,7 +92,7 @@ function edgePath(e) {
 
 function build(host) {
   svg = el('svg', {viewBox: `0 0 ${W} ${H}`, class: 'flow-svg', role: 'group',
-    'aria-label': '研究資料流向：來源、資料 Agent、資料集、研究 Agent、報告、A/B/C/D、風控、回測、統計。點選節點可開啟對應步驟。'});
+    'aria-label': '研究架構：資料來源、資料代理人、資料快照、研究代理人、中立報告、A/B/C/D 四組決策、守門員、回測、統計。點選節點可開啟對應步驟。'});
   const defs = el('defs', {}, svg);
   const glow = el('filter', {id: 'flow-glow', x: '-50%', y: '-50%', width: '200%', height: '200%'}, defs);
   el('feGaussianBlur', {stdDeviation: '3', result: 'b'}, glow);

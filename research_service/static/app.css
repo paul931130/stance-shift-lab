@@ -254,21 +254,48 @@ details[open] > summary::before { transform: rotate(90deg); }
 #job-form { margin-top: 4px; }
 #job-form > .substep:first-child { margin-top: 18px; }
 
-/* ---------- Methods legend ---------- */
-.methods { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 10px; }
+/* ---------- Methods legend (report table: 四組決策機制) ---------- */
+.methods { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 12px; }
 .methods article {
   --tone: var(--tone-A);
-  display: flex; gap: 12px; align-items: center; min-width: 0;
-  padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--tone);
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+  padding: 12px 14px; border: 1px solid var(--line); border-top: 3px solid var(--tone);
   border-radius: 8px; background: var(--surface-alt);
 }
 .methods .m-b { --tone: var(--tone-B); }
 .methods .m-c { --tone: var(--tone-C); }
 .methods .m-d { --tone: var(--tone-D); }
-.methods b { font: 800 22px var(--mono); color: var(--tone); }
-.methods h3 { margin: 0; font-size: 13px; }
-.methods p { margin: 0; font-size: 11.5px; color: var(--muted); }
-.methods .treatment { background: color-mix(in srgb, var(--tone-D) 10%, var(--surface-alt)); border-color: color-mix(in srgb, var(--tone-D) 40%, var(--line)); border-left-color: var(--tone-D); }
+.methods header { display: flex; justify-content: space-between; align-items: baseline; }
+.methods b { font: 800 22px/1 var(--mono); color: var(--tone); }
+.methods em { font: 700 11px var(--mono); font-style: normal; color: var(--muted); padding: 2px 8px; border: 1px solid var(--line); border-radius: 999px; }
+.methods h3 { margin: 2px 0 0; font-size: 13.5px; }
+.methods p { margin: 0; font-size: 12px; line-height: 1.5; color: var(--muted); }
+.methods .treatment { background: color-mix(in srgb, var(--tone-D) 10%, var(--surface-alt)); border-color: color-mix(in srgb, var(--tone-D) 40%, var(--line)); border-top-color: var(--tone-D); }
+
+/* Three-round role switch for D, shown as a strip. */
+.rounds { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0; margin: 0 0 12px; padding: 0; list-style: none; counter-reset: none; }
+.rounds li { position: relative; padding: 10px 14px 10px 16px; border: 1px solid var(--line); background: var(--surface); font-size: 12px; line-height: 1.5; color: var(--muted); }
+.rounds li + li { border-left: 0; }
+.rounds li:first-child { border-radius: 8px 0 0 8px; }
+.rounds li:last-child { border-radius: 0 8px 8px 0; }
+.rounds li b { display: block; color: var(--ink); font: 700 12px var(--mono); margin-bottom: 2px; }
+.rounds li.swap { background: color-mix(in srgb, var(--tone-D) 10%, var(--surface)); }
+.rounds li.swap b { color: var(--tone-D); }
+.rounds li.swap b::before { content: "⇄ "; }
+
+/* Data sources (report table: 資料來源與處理方式). */
+.source-table { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin: 0 0 8px; }
+.source-table article { --tone: var(--tone-core); display: flex; flex-direction: column; gap: 2px; padding: 10px 12px; border: 1px solid var(--line); border-left: 3px solid var(--tone); border-radius: 8px; background: var(--surface-alt); min-width: 0; }
+.source-table .tone-technical { --tone: var(--tone-technical); }
+.source-table .tone-fundamental { --tone: var(--tone-fundamental); }
+.source-table .tone-sentiment { --tone: var(--tone-sentiment); }
+.source-table .tone-macro { --tone: var(--tone-macro); }
+.source-table b { color: var(--tone); font-size: 13px; }
+.source-table span { font: 600 11.5px var(--mono); color: var(--ink); }
+.source-table small { color: var(--muted); font-size: 11.5px; line-height: 1.45; }
+
+/* Formal studies inside step 3. */
+.study-panel { margin: 0 0 22px; padding-bottom: 20px; border-bottom: 1px solid var(--line); }
 
 /* ---------- Notices ---------- */
 #notice { display: flex; flex-direction: column; gap: 8px; margin-bottom: 16px; }
@@ -422,7 +449,8 @@ footer { padding: 24px max(16px, 3vw); border-top: 1px solid var(--line); color:
   .model-status { display: none; }
 }
 @media (max-width: 1000px) {
-  .methods, .decisions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .methods, .decisions, .source-table, .rounds { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .rounds li { border-left: 1px solid var(--line) !important; border-radius: 0 !important; }
 }
 @media (max-width: 720px) {
   .tag { display: none; }
@@ -451,8 +479,7 @@ footer { padding: 24px max(16px, 3vw); border-top: 1px solid var(--line); color:
 .record-filter button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); border-color: var(--accent); }
 .record-filter button::after { content: none !important; }
 
-/* Formal studies strip (study-panel.js): full width above the pipeline map. */
-.study-panel { margin: 0 0 18px; }
+/* Formal studies cards (study-panel.js). */
 .study-panel #studies { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); align-items: start; }
 .study-panel #studies > .study-gpu, .study-panel #studies > .hint, .study-others { grid-column: 1 / -1; }
 .study-others > summary { font-size: 12.5px; color: var(--muted); cursor: pointer; }

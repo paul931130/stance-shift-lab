@@ -3,7 +3,7 @@
 //   store.js ─ shared state + event bus      flow.js ─ live pipeline map
 //   nav.js   ─ step tabs / URL               terminal.js ─ coordinator shell
 //   data-panel → experiment-panel → runs-panel → stats-panel (one per step)
-import { $, notify } from './ui.js';
+import { $, notify, escape } from './ui.js';
 import { state } from './store.js';
 import { api, task } from './api.js';
 import { flow } from './flow.js';
@@ -26,6 +26,21 @@ function chooseInitialTab(requestedTab) {
   else setTab('data');
 }
 
+// Research scope under the title (report table: 研究範圍), derived from the
+// server's case grid and default protocol rather than hard-coded numbers.
+function renderScope(config) {
+  const tickers = config.tickers || [], dates = config.dates || [], protocol = config.default_protocol || {};
+  const years = dates.length ? `${dates[0].slice(0, 4)}–${dates.at(-1).slice(0, 4)}` : '';
+  const items = [
+    tickers.length && `<b>${tickers.length}</b> 檔美國大型股`,
+    dates.length && `${years} 每季 <b>${dates.length}</b> 個分析日`,
+    tickers.length && dates.length && `共 <b>${tickers.length * dates.length}</b> 個案例`,
+    protocol.primary_horizon && `主要期間 <b>${protocol.primary_horizon}</b> 個交易日`,
+    protocol.model && `模型 <b>${escape(protocol.model.replace(/^ollama\//, ''))}</b>`,
+  ].filter(Boolean);
+  $('research-scope').innerHTML = items.map(item => `<li>${item}</li>`).join('');
+}
+
 async function initialize() {
   const config = await api('/api/config');
   state.demoMode = Boolean(config.demo_mode);
@@ -38,12 +53,13 @@ async function initialize() {
     banner.textContent = '展示模式：使用內建合成資料與確定性回應，不需要 API key，不會呼叫外部模型，也不會產生正式研究結論。';
   }
   if (state.currentProtocolVersion) $('protocol-tag').textContent = `${state.currentProtocolVersion} 研究協議`;
+  renderScope(config);
   $('login').hidden = true;
   $('workspace').hidden = false;
   flow.mount($('flow-canvas'));
 
   resetTerminal();
-  terminalLine('SYSTEM', `Agent Shell ready · protocol ${state.currentProtocolVersion}`, 'ok');
+  terminalLine('SYSTEM', `協調者已就緒 · protocol ${state.currentProtocolVersion}`, 'ok');
   terminalLine('COORD', `等待資料任務 · 並行數 ${state.parallelWorkers}`);
   const readySources = Object.entries(config.sources).filter(([, ready]) => ready).map(([name]) => name.toUpperCase());
   terminalLine('SOURCE', readySources.join(' · ') || '尚未設定外部來源', readySources.length ? 'ok' : 'warn');

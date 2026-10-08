@@ -9,7 +9,7 @@ import { showStatistics } from './stats-panel.js';
 import { refreshStudies } from './study-panel.js';
 
 const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
-const GROUP_LABELS = {A: '單次判斷', B: '獨立投票', C: '固定立場', D: '立場交換'};
+const GROUP_LABELS = {A: '單次判斷', B: '獨立投票', C: '固定立場辯論', D: '立場交換辯論'};
 let pollTimer = null, pollFailures = 0;
 let lastStatuses = null, recordFilter = '';
 const BASE_TITLE = document.title;
@@ -107,15 +107,15 @@ function researchAgentPanel(s, jobStatus) {
     const item = (s.research || {})[domain];
     const status = item?.status === 'complete' ? 'complete' : item?.status === 'degraded' ? 'degraded' : item?.status === 'missing' ? 'missing' : s.inputs && jobStatus === 'running' ? 'running' : 'idle';
     const label = {complete: '分析完成', degraded: '改用原始摘錄', missing: '資料缺口', running: '分析中', idle: '等待資料'}[status];
-    return `<article class="agent-card ${status}"><b>${DOMAIN_LABELS[domain]}研究 Agent</b><small>${escape(domain)}</small><span>${label}</span><p>${escape(item?.summary || '等待 Coordinator 分派資料集')}</p></article>`;
+    return `<article class="agent-card ${status}"><b>${DOMAIN_LABELS[domain]}研究代理人</b><small>${escape(domain)}</small><span>${label}</span><p>${escape(item?.summary || '等待協調者分派資料快照')}</p></article>`;
   }).join('');
-  return `<section class="execution-block"><div class="subheading"><h3>四個研究 Agent</h3><small>共用同一份資料集 · 並行數 ${state.parallelWorkers}</small></div><div class="agent-grid">${cards}</div></section>`;
+  return `<section class="execution-block"><div class="subheading"><h3>四個研究代理人</h3><small>共用同一份資料快照 · 並行數 ${state.parallelWorkers}</small></div><div class="agent-grid">${cards}</div></section>`;
 }
 
 function traceTerminal(job, s) {
   const lines = (s.trace || []).map(item => `<div class="terminal-line ok"><time>${escape(terminalStamp(new Date(item.at)))}</time><b>[TRACE]</b><span>${escape(traceMessage(item.node))}</span></div>`).join('');
   const waiting = !['complete', 'cancelled', 'paused'].includes(job.status) ? '<div class="terminal-line active"><time>NOW</time><b>[WORKER]</b><span>等待下一個進度存檔點…</span></div>' : '';
-  return `<section class="execution-block"><div class="subheading"><h3>研究 Agent 終端</h3><small>實際執行紀錄 · 執行中每 3 秒、閒置時每 30 秒更新；分頁在背景時暫停更新</small></div><div class="terminal-screen run-terminal"><div class="terminal-line command"><time>CASE</time><b>[SESSION]</b><span>${escape(job.id.slice(0, 8))} · ${escape(job.config.protocol.model)} · ${escape(job.config.protocol.version)}</span></div>${lines || '<div class="terminal-line"><time>--:--:--</time><b>[QUEUE]</b><span>等待 Coordinator 領取工作…</span></div>'}${waiting}</div></section>`;
+  return `<section class="execution-block"><div class="subheading"><h3>研究代理人終端</h3><small>實際執行紀錄 · 執行中每 3 秒、閒置時每 30 秒更新；分頁在背景時暫停更新</small></div><div class="terminal-screen run-terminal"><div class="terminal-line command"><time>CASE</time><b>[SESSION]</b><span>${escape(job.id.slice(0, 8))} · ${escape(job.config.protocol.model)} · ${escape(job.config.protocol.version)}</span></div>${lines || '<div class="terminal-line"><time>--:--:--</time><b>[QUEUE]</b><span>等待協調者領取工作…</span></div>'}${waiting}</div></section>`;
 }
 
 function groupPhase(group, count, total) {
@@ -166,7 +166,7 @@ function estimateRemaining(s, total, jobStatus) {
 }
 
 function decisionCards(s) {
-  if (!s.decisions) return '<p class="hint">四組完成後由 Gatekeeper 同步鎖定決策。</p>';
+  if (!s.decisions) return '<p class="hint">四組完成後由守門員同步鎖定決策。</p>';
   return `<div class="decisions">${Object.entries(s.decisions).map(([g, d]) => `<div><small>${g} 組 · 信心 ${percentage(d.confidence)} · 預測 ${number(d.expected_return_pct)}%</small><strong>${escape(d.action)}</strong><small>模型：${escape(d.model_action || d.candidate_action)} · 推導：${escape(d.derived_action || d.candidate_action)} · 候選：${escape(d.candidate_action)}<br>Hold 門檻 ±${number(d.hold_band_pct)}%（預測報酬在此範圍內視為 Hold） · 資料覆蓋 ${percentage(d.gate.domain_coverage)}<br>${d.gate.missing_data_control ? '缺資料對照：未覆寫模型決策<br>' : ''}${escape(d.gate.reasons.join(' / ') || '通過門檻')}</small></div>`).join('')}</div>`;
 }
 
@@ -202,7 +202,7 @@ function renderJobFlow(job, s, total) {
   flow.metric('outputs', (s.records || []).length);
   const last = s.trace?.at(-1)?.node;
   flow.caption(job.error ? `${job.config.ticker} · 執行中斷：${friendlyJobError(job.error)}`
-    : `${job.config.ticker} · ${job.config.analysis_date} · ${statuses[job.status]} — ${last ? traceMessage(last) : '等待 Coordinator 領取工作'}（${(s.records || []).length}/${total} 模型輸出）`);
+    : `${job.config.ticker} · ${job.config.analysis_date} · ${statuses[job.status]} — ${last ? traceMessage(last) : '等待協調者領取工作'}（${(s.records || []).length}/${total} 模型輸出）`);
 }
 
 export async function showJob(id, loadedJob = null) {
@@ -211,7 +211,7 @@ export async function showJob(id, loadedJob = null) {
   const job = loadedJob || await api(`/api/jobs/${id}?detail=true`), s = job.state, total = jobTotal(job.config.protocol);
   state.selectedProtocol = job.config.protocol_hash;
   const isFinal = ['complete', 'cancelled'].includes(job.status);
-  const trace = s.trace.at(-1)?.node || '等待 Coordinator';
+  const trace = s.trace.at(-1)?.node || '等待協調者';
   const oldProtocol = state.currentProtocolVersion && job.config.protocol.version !== state.currentProtocolVersion;
   const protocolNotice = oldProtocol
     ? `這是協議 ${job.config.protocol.version || '未記錄'} 的既有結果；決策規則修正只會套用於 ${state.currentProtocolVersion} 新建立的實驗。`
