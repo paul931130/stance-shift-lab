@@ -15,10 +15,11 @@ from .anonymize import PLACEHOLDER, anonymize
 from .backtest import evaluate
 from .breaker import is_provider_failure
 from .data import digest, research_inputs
-from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate, messages_for,
+from . import model_router
+from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate,
                      prompt_text, unalias_evidence_ids, unsupported_numbers, validate_decision, validate_research)
 from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, NUMERIC_CLAIM_VERSIONS,
-                       STRICT_VALIDATION_VERSIONS, decision_plan, decision_wave,
+                       STRICT_VALIDATION_VERSIONS, decision_plan, decision_wave, same_arm,
                        protocol_from, protocol_is_current, protocol_matches_fingerprint, temperature_for)
 from .storage import now
 from .model_identity import (ModelIdentityError, ModelIdentityMismatch, ModelIdentityUnavailable,
@@ -302,9 +303,11 @@ class StepFailure(RuntimeError):
 
 
 class Engine:
-    def __init__(self, store, model_call=generate, parallel_workers=None, identity_probe=None):
+    def __init__(self, store, model_call=generate, parallel_workers=None, identity_probe=None, route_probe=None):
         self.store, self.model_call = store, model_call
         self.identity_probe = identity_probe or resolve_ollama_identity
+        # Router protocols (RQ2) check every routed model on its own endpoint.
+        self.route_probe = route_probe or model_router.probe_ollama_endpoint
         # Tests and embedding callers may inject a deterministic model while
         # retaining the protocol's default Ollama label.  Only the real
         # provider function needs the single-runner safeguard below.
@@ -334,17 +337,22 @@ class Engine:
         builder.add_edge("coordinator_step", END)
         self.graph = builder.compile()
 
-    def call_model(self, protocol, messages, call_key, temperature=None, aliases=None):
+    def call_model(self, protocol, messages, call_key, temperature=None, aliases=None, call=None):
         """Call the provider; with ``aliases`` the prompt shows short evidence IDs and the answer is mapped back."""
         if aliases:
             messages = alias_messages(messages, aliases)
-        seed = (protocol.inference_seed + int(digest(call_key)[:8], 16)) % 2_147_483_647
+        routed = model_router.is_routed(protocol)
+        seed_key = model_router.seed_key(call_key) if routed else call_key
+        seed = (protocol.inference_seed + int(digest(seed_key)[:8], 16)) % 2_147_483_647
         kwargs = {}
         if self.model_accepts_seed:
             kwargs["seed"] = seed
         if self.model_accepts_temperature:
             kwargs["temperature"] = protocol.temperature if temperature is None else temperature
-        result, audit = self.model_call(protocol, messages, **kwargs)
+        if routed:
+            result, audit = model_router.call_with_route(self.model_call, protocol, call, call_key, messages, seed, kwargs)
+        else:
+            result, audit = self.model_call(protocol, messages, **kwargs)
         if aliases:
             result = unalias_evidence_ids(result, aliases)
         audit = dict(audit)
@@ -378,7 +386,7 @@ class Engine:
             audit = None
             try:
                 result, audit = self.call_model(protocol, attempt_messages, retry_key, temperature_for(protocol, call),
-                                                aliases)
+                                                aliases, **({"call": call} if model_router.is_routed(protocol) else {}))
                 result = validate_decision(result, decision_evidence, call, prompt_text(messages),
                                            claim_bound=claim_bound, strict=strict, own_round1=own_round1,
                                            canonical=protocol.version in CANONICAL_CLAIM_VERSIONS,
@@ -548,14 +556,21 @@ class Engine:
         if not protocol_matches_fingerprint(saved_protocol, job["config"].get("protocol_hash")):
             raise ValueError("此工作的凍結協議/source fingerprint 與目前程式不符；不可續跑，請重新預覽並事前登記")
         protocol = job["config"]["protocol"]
+        routed = model_router.is_routed(protocol)
         check_identity = (self.uses_builtin_provider and protocol.get("dataset_kind") == "historical"
                           and protocol.get("version") in CANONICAL_CLAIM_VERSIONS
-                          and protocol["model"].startswith("ollama/"))
+                          and (model_router.uses_ollama(protocol_from(protocol)) if routed
+                               else protocol["model"].startswith("ollama/")))
+
+        def verify_identity():
+            if routed:
+                return model_router.verify_identities(job["config"], self.route_probe)
+            return verify_model_identity(job["config"], self.identity_probe)
         if job["state"].get("model_identity_failure"):
             raise ModelIdentityError("此工作的推理後權重核對曾失敗，結果不可續跑或納入正式統計；請建立新工作")
         if check_identity:
             try:
-                check = verify_model_identity(job["config"], self.identity_probe)
+                check = verify_identity()
             except ModelIdentityUnavailable:
                 raise  # transient: the job pauses and can resume
             except ModelIdentityMismatch as error:
@@ -572,7 +587,7 @@ class Engine:
         state = self.graph.invoke({"job": job, "state": job["state"]})["state"]
         if check_identity:
             try:
-                check = verify_model_identity(job["config"], self.identity_probe)
+                check = verify_identity()
             except ModelIdentityUnavailable as error:
                 # Do not keep model outputs from a step whose weights could not be verified.
                 # Retry the whole checkpoint after the next before-step digest check.
@@ -680,7 +695,7 @@ class Engine:
                     result, audit = self.validated_research(
                         protocol, domain, items, messages,
                         state.get("evidence_aliases") or evidence_aliases(state["inputs"]["evidence"]))
-                    return {**result, "status": "complete", "audit": audit}
+                    return {**result, "status": "complete", "audit": model_router.finalize_route(audit)}
                 except (ValueError, JsonSchemaValidationError) as error:
                     # Only an answer that fails validation degrades the domain. Network or
                     # provider failures (timeouts, HTTP 5xx) propagate so the job pauses and
@@ -707,7 +722,7 @@ class Engine:
                 # several full contexts resident and exhaust Docker Desktop.
                 # Keep source collection and cloud inference parallel, but
                 # serialize local inference just as decision waves already do.
-                if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
+                if self.uses_builtin_provider and model_router.uses_ollama(protocol):
                     research_workers = min(research_workers, protocol.ollama_parallel or self.ollama_parallel)
                 effective_workers = research_workers
                 with ThreadPoolExecutor(max_workers=research_workers, thread_name_prefix="research-agent") as pool:
@@ -757,15 +772,16 @@ class Engine:
             # A local Ollama runner executes these requests serially anyway.
             # Advance one decision at a time so the worker can checkpoint it
             # before a later provider error or process interruption occurs.
-            if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
+            if self.uses_builtin_provider and model_router.uses_ollama(protocol):
                 calls = calls[:protocol.ollama_parallel or self.ollama_parallel]
             snapshot = list(state["records"])
-            prepared = {call.key: (call, messages_for(call, state["report"], snapshot, state["memory"][call.group], protocol)) for call in calls}
+            prepared = {call.key: (call, model_router.messages_for(call, state["report"], snapshot, state["memory"][call.group],
+                                                                   protocol, state["report_hash"])) for call in calls}
             completed, failures, provider_failures = {}, [], []
 
             def run_decision(call, messages):
                 # The D switch round is checked against what this same agent wrote in round 1.
-                own = next((r for r in snapshot if r["group"] == call.group and r.get("agent") == call.agent
+                own = next((r for r in snapshot if same_arm(r, call) and r.get("agent") == call.agent
                             and r.get("round") == 1 and r["kind"] == "debate"), None) if call.kind == "debate" else None
                 return self.validated_decision(protocol, call, messages, state["report"]["evidence"], own_round1=own)
 
@@ -776,7 +792,7 @@ class Engine:
             # the local Ollama calls; cloud providers still use the configured
             # parallel worker count.
             decision_workers = min(self.parallel_workers, len(prepared))
-            if self.uses_builtin_provider and protocol.model.startswith("ollama/"):
+            if self.uses_builtin_provider and model_router.uses_ollama(protocol):
                 decision_workers = min(decision_workers, protocol.ollama_parallel or self.ollama_parallel)
             effective_workers = decision_workers
             with ThreadPoolExecutor(max_workers=decision_workers, thread_name_prefix="decision-group") as pool:
@@ -799,9 +815,12 @@ class Engine:
                 if call.key in completed:
                     key = call.key
                     result, audit = completed[key]
-                    state["records"].append({**asdict(call), "output": result, "audit": audit,
+                    state["records"].append({**asdict(call), "output": result, "audit": model_router.finalize_route(audit),
+                        **model_router.record_extras(protocol, call, state["report_hash"]),
                         "report_hash": state["report_hash"], "completed_at": now()})
             state["compute_usage"] = compute_state_usage(state)
+            if model_router.is_routed(protocol):
+                state["routed_compute_usage"] = model_router.arm_usage(state, compute_usage)
             label = "parallel_decision_wave[" + ",".join(prepared) + "]"
             if failures:
                 state["_step_error"] = "；".join(failures)
@@ -809,7 +828,8 @@ class Engine:
         elif "decisions" not in state:
             candidates = {}
             for group in "ABCD":
-                records = [r for r in state["records"] if r["group"] == group]
+                # Router protocols: C and D are the homogeneous AA arm; other assignments are gated below.
+                records = [r for r in state["records"] if r["group"] == group and r.get("assignment") in (None, "AA")]
                 if group == "B":
                     counts = Counter(r["output"]["action"] for r in records)
                     winners = [r["output"] for r in records if counts[r["output"]["action"]] == max(counts.values())]
@@ -819,19 +839,31 @@ class Engine:
                 else:
                     candidates[group] = records[-1]["output"]
             hold_band_pct = state["inputs"]["base_rates"]["hold_band_pct"]
-            prepared_candidates = {}
-            for group, candidate in candidates.items():
+
+            def prepare_candidate(candidate):
                 model_action = candidate["action"]
                 derived = derive_action(candidate["expected_return_pct"], hold_band_pct)
-                prepared_candidates[group] = {**candidate, "model_action": model_action, "derived_action": derived,
-                                               "action": derived if protocol.action_source == "derived" else model_action,
-                                               "action_disagreement": model_action != derived, "hold_band_pct": hold_band_pct}
+                return {**candidate, "model_action": model_action, "derived_action": derived,
+                        "action": derived if protocol.action_source == "derived" else model_action,
+                        "action_disagreement": model_action != derived, "hold_band_pct": hold_band_pct}
+            prepared_candidates = {group: prepare_candidate(candidate) for group, candidate in candidates.items()}
             state["decisions"] = {group: gate(candidate, state["inputs"], state["memory"][group], protocol)
                                   for group, candidate in prepared_candidates.items()}
+            if model_router.is_routed(protocol):
+                # Heterogeneous (and BB) arms: same Gatekeeper and the same group memory as AA; kept apart
+                # from state["decisions"] so RQ1 outputs, memory writes and case results are unchanged.
+                state["routed_decisions"] = {
+                    model_router.arm_label(group, assignment): gate(
+                        prepare_candidate(model_router.arm_records(state["records"], group, assignment)[-1]["output"]),
+                        state["inputs"], state["memory"][group], protocol)
+                    for assignment in protocol.debate_assignments if assignment != "AA" for group in ("C", "D")}
             state["completeness_diagnostic"] = completeness_diagnostic(state["records"], protocol)
             label = "gatekeeper_decisions_locked"
         else:
             state["cases"], state["daily"] = evaluate(dataset["prices"], config["analysis_date"], state["decisions"], protocol)
+            if state.get("routed_decisions"):
+                state["routed_cases"], state["routed_daily"] = evaluate(
+                    dataset["prices"], config["analysis_date"], state["routed_decisions"], protocol)
             state["finished"] = True
             label = "backtest_and_memory_write"
         state["trace"].append({"node": label, "at": now(), "protocol_hash": config["protocol_hash"],

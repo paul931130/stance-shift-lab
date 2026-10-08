@@ -916,10 +916,16 @@ def _plain_json(value):
     return str(value)
 
 
+def model_endpoint(protocol):
+    """Per-model endpoint settings of a router protocol (v3-1006.1+); {} keeps the environment defaults."""
+    return dict((getattr(protocol, "model_endpoints", None) or {}).get(protocol.model) or {})
+
+
 def generate(protocol, messages, seed=None, temperature=None):
     output_schema = output_schema_for(messages)
     effective_temperature = protocol.temperature if temperature is None else temperature
-    timeout_seconds = model_timeout_seconds()
+    endpoint = model_endpoint(protocol)
+    timeout_seconds = endpoint.get("timeout_seconds") or model_timeout_seconds()
     # A frozen protocol (v3-1001.x) carries its own context length; older ones read the environment.
     context_length = getattr(protocol, "model_context_length", None) or model_context_length()
     failures, attempt_audits = [], []
@@ -947,10 +953,13 @@ def generate(protocol, messages, seed=None, temperature=None):
                 # A GPUtw Ollama template can be used without changing the
                 # experiment protocol.  The remote URL is optional and is
                 # deliberately preferred only when explicitly configured.
-                base = (os.getenv("GPUTW_OLLAMA_BASE_URL", "").strip()
+                base = (endpoint.get("api_base") or os.getenv("GPUTW_OLLAMA_BASE_URL", "").strip()
                         or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
                 headers = {"Content-Type": "application/json"}
-                remote_token = os.getenv("GPUTW_OLLAMA_API_KEY", "").strip()
+                # A per-model endpoint only ever receives its own token (named by api_key_env),
+                # never the GPUtw token meant for the default endpoint.
+                remote_token = (os.getenv(endpoint["api_key_env"], "").strip() if endpoint.get("api_key_env")
+                                else "" if endpoint.get("api_base") else os.getenv("GPUTW_OLLAMA_API_KEY", "").strip())
                 if remote_token:
                     headers["Authorization"] = f"Bearer {remote_token}"
                 with gputw_urlopen(Request(base + "/api/chat", data=json.dumps(body).encode(), headers=headers),
@@ -967,6 +976,10 @@ def generate(protocol, messages, seed=None, temperature=None):
                     "max_tokens": protocol.max_output_tokens,
                     "response_format": {"type": "json_schema", "json_schema": {"name": "research_output", "strict": True, "schema": output_schema}},
                     "timeout": timeout_seconds, "num_retries": 0}
+                if endpoint.get("api_base"):
+                    kwargs["api_base"] = endpoint["api_base"]
+                if endpoint.get("api_key_env"):
+                    kwargs["api_key"] = os.getenv(endpoint["api_key_env"], "").strip() or None
                 # Some providers (e.g. Gemini) reject `seed`; send it only where
                 # supported and record in the audit whether it was applied.
                 seed_supported = "seed" in (litellm.get_supported_openai_params(model=protocol.model) or [])

@@ -7,10 +7,11 @@ from fastapi.responses import Response
 from .context import BatchInput, JobInput, PlanInput
 from .jobs import prepare, probe_once
 
+from .. import model_router
 from ..collect import reusable_snapshot
 from ..errors import PreflightError
 from ..progress import study_progress
-from ..protocol import EVIDENCE_REF_VERSIONS, protocol_matches_fingerprint
+from ..protocol import EVIDENCE_REF_VERSIONS, protocol_from, protocol_matches_fingerprint
 from ..reporting import csv_text, hold_band_sensitivity, pilot_diagnostics, stability_report, study_report
 
 
@@ -81,10 +82,12 @@ def build_router(ctx):
         frozen_digest = (meta or {}).get("model_digest")
         protocol = prepared[0]["protocol"] if prepared else {}
         digest_required = (protocol.get("version") in EVIDENCE_REF_VERSIONS and real_weights_expected()
-                           and str(protocol.get("model", "")).startswith("ollama/"))
+                           and (model_router.uses_ollama(protocol_from(protocol)) if model_router.is_routed(protocol)
+                                else str(protocol.get("model", "")).startswith("ollama/")))
         if digest_required and not frozen_digest:
             raise ValueError("此正式協議未凍結模型權重 digest；請用目前版本重新事前登記")
-        if frozen_digest and any((item.get("model_identity") or {}).get("digest") != frozen_digest for item in prepared):
+        # Router protocols lock one value over every routed model's digest (Judge, A and B).
+        if frozen_digest and any(model_router.registration_digest(item) != frozen_digest for item in prepared):
             raise ValueError("模型權重 digest 與事前登記時不同；全部未排入")
         if wrong:
             raise ValueError(f"{len(wrong)} 個案例的協議與登記不符（例如設定或模型不同），全部未排入")
@@ -113,6 +116,9 @@ def build_router(ctx):
         def assume_model():
             # The weight digest is checked when jobs are queued, not part of the protocol hash.
             return {"ready": True, "models": [payload.model], "details": [{"id": payload.model, "digest": "planned"}]}
+
+        def assume_route(protocol, model):
+            return {"id": model, "digest": "planned", "endpoint": model_router.endpoint_label(protocol, model)}
         cases, ready = [], []
         snapshots = store.datasets()
         for analysis_date in payload.dates:
@@ -128,9 +134,12 @@ def build_router(ctx):
                                        anonymize_ticker=payload.anonymize_ticker,
                                        missing_data_policy=payload.missing_data_policy, design=payload.design,
                                        model_context_length=payload.model_context_length,
-                                       ollama_parallel=payload.ollama_parallel)
+                                       ollama_parallel=payload.ollama_parallel,
+                                       **{key: value for key in ("debate_model_a", "debate_model_b",
+                                                                 "debate_assignments", "model_endpoints")
+                                          if (value := getattr(payload, key, None)) is not None})
                     try:
-                        config = prepare(ctx, request, model_probe=assume_model)
+                        config = prepare(ctx, request, model_probe=assume_model, route_probe=assume_route)
                         row.update(ready=True, protocol_hash=config["protocol_hash"])
                         ready.append(request.model_dump())
                     except (PreflightError, ValueError) as error:
@@ -185,10 +194,12 @@ def build_router(ctx):
         protocol = prepared[0]["protocol"]
         if protocol["version"] in EVIDENCE_REF_VERSIONS and not protocol.get("anonymize_ticker"):
             raise ValueError("v3-1002.3 起的正式研究須匿名化股票代號；請勾選匿名化後重新預覽")
-        model_digest = (prepared[0].get("model_identity") or {}).get("digest")
-        if (protocol["version"] in EVIDENCE_REF_VERSIONS and protocol["model"].startswith("ollama/")
+        model_digest = model_router.registration_digest(prepared[0])
+        routed = model_router.is_routed(protocol)
+        if (protocol["version"] in EVIDENCE_REF_VERSIONS
+                and (model_router.uses_ollama(protocol_from(protocol)) if routed else protocol["model"].startswith("ollama/"))
                 and real_weights_expected()):
-            if not model_digest or any((item.get("model_identity") or {}).get("digest") != model_digest
+            if not model_digest or any(model_router.registration_digest(item) != model_digest
                                        for item in prepared):
                 raise ValueError("正式登記必須取得所有案例一致的模型權重 digest；尚未鎖定樣本")
         frozen = store.freeze(protocol_hash, {item["dataset_id"] for item in prepared})
