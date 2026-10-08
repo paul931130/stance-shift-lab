@@ -98,7 +98,7 @@ class DemoExperimentE2E(unittest.TestCase):
         # The job runs to completion; finishing moves the UI to the statistics step.
         page.wait_for_selector('[data-panel="stats"]:not([hidden])', timeout=60_000)
         page.wait_for_selector("#statistics .stats-substep", timeout=20_000)
-        self.assertIn("同協議研究比較", page.inner_text("#statistics"))
+        self.assertIn("四組績效與主要比較", page.inner_text("#statistics"))
 
         # Step 3 shows the finished run, and the map reports every model output.
         page.click('.tabs [data-tab-button="runs"]')
