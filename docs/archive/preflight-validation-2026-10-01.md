@@ -1,6 +1,6 @@
 # 新版季度實驗放行檢查（2026-10-01）
 
-狀態：尚未放行正式實驗；以下為驗證紀錄，不是實驗結果。
+狀態（2026-10-02 更新）：尚未放行正式實驗；以下為驗證紀錄，不是實驗結果。
 
 ## 已完成
 
@@ -14,16 +14,26 @@
 
 ## 實際檢查
 
-- Docker 離線 unittest：323 項，322 通過、1 項跳過，退出碼 0。
+- Docker 離線 unittest：修正 canary 後 326 項，325 通過、1 項跳過，退出碼 0。
 - 跳過的瀏覽器測試另用本機 Edge / Playwright 執行：1 項通過。
 - SQLite backup 快照離線核對：180/180 資料雜湊、日期及既有正式資料門檻通過。
 - 新季度協議 hash：`18bb53ca80accd6ac56a167eed4dae23e7a26be2af72756bec2b431aacdbb01f`。
 - 預先固定真實驗證案例：AAPL / 2021-03-31，不依輸出好壞挑選。
 - 快照與凍結檔案：`work/qualification-20261001-v3-1001.3/`。
+- GPU 真實 canary 第一次未通過：首個 Qwen 請求載入權重時被上游 524 timeout 中止；後續數字輸出帶有未被結構化證據支持的 9、10，被驗證器拒絕。該 attempt 的 GPU 已確認 STOPPED；完整記錄在 `work/qualification-20261001-v3-1001.3/attempt-01/`。
+- 這次逾時後發現 canary 的合成 prompt 沒有指定要引用哪一項結構化數字證據，已修正測試夾具並新增「前置請求失敗時不付費呼叫後續步驟」測試。修正只改 canary，不改正式研究 prompt 或研究協議。
+- 修正版測試通過後，第二次資格測試使用新程式／映像與獨立目錄 `work/qualification-20261002-v3-1001.4/attempt-02/`。Qwen3 32B 權重在本機預熱後完成呼叫；canary 的 A 決策仍被數字驗證器拒絕，錯誤值為未綁定的 `60`，D 兩輪因此未執行。這個 attempt 沒有建立真實案例工作。該 GPU 已確認 STOPPED。
+
+## Prompt 與溫度
+
+- 目前沒有介面欄位讓使用者任意輸入 system prompt 或溫度。
+- Prompt 由 `research_service/models.py` 的 `messages_for` 依研究組別、辯論輪次和凍結規則組成。
+- `research_service/protocol.py` 固定 `temperature=0.2`；B 組多次抽樣使用 `voting_temperature=0.8`，其餘呼叫使用 0.2。
+- 調整上述參數會改變模型輸出，需產生新協議版本與 hash，再做 canary、單案驗證和正式預註冊；不能把不同設定混在同一組正式結果。
 
 ## 尚待完成
 
-1. 固定 Qwen 權重的 GPU 真實 canary 與隔離單案。
+1. 查明 Qwen canary 的未綁定數字 `60` 出現在哪個輸出欄位，修正研究 prompt 或驗證規則並升版，再重跑固定權重 canary 與隔離單案。
 2. 單案須完整輸出 A/B/C/D、22 個決策呼叫、4 個研究領域、48 個回測列；不得模型漂移、研究降級或數字刪除。
 3. 通過後仍需建立新版正式預註冊與相同部署 manifest，不得恢復舊協議工作或混用舊結果。
 
