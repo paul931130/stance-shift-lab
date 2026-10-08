@@ -97,6 +97,13 @@ class JobInput(BaseModel):
     # Frozen inference settings; None keeps the protocol default (8192 tokens, one call at a time).
     model_context_length: int | None = None
     ollama_parallel: int | None = None
+    # RQ2 Model Router (protocol v3-1006.1). Giving debate_model_b selects the router version;
+    # `model` stays the Judge/research model and is model A unless debate_model_a says otherwise.
+    debate_model_a: str | None = Field(default=None, max_length=200)
+    debate_model_b: str | None = Field(default=None, max_length=200)
+    debate_assignments: list[str] | None = None
+    # {model id: {"api_base", "timeout_seconds", "api_key_env"}}; never a password or token.
+    model_endpoints: dict | None = None
 
 
 class BatchInput(BaseModel):
@@ -115,3 +122,7 @@ class PlanInput(BaseModel):
     design: str = "quarterly"
     model_context_length: int | None = None
     ollama_parallel: int | None = None
+    debate_model_a: str | None = Field(default=None, max_length=200)
+    debate_model_b: str | None = Field(default=None, max_length=200)
+    debate_assignments: list[str] | None = None
+    model_endpoints: dict | None = None

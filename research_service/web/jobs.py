@@ -8,10 +8,11 @@ import zipfile
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
+from .. import model_router
 from ..data import research_inputs
 from ..errors import NotFoundError, PreflightError
 from ..protocol import (DEFAULT_RESEARCH_MODEL, FORMAL_SMALL_MODEL_ALLOWLIST, SMALL_MODEL_PATTERN,
-                        StudyProtocol, protocol_is_current, protocol_matches_fingerprint, validate_case)
+                        RouterProtocol, StudyProtocol, protocol_is_current, protocol_matches_fingerprint, validate_case)
 from ..readiness import coverage
 from ..reporting import export_job, study_report
 from ..splits import classify_analysis_date
@@ -44,7 +45,7 @@ def probe_once(ctx):
     return probe
 
 
-def prepare(ctx, payload, model_probe=None):
+def prepare(ctx, payload, model_probe=None, route_probe=None):
     """Validate a job request and freeze its config.
 
     Job creation, batches, clones and the UI's preflight all go through here,
@@ -63,13 +64,21 @@ def prepare(ctx, payload, model_probe=None):
         raise PreflightError("date_mismatch", f"資料集研究日是 {shown}，不能用於 {payload.analysis_date}；請選擇日期完全相同的資料集")
     effective_model = ctx.demo_model_id if ctx.demo_mode else payload.model
     build_protocol = StudyProtocol.monthly if payload.design == "monthly" else StudyProtocol
+    router_fields = {key: value for key in ("debate_model_a", "debate_model_b", "debate_assignments", "model_endpoints")
+                     if (value := getattr(payload, key, None)) is not None}
+    if router_fields:
+        if payload.design != "quarterly":
+            raise PreflightError("design_mismatch", "模型指派（RQ2 Model Router）目前只定義季度設計")
+        build_protocol = RouterProtocol
+        if router_fields.get("debate_assignments") is not None:
+            router_fields["debate_assignments"] = tuple(router_fields["debate_assignments"])
     protocol = build_protocol(model=effective_model, voting_samples=payload.voting_samples, study=payload.study,
         anonymize_ticker=payload.anonymize_ticker, dataset_kind=data["kind"],
         missing_data_policy=payload.missing_data_policy,
         allow_point_fundamental=payload.allow_point_fundamental,
         allow_small_model=payload.allow_small_model,
         **{key: value for key in ("model_context_length", "ollama_parallel")
-           if (value := getattr(payload, key, None)) is not None})
+           if (value := getattr(payload, key, None)) is not None}, **router_fields)
     if protocol.sentiment_indicators and data.get("kind") == "historical" and rules.get("news_item_limit") != "uncapped":
         raise PreflightError("news_capped", "此資料集的新聞在蒐集時被截斷（每來源最多 50 筆）；v3-0930 之後的協議需要窗口內的全部標題，"
                              "請重新蒐集資料")
@@ -99,7 +108,19 @@ def prepare(ctx, payload, model_probe=None):
     if fundamental_problem and not payload.allow_point_fundamental:
         raise PreflightError("fundamental_quality", "此歷史資料集只有 SEC 點時欄位，沒有可比較的前期數字；請重新蒐集新版資料，"
                              "或在「資料品質例外」勾選舊版 SEC 基本面例外（只算敏感性測試）")
-    if effective_model.startswith("ollama/") and not ctx.injected_model_call:
+    routed_identities = None
+    if model_router.is_routed(protocol):
+        # Every routed model is resolved on its own endpoint; an unreachable endpoint fails here.
+        if ctx.demo_mode or ctx.injected_model_call:
+            routed_identities = model_router.resolve_identities(
+                protocol, provider_label="built_in_demo" if ctx.demo_mode else "test_override")
+        else:
+            try:
+                routed_identities = model_router.resolve_identities(protocol, probe=route_probe or model_router.probe_ollama_endpoint)
+            except model_router.ModelIdentityUnavailable as error:
+                raise PreflightError("model_not_installed", str(error)) from None
+        model_identity = {key: value for key, value in routed_identities[protocol.model].items() if key != "slots"}
+    elif effective_model.startswith("ollama/") and not ctx.injected_model_call:
         installed = (model_probe or (lambda: probe_models(ctx)))()
         if not installed.get("ready"):
             # Say why (e.g. the GPUtw instance is off) instead of implying the model is missing.
@@ -129,6 +150,7 @@ def prepare(ctx, payload, model_probe=None):
             "base_rate_windows_required": coverage_result.get("base_rate_windows_required"),
         },
         "model_identity": model_identity,
+        **({"routed_model_identities": routed_identities} if routed_identities is not None else {}),
         "quality_overrides": {
             **({"allow_low_quality_sentiment": True, "sentiment_quality": quality}
                if payload.allow_low_quality_sentiment and quality_problem else {}),
@@ -163,7 +185,9 @@ def clone_request(ctx, original):
         anonymize_ticker=p.get("anonymize_ticker"), design=p.get("design", "quarterly"),
         missing_data_policy=p.get("missing_data_policy", "allow_decision"),
         allow_point_fundamental=allow_point_fundamental,
-        allow_small_model=allow_small, allow_low_quality_sentiment=allow_low_quality)
+        allow_small_model=allow_small, allow_low_quality_sentiment=allow_low_quality,
+        **{key: p[key] for key in ("debate_model_a", "debate_model_b", "debate_assignments", "model_endpoints")
+           if p.get(key) is not None})
     migration = ({"from_protocol_version": p.get("version", "unknown"),
                   "legacy_small_model_override": allow_small,
                   "legacy_low_quality_sentiment_override": allow_low_quality} if legacy else None)

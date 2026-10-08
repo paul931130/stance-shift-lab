@@ -525,7 +525,8 @@ def _numeric_validation_quality(complete):
         state = job.get("state", {})
         for item in state.get("records", []):
             group = item.get("group")
-            if group in decision:
+            # RQ2 router jobs: the group diagnostics describe the AA arm (the RQ1 C/D); other arms are separate.
+            if group in decision and item.get("assignment") in (None, "AA"):
                 record(decision[group], case_id, item.get("audit"))
         for domain, item in state.get("research", {}).items():
             bucket = research.get(domain)
