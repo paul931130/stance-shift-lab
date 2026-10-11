@@ -200,6 +200,25 @@ class ViewAndNamespaceTests(unittest.TestCase):
         self.assertEqual(aggregator.input_order(protocol, replace(settings, aggregator_order="fixed"), config,
                                                 "C_domain"), (list(DOMAIN_NAMES), None))
 
+    def test_aggregator_tolerates_missing_views_and_null_evidence_lists(self):
+        config = {"ticker": "NVDA", "analysis_date": "2024-12-31"}
+        report = {"ticker": "NVDA", "analysis_date": "2024-12-31", "base_rates": {},
+                  "evidence": [{**item, "evidence_id": f"E-{item['domain']}"} for item in rq3_dataset()["evidence"]
+                               if item["domain"] in ("technical", "sentiment")][:2]}
+        records = [{"kind": "view", "domain": "technical",
+                    "output": {"direction": "Buy", "supporting_evidence_ids": ["E-technical"],
+                               "counter_evidence_ids": None}},
+                   {"kind": "view", "domain": "sentiment", "output": None},
+                   {"kind": "view", "domain": "macro",
+                    "output": {"direction": "Abstain", "supporting_evidence_ids": None}}]
+        settings = DomainDebateSettings(aggregator_order="fixed")
+        built = aggregator.build(base_protocol(), settings, config, {"report": report}, "C_domain", records)
+        self.assertEqual(built["meta"]["missing_views"], ["fundamental", "sentiment"])
+        shown = {view["domain"]: view for view in json.loads(built["messages"][1]["content"])["report"]["domain_views"]}
+        self.assertEqual(shown["sentiment"]["direction"], "InsufficientInfo")
+        self.assertEqual(shown["fundamental"]["information_gaps"], ["domain view missing"])
+        self.assertEqual([item["evidence_id"] for item in built["evidence"]], ["E-technical"])
+
 
 class EngineTests(unittest.TestCase):
     def setUp(self):

@@ -51,12 +51,17 @@ def build(protocol, settings, config, state, arm, records):
     """Messages, citable evidence and audit metadata for one arm's aggregator call."""
     report = state["report"]
     order, seed = input_order(protocol, settings, config, arm)
-    views = {record["domain"]: record["output"] for record in records if record["kind"] == "view"}
-    shown, cited = [], []
+    views = {record["domain"]: record.get("output") for record in records if record["kind"] == "view"}
+    shown, cited, missing_views = [], [], []
     for domain in order:
-        view = views[domain]
+        view = views.get(domain)
+        if not view:
+            # A domain arm that produced no View is shown as carrying no direction (never a
+            # vote) and is recorded in the audit, instead of failing the whole aggregator step.
+            missing_views.append(domain)
+            view = {"direction": "InsufficientInfo", "information_gaps": ["domain view missing"]}
         shown.append({"domain": domain, **{key: view.get(key) for key in VIEW_FIELDS}})
-        cited.extend(view.get("supporting_evidence_ids", []) + view.get("counter_evidence_ids", []))
+        cited.extend((view.get("supporting_evidence_ids") or []) + (view.get("counter_evidence_ids") or []))
     history = []
     if settings.aggregator_input == "views_and_transcripts":
         for domain in order:
@@ -64,7 +69,7 @@ def build(protocol, settings, config, state, arm, records):
                             key=lambda record: (record["round"], record["agent"]))
             history.extend({**record, "group": arm} for record in debate)
             for record in debate:
-                cited.extend(record["output"].get("evidence_ids", []))
+                cited.extend((record.get("output") or {}).get("evidence_ids") or [])
     wanted = set(cited)
     evidence = [item for item in report.get("evidence", []) if item.get("evidence_id") in wanted]
     evidence_fallback = None
@@ -89,7 +94,7 @@ def build(protocol, settings, config, state, arm, records):
     meta = {"prompt_version": settings.aggregator_prompt_version, "input_schema": settings.aggregator_input,
             "input_order": order, "order_mode": settings.aggregator_order, "order_seed": seed,
             "memory": settings.aggregator_memory, "citable_evidence": len(evidence),
-            "evidence_fallback": evidence_fallback, "prompt_hash": digest(messages)}
+            "evidence_fallback": evidence_fallback, "missing_views": missing_views, "prompt_hash": digest(messages)}
     return {"messages": messages, "evidence": evidence, "meta": meta, "call": call}
 
 

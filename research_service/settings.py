@@ -69,10 +69,20 @@ class Settings:
             saved.update(changes)
             self.path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
             temporary = self.path.with_suffix(".tmp")
-            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-            with os.fdopen(fd, "w", encoding="utf-8") as handle:
-                json.dump(saved, handle, ensure_ascii=False)
-            os.replace(temporary, self.path)
+            # O_CREAT's 0o600 applies only to a new file, so a stale .tmp left by an earlier
+            # crash (possibly with wider permissions) is removed first.
+            temporary.unlink(missing_ok=True)
+            fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+            try:
+                with os.fdopen(fd, "w", encoding="utf-8") as handle:
+                    json.dump(saved, handle, ensure_ascii=False)
+                    handle.flush()
+                    os.fsync(handle.fileno())
+                os.replace(temporary, self.path)
+            except BaseException:
+                # Never leave a half-written copy of the keys behind.
+                temporary.unlink(missing_ok=True)
+                raise
             for key, value in changes.items():
                 os.environ[key] = value
         return self.public()

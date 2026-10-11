@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [ValidateRange(1, 180)][int]$Limit = 180,
     [ValidateRange(1, 30)][int]$PollSeconds = 2

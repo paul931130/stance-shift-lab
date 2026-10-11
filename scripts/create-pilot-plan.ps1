@@ -1,4 +1,4 @@
-<#+
+﻿<#+
 .SYNOPSIS
 Create a balanced, importable formal pilot batch from readiness data.
 #>

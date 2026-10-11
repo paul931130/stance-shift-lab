@@ -12,6 +12,7 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 
 from .labels import gate_reasons, ljust, pct, ratio_pct, rjust
 from .protocol import QUARTER_DATES, STUDY_TICKERS
@@ -27,22 +28,42 @@ GROUP_NAMES = {"A": "單次判斷", "B": "獨立投票", "C": "固定立場辯�
 STANCE = {"BULL": "看多", "BEAR": "看空", "NEUTRAL": "中立"}
 
 
+CONTAINER_INPUTS = "/app/research-inputs/"
+
+
+def _env_value(raw):
+    """A .env value: quoted values are taken verbatim, unquoted ones drop a trailing `  # comment`."""
+    value = raw.strip()
+    if value[:1] in ('"', "'"):
+        end = value.find(value[0], 1)
+        return value[1:end] if end > 0 else value.strip("\"'")
+    return re.split(r"\s+#", value, maxsplit=1)[0].strip()
+
+
 def load_env_files(paths=(".env", ".env.research")):
     """Read KEY=VALUE files in the current folder; real environment variables win."""
+    in_container = Path("/.dockerenv").exists()
     for name in paths:
         path = Path(name)
         if not path.is_file():
             continue
-        for line in path.read_text(encoding="utf-8").splitlines():
+        # utf-8-sig: Windows PowerShell 5.1 writes a BOM that would otherwise hide the first key.
+        for line in path.read_text(encoding="utf-8-sig").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            value = value.strip().strip('"').strip("'")
+            value = _env_value(value)
             # research.env.example points Ollama at the Docker host; outside a
             # container that name does not resolve, so keep the local default.
-            if key.strip() == "OLLAMA_BASE_URL" and "host.docker.internal" in value and not Path("/.dockerenv").exists():
+            if key.strip() == "OLLAMA_BASE_URL" and "host.docker.internal" in value and not in_container:
                 continue
+            # .env.research is shared with Docker, where research-inputs is mounted at
+            # /app/research-inputs. Outside a container that path does not exist and the
+            # news loader would fall back to the live (metered) API, so point it at the
+            # checked-out research-inputs folder next to the env file instead.
+            if value.startswith(CONTAINER_INPUTS) and not in_container:
+                value = str(path.resolve().parent / "research-inputs" / value[len(CONTAINER_INPUTS):])
             if value and key.strip() not in os.environ:
                 os.environ[key.strip()] = value
 
