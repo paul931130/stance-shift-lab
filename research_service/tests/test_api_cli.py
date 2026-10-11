@@ -311,13 +311,16 @@ class EnvFileTests(unittest.TestCase):
     def test_env_file_bom_inline_comments_and_container_input_paths(self):
         from research_service.interactive import load_env_files
 
-        keys = ("FIRST_KEY", "COMMENTED", "QUOTED_HASH", "FNSPID_NEWS_PATH")
+        keys = ("FIRST_KEY", "COMMENTED", "QUOTED_HASH", "HASH_ONLY", "EMPTY_QUOTED", "INPUTS_DIR",
+                "FNSPID_NEWS_PATH")
         with tempfile.TemporaryDirectory() as folder:
             path = os.path.join(folder, ".env.research")
             # Windows PowerShell 5.1 writes UTF-8 with a BOM; the first key must still load.
             with open(path, "w", encoding="utf-8-sig") as handle:
                 handle.write("FIRST_KEY=first\nCOMMENTED=value  # trailing comment\n"
-                             "QUOTED_HASH='pa ss#word'\nFNSPID_NEWS_PATH=/app/research-inputs/Stock_news.csv\n")
+                             "QUOTED_HASH=\"pa ss #word\"\nHASH_ONLY=#not-a-comment\nEMPTY_QUOTED=\"\"\n"
+                             "INPUTS_DIR=/app/research-inputs\n"
+                             "FNSPID_NEWS_PATH=/app/research-inputs/Stock_news.csv\n")
             with patch.dict(os.environ, {}, clear=False):
                 for name in keys:
                     os.environ.pop(name, None)
@@ -325,7 +328,11 @@ class EnvFileTests(unittest.TestCase):
                     load_env_files([path])
                 self.assertEqual(os.environ["FIRST_KEY"], "first")
                 self.assertEqual(os.environ["COMMENTED"], "value")
-                self.assertEqual(os.environ["QUOTED_HASH"], "pa ss#word")
+                # The PowerShell wizard quotes values containing " #"; quoted values are verbatim.
+                self.assertEqual(os.environ["QUOTED_HASH"], "pa ss #word")
+                self.assertEqual(os.environ["HASH_ONLY"], "#not-a-comment")
+                self.assertNotIn("EMPTY_QUOTED", os.environ)
+                self.assertEqual(os.environ["INPUTS_DIR"], os.path.join(os.path.realpath(folder), "research-inputs"))
                 # Outside Docker the container mount path becomes the local research-inputs folder.
                 self.assertEqual(os.environ["FNSPID_NEWS_PATH"],
                                  os.path.join(os.path.realpath(folder), "research-inputs", "Stock_news.csv"))

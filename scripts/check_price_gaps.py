@@ -43,16 +43,19 @@ def load_datasets(store):
     uri = f"file:{path.resolve().as_posix()}?mode=ro"
     try:
         rows = _read_rows(uri)
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as error:
         # A WAL database on a read-only mount (e.g. a Docker volume mounted :ro) cannot
-        # create its -shm file; immutable mode reads the main file without it.
+        # create its -shm file; immutable mode reads the main file without it. Any other
+        # error (a missing table, a corrupt file) is a real problem and is not masked.
+        if "unable to open" not in str(error):
+            raise
         print("注意：資料庫位於唯讀位置，改以 immutable 模式讀取（尚未 checkpoint 的 WAL 內容不會納入）")
         rows = _read_rows(uri + "&immutable=1")
     datasets = []
     for key, ticker, content in rows:
         data = json.loads(content)
         when = data.get("requested_analysis_date") or data.get("analysis_date")
-        bars = sorted(bar["date"] for bar in data.get("prices", []) if bar.get("date"))
+        bars = sorted(bar["date"] for bar in data.get("prices") or [] if bar.get("date"))
         if when and bars and data.get("kind") != "synthetic":
             datasets.append({"id": key, "ticker": ticker, "analysis_date": when, "dates": bars})
     return datasets

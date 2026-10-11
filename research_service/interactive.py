@@ -62,7 +62,7 @@ def load_env_files(paths=(".env", ".env.research")):
             # /app/research-inputs. Outside a container that path does not exist and the
             # news loader would fall back to the live (metered) API, so point it at the
             # checked-out research-inputs folder next to the env file instead.
-            if value.startswith(CONTAINER_INPUTS) and not in_container:
+            if (value + "/").startswith(CONTAINER_INPUTS) and not in_container:
                 value = str(path.resolve().parent / "research-inputs" / value[len(CONTAINER_INPUTS):])
             if value and key.strip() not in os.environ:
                 os.environ[key.strip()] = value
