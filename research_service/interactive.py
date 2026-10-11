@@ -12,7 +12,9 @@ import importlib.util
 import json
 import os
 from pathlib import Path
+import re
 
+from .labels import gate_reasons, ljust, pct, ratio_pct, rjust
 from .protocol import QUARTER_DATES, STUDY_TICKERS
 
 OVERRIDES = {"model_too_small": ("allow_small_model", "模型小於 14B"),
@@ -26,22 +28,42 @@ GROUP_NAMES = {"A": "單次判斷", "B": "獨立投票", "C": "固定立場辯�
 STANCE = {"BULL": "看多", "BEAR": "看空", "NEUTRAL": "中立"}
 
 
+CONTAINER_INPUTS = "/app/research-inputs/"
+
+
+def _env_value(raw):
+    """A .env value: quoted values are taken verbatim, unquoted ones drop a trailing `  # comment`."""
+    value = raw.strip()
+    if value[:1] in ('"', "'"):
+        end = value.find(value[0], 1)
+        return value[1:end] if end > 0 else value.strip("\"'")
+    return re.split(r"\s+#", value, maxsplit=1)[0].strip()
+
+
 def load_env_files(paths=(".env", ".env.research")):
     """Read KEY=VALUE files in the current folder; real environment variables win."""
+    in_container = Path("/.dockerenv").exists()
     for name in paths:
         path = Path(name)
         if not path.is_file():
             continue
-        for line in path.read_text(encoding="utf-8").splitlines():
+        # utf-8-sig: Windows PowerShell 5.1 writes a BOM that would otherwise hide the first key.
+        for line in path.read_text(encoding="utf-8-sig").splitlines():
             line = line.strip()
             if not line or line.startswith("#") or "=" not in line:
                 continue
             key, value = line.split("=", 1)
-            value = value.strip().strip('"').strip("'")
+            value = _env_value(value)
             # research.env.example points Ollama at the Docker host; outside a
             # container that name does not resolve, so keep the local default.
-            if key.strip() == "OLLAMA_BASE_URL" and "host.docker.internal" in value and not Path("/.dockerenv").exists():
+            if key.strip() == "OLLAMA_BASE_URL" and "host.docker.internal" in value and not in_container:
                 continue
+            # .env.research is shared with Docker, where research-inputs is mounted at
+            # /app/research-inputs. Outside a container that path does not exist and the
+            # news loader would fall back to the live (metered) API, so point it at the
+            # checked-out research-inputs folder next to the env file instead.
+            if (value + "/").startswith(CONTAINER_INPUTS) and not in_container:
+                value = str(path.resolve().parent / "research-inputs" / value[len(CONTAINER_INPUTS):])
             if value and key.strip() not in os.environ:
                 os.environ[key.strip()] = value
 
@@ -183,7 +205,8 @@ def show_step(event):
         if record["kind"] == "debate":
             who = f"第 {record.get('round')} 輪 {STANCE.get(record.get('stance'), record.get('stance'))}"
         print(f"  [{number:>2}/{event['total']}] {record['group']} {GROUP_NAMES[record['group']]} · {who}"
-              f" → {output.get('action')}  預期 {output.get('expected_return_pct')}%  信心 {output.get('confidence')}")
+              f" → {output.get('action')}  預期 {pct(output.get('expected_return_pct'), sign=True)}"
+              f"  信心 {_num(output.get('confidence'))}")
     if node == "gatekeeper_decisions_locked":
         print("\n[把關] 最終決策已鎖定，開始回測")
 
@@ -207,11 +230,11 @@ def print_result(result):
                       f"http://127.0.0.1:8000/?tab=runs&selected={result['job_id']}")
         return
     print(f"\n=== {result['ticker']} · {result['analysis_date']} · {result['model']} ===")
-    print(f"{'組別':<14}{'決策':<9}{'預期報酬':>9}{'信心':>7}  把關原因")
+    print(ljust("組別", 18) + ljust("決策", 9) + rjust("預期報酬", 10) + rjust("信心", 7) + "  把關原因")
     for group, item in result["decisions"].items():
-        reasons = "、".join(item["gate_reasons"]) or "—"
-        print(f"{group} {item['name']:<11}{item['action'] or '—':<9}{_num(item['expected_return_pct']):>8}%"
-              f"{_num(item['confidence']):>7}  {reasons}")
+        print(ljust(f"{group} {item['name']}", 18) + ljust(item["action"] or "—", 9)
+              + rjust(pct(item["expected_return_pct"], sign=True), 10) + rjust(_num(item["confidence"]), 7)
+              + "  " + gate_reasons(item["gate_reasons"]))
     primary = [row for row in result["backtest"] if row.get("horizon") == 60 and row.get("cost_model") == "zero"
                and row.get("decision_layer", "gated") == "gated"]
     if primary:
@@ -221,7 +244,7 @@ def print_result(result):
                 print(f"  {row['group']}  尚未到期（只有 {row.get('available_sessions')} 個交易日的未來行情）")
             else:
                 outcome = {True: "方向正確", False: "方向錯誤", None: "不計方向"}[row.get("correct")]
-                print(f"  {row['group']}  {outcome}  報酬 {row.get('net_return')}")
+                print(f"  {row['group']}  {outcome}  報酬 {ratio_pct(row.get('net_return'))}")
     if result["degraded_research_domains"]:
         print(f"\n注意：{'、'.join(result['degraded_research_domains'])} 研究輸出未通過來源驗證，這個案例不適合放進正式分析。")
     print(f"\n實驗 ID：{result['job_id']}")
@@ -230,7 +253,7 @@ def print_result(result):
 
 
 def _num(value):
-    return "—" if value is None else f"{value:g}"
+    return "—" if value is None else f"{value:.2f}"
 
 
 def planned_calls(protocol=None):

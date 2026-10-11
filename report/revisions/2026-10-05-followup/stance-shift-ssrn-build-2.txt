@@ -1,0 +1,7 @@
+This is BibTeX, Version 0.99e (MiKTeX 25.12)
+The top-level auxiliary file: stance-shift-ssrn.aux
+The style file: chicago.bst
+Database file #1: references.bib
+log4cxx: setFile(C:\Users\paul9\AppData\Local\MiKTeX\miktex\log/bibtex.log,true) call failed.
+log4cxx: IO Exception : status code = 720005(存取被拒。  )
+bibtex: major issue: So far, you have not checked for MiKTeX updates.

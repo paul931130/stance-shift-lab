@@ -41,5 +41,5 @@ python -m unittest research_service.tests.test_e2e_demo -v
 ## 提交 PR
 
 - 一個 PR 專注一件事，避免把 lint 修正、功能改動、文件更新混在一起。
-- 若改動會影響決策提示詞、協議欄位或資料口徑，請同時更新 [CHANGELOG.md](CHANGELOG.md) 並考慮是否需要新的 protocol 版本（見 [design-notes](docs/design-notes-v3-0908.md) 的版本規則）。
+- 若改動會影響決策提示詞、協議欄位或資料口徑，請同時更新 [CHANGELOG.md](CHANGELOG.md) 並考慮是否需要新的 protocol 版本（見 [design-notes](docs/archive/design-notes-v3-0908.md) 的版本規則）。
 - 不要提交任何 API 金鑰、`.env.research`、SQLite 資料庫或未授權的第三方資料（新聞 CSV 等）。

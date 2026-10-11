@@ -1,0 +1,9 @@
+FROM stance-shift-lab-research-qwen:v3-1001.1
+USER root
+COPY research_service /app/research_service
+COPY pyproject.toml /app/pyproject.toml
+COPY scripts/qualify_experiment.py /app/scripts/qualify_experiment.py
+ENV RESEARCH_GPUTW_AUTOSTOP_MINUTES=0 PYTHONUNBUFFERED=1 PYTHONDONTWRITEBYTECODE=1
+USER researcher
+HEALTHCHECK NONE
+ENTRYPOINT ["python", "/app/scripts/qualify_experiment.py"]

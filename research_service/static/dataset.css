@@ -150,6 +150,26 @@
 .bar-key.tone-c { color: var(--tone-C); } .bar-track i.tone-c { background-color: var(--tone-C); }
 .bar-key.tone-d { color: var(--tone-D); } .bar-track i.tone-d { background-color: var(--tone-D); }
 
+/* Statistics step: verdict and report-style tables. */
+.verdict { margin: 14px 0 0; padding: 12px 16px; border: 1px solid var(--line); border-left: 4px solid var(--faint); border-radius: 8px; background: var(--surface); }
+.verdict b { display: block; font-size: 14px; }
+.verdict p { margin: 4px 0 0; color: var(--muted); font-size: 12.5px; line-height: 1.55; }
+.verdict.pass { border-left-color: var(--accent); }
+.verdict.pass b { color: var(--accent); }
+.verdict.fail { border-left-color: var(--warn); }
+.verdict.fail b { color: var(--warn); }
+.report-table caption { caption-side: top; padding: 0 0 8px; text-align: left; color: var(--muted); font: 700 11.5px var(--mono); letter-spacing: .4px; }
+.report-table th[scope=row] { text-align: left; font-weight: 600; white-space: nowrap; }
+.report-table td { font-variant-numeric: tabular-nums; }
+.report-table .reference-row th, .report-table .reference-row td { color: var(--muted); border-top: 1.5px solid var(--line-strong); font-style: italic; }
+.report-table .primary-row th, .report-table .primary-row td { background: color-mix(in srgb, var(--tone-D) 8%, transparent); }
+.group-chip { display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 8px; border-radius: 5px; color: var(--on-accent); font: 800 11px var(--mono); }
+.group-chip.tone-a { background: var(--tone-A); } .group-chip.tone-b { background: var(--tone-B); }
+.group-chip.tone-c { background: var(--tone-C); } .group-chip.tone-d { background: var(--tone-D); }
+.stats-group { margin-top: 16px; padding: 12px 16px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-alt); }
+.stats-group > summary { font: 700 12px var(--mono); letter-spacing: .4px; color: var(--muted); }
+.stats-group > .stats-substep { background: var(--surface); }
+
 @keyframes terminal-pulse { 50% { opacity: .45; box-shadow: 0 0 0 8px #3fe0ae08; } }
 @keyframes terminal-blink { 50% { opacity: 0; } }
 @keyframes type-in { from { opacity: 0; clip-path: inset(0 100% 0 0); } to { opacity: 1; clip-path: inset(0 0 0 0); } }

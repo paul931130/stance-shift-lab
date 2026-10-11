@@ -15,20 +15,24 @@ from urllib.parse import urlsplit
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from .autostop import AutoStop
+from .breaker import Breaker, is_provider_failure
 from .engine import Engine
 from .errors import NotFoundError
 from .logging_config import get_logger
 from .security import SessionAuth
 from .settings import Settings
-from .storage import Store, now
+from .storage import JobLeaseLost, Store, now
 from .web import datasets, jobs, studies, system
 from .web.context import AppContext
+from .web.ollama import probe_models
 
 logger = get_logger(__name__)
 
 # Provider credentials that must never appear in a persisted job error.
 REDACTED_ENV = ("OPENROUTER_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "FRED_API_KEY",
-                "ALPHA_VANTAGE_API_KEY", "GPUTW_API_KEY", "GPUTW_OLLAMA_API_KEY", "HF_TOKEN",
+                "ALPHA_VANTAGE_API_KEY", "GPUTW_API_KEY", "GPUTW_MANAGE_API_KEY", "GPUTW_OLLAMA_API_KEY",
+                "GPUTW_OLLAMA_PASSWORD", "HF_TOKEN",
                 # A contact string, not a secret, but still someone's identifying info.
                 "SEC_USER_AGENT")
 SECURITY_HEADERS = {
@@ -74,13 +78,18 @@ def create_app(store=None, model_call=None, start_worker=True):
     remote = os.getenv("RESEARCH_REMOTE", "false") == "true"
     if remote and len(access_key) < 32:
         raise RuntimeError("Remote mode requires RESEARCH_ACCESS_KEY with at least 32 characters")
+    # An injected model_call (tests, demo) has no endpoint to probe.
+    breaker = Breaker(lambda: model_call is not None or ctx.demo_mode or probe_models(ctx).get("ready"))
     ctx = AppContext(
         store=store, settings=settings,
         engine=Engine(store, model_call) if model_call else Engine(store),
         auth=SessionAuth(access_key), access_key=access_key, remote=remote,
         demo_mode=demo_mode, demo_model_id=demo_model_id, demo_dataset_id=demo_dataset_id,
         injected_model_call=model_call is not None,
-        trusted_proxies=_env_list("RESEARCH_TRUSTED_PROXIES"))
+        trusted_proxies=_env_list("RESEARCH_TRUSTED_PROXIES"),
+        # A queue held 15 min by the breaker counts as idle; with the 15-min auto-stop a broken
+        # endpoint stops the GPU about 30 min after the first failures.
+        autostop=AutoStop(lambda: 0 if breaker.held_for(15 * 60) else store.active_job_count()))
     container_local = os.getenv("RESEARCH_CONTAINER_LOCAL", "false") == "true"
     public_origin = os.getenv("RESEARCH_PUBLIC_ORIGIN", "").rstrip("/")
     allowed_hosts = _env_list("RESEARCH_ALLOWED_HOSTS", "localhost,127.0.0.1,::1,testserver")
@@ -105,6 +114,10 @@ def create_app(store=None, model_call=None, start_worker=True):
                 recover_orphans()
             except Exception:
                 logger.exception("service heartbeat failed; retrying")
+            try:
+                ctx.autostop.tick()
+            except Exception:
+                logger.exception("GPU auto-stop check failed; retrying")
 
     def work():
         # One worker advances one checkpointed step at a time; see Store.claim for ordering.
@@ -112,6 +125,9 @@ def create_app(store=None, model_call=None, start_worker=True):
         # thread and leave every queued job stuck, so storage errors (e.g. a
         # locked database) are logged and retried after a short back-off.
         while not stop.is_set():
+            if not breaker.allow():
+                stop.wait(5)
+                continue
             try:
                 job = store.claim(worker_owner)
             except Exception:
@@ -125,15 +141,22 @@ def create_app(store=None, model_call=None, start_worker=True):
             try:
                 state = ctx.engine.advance(job)
                 state["attempts"].append({"at": now(), "status": "ok", "node": state["trace"][-1]["node"]})
-                store.save_step(job["id"], state)
+                store.save_step(job["id"], state, owner=worker_owner, generation=job["lease_generation"])
+                breaker.record(True)
+            except JobLeaseLost:
+                logger.warning("job %s: discarded a checkpoint after losing its lease", job["id"])
             except Exception as error:
                 # Persist progress before exposing a bounded diagnostic; never dump provider keys.
                 state = getattr(error, "state", state)
                 message = f"{type(error).__name__}: {_redact(str(error), access_key)[:700]}"
                 logger.error("job %s failed: %s", job["id"], message)
+                if is_provider_failure(error):
+                    breaker.record(False)
                 state["attempts"].append({"at": now(), "status": "error", "message": message})
                 try:
-                    store.save_step(job["id"], state, message)
+                    store.save_step(job["id"], state, message, owner=worker_owner, generation=job["lease_generation"])
+                except JobLeaseLost:
+                    logger.warning("job %s: discarded a failure after losing its lease", job["id"])
                 except Exception:
                     # The job stays 'running'; recover() pauses it on the next restart.
                     logger.exception("job %s: could not persist failure state", job["id"])
@@ -157,6 +180,7 @@ def create_app(store=None, model_call=None, start_worker=True):
     # The auth middleware below still protects it in remote mode.
     app = FastAPI(title="Stance Shift Research v3", lifespan=lifespan)
     app.state.store = store
+    app.state.breaker = ctx.breaker = breaker
 
     @app.middleware("http")
     async def protect(request, call_next):

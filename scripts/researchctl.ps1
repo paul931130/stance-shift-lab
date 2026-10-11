@@ -29,7 +29,7 @@ Set-Location -LiteralPath $projectRoot
 function Read-Settings {
     $values = [ordered]@{}
     if (Test-Path -LiteralPath $settingsPath) {
-        foreach ($line in Get-Content -LiteralPath $settingsPath) {
+        foreach ($line in Get-Content -LiteralPath $settingsPath -Encoding UTF8) {
             if ($line -match '^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$') {
                 $values[$Matches[1]] = $Matches[2].Trim('"').Trim("'")
             }
@@ -62,8 +62,24 @@ function Save-Settings([System.Collections.IDictionary]$Values) {
         'OPENROUTER_API_KEY','OPENAI_API_KEY','GEMINI_API_KEY'
         ,'GPUTW_API_URL','GPUTW_API_KEY','GPUTW_INSTANCE_ID','GPUTW_OLLAMA_BASE_URL','GPUTW_OLLAMA_API_KEY'
     )
-    $lines = foreach ($name in $order) { "$name=$($Values[$name])" }
-    Set-Content -LiteralPath $settingsPath -Value $lines -Encoding utf8
+    # A value with whitespace before '#' would be cut at the '#' by readers that allow inline
+    # comments (research_service.interactive.load_env_files), so such values are quoted.
+    $format = {
+        param($name)
+        $value = [string]$Values[$name]
+        if ($value -match '\s#') { $value = if ($value.Contains('"')) { "'$value'" } else { "`"$value`"" } }
+        "$name=$value"
+    }
+    $lines = [System.Collections.Generic.List[string]]::new()
+    foreach ($name in $order) { $lines.Add((& $format $name)) }
+    # Keys the wizard does not ask about (GPUTW_OLLAMA_PASSWORD, RESEARCH_LOG_LEVEL, custom keys)
+    # must survive a save; keep them after the known keys in their original order.
+    foreach ($name in $Values.Keys) {
+        if ($order -notcontains $name) { $lines.Add((& $format $name)) }
+    }
+    # UTF-8 without BOM: Windows PowerShell 5.1's -Encoding utf8 writes a BOM, which would
+    # hide the first key from readers that do not strip it.
+    [System.IO.File]::WriteAllLines($settingsPath, $lines, [System.Text.UTF8Encoding]::new($false))
 }
 
 function Get-DockerArguments([string[]]$Tail) {

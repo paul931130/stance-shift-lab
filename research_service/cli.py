@@ -50,6 +50,39 @@ def _run(args):
     return 0
 
 
+def _refresh_news(args):
+    from .collect import refresh_news
+    from .interactive import load_env_files
+    from .storage import Store
+
+    load_env_files()
+    store = Store(os.getenv("RESEARCH_DATA_DIR", "research-data"))
+    registration = store.preregistration(args.preregistered)
+    if not registration:
+        print(f"找不到協議 {args.preregistered} 的事前登記", file=sys.stderr)
+        return 2
+    results, failures = [], 0
+    for index, key in enumerate(registration["dataset_ids"], 1):
+        data = store.dataset(key)
+        label = f"[{index}/{len(registration['dataset_ids'])}] {data['ticker']} {data.get('requested_analysis_date')}"
+        try:
+            result = refresh_news(store, key, allow_live=args.allow_live)
+        except Exception as error:  # one case must not stop the batch
+            print(f"{label}: 失敗 {type(error).__name__}: {error}", flush=True)
+            failures += 1
+            continue
+        results.append({"ticker": data["ticker"], "analysis_date": data.get("requested_analysis_date"),
+                        "old_dataset_id": key, "dataset_id": result["id"],
+                        "previous_items": result["previous_items"], "items": result["items"],
+                        "local_items": result["local_items"], "carried_live_items": result["carried_live_items"]})
+        print(f"{label}: 新聞 {result['previous_items']} -> {result['items']} 則（本機 {result['local_items']}、"
+              f"沿用即時抓取 {result['carried_live_items']}），{key[:12]} -> {result['id'][:12]}", flush=True)
+    with open(args.output, "w", encoding="utf-8") as handle:
+        json.dump({"source_protocol_hash": args.preregistered, "datasets": results}, handle, ensure_ascii=False, indent=2)
+    print(f"完成 {len(results)} 個，失敗 {failures} 個；對照表：{args.output}")
+    return 1 if failures else 0
+
+
 def _refresh_fundamentals(args):
     from .collect import refresh_fundamentals, reusable_snapshot
     from .interactive import load_env_files
@@ -100,6 +133,31 @@ def _jobs():
     return 0
 
 
+def _studies():
+    from .labels import ljust
+    from .progress import study_progress
+    from .storage import Store
+
+    store = Store(os.getenv("RESEARCH_DATA_DIR", "research-data"))
+    studies = store.preregistrations()
+    if not studies:
+        print("尚無事前登記的研究。")
+        return 0
+    for item in studies:
+        p = study_progress(store.preregistration(item["protocol_hash"]), store.study_rows(item["protocol_hash"]),
+                           meta=store.registration_meta(item["protocol_hash"]))
+        c = p["counts"]
+        label = f"{p['version']} · {p['model']}" if p["version"] else "尚未排入"
+        eta = f"，預估還要 {p['eta_hours']} 小時" if p["eta_hours"] is not None else ""
+        state = "舊版（只能查看）" if not p["current"] else f"執行中 {c['running']}、等待 {c['queued']}、暫停 {c['paused']}{eta}"
+        print(f"{item['protocol_hash'][:8]}  {ljust(label, 34)} {c['complete']:>3}/{p['total']} 完成  {state}")
+        for error in (p["errors"] if p["current"] else [])[:5]:
+            print(f"    ! {error['ticker']} {error['analysis_date']}：{error['error'][:100]}")
+        if p["current"] and len(p["errors"]) > 5:
+            print(f"    … 另有 {len(p['errors']) - 5} 案錯誤")
+    return 0
+
+
 def _utf8_output():
     """Output redirected to a file or pipe (e.g. --json > run.json on Windows) is
     written as UTF-8 instead of the legacy code page, which cannot hold Chinese."""
@@ -120,7 +178,7 @@ def main(argv=None):
     run = subparsers.add_parser("run", help="跑一個案例（不問問題，給腳本用）")
     run.add_argument("ticker")
     run.add_argument("date", help="季末日期，例如 2024-12-31，或今天")
-    run.add_argument("--model", default=None, help="例如 gemini/gemini-2.5-flash、ollama/qwen3:14b；預設 RESEARCH_MODEL")
+    run.add_argument("--model", default=None, help="例如 ollama/qwen3:32b、gemini/gemini-2.5-flash；預設 RESEARCH_MODEL")
     run.add_argument("--finbert", action="store_true", help="用本機 FinBERT 分析新聞標題")
     run.add_argument("--refresh", action="store_true", help="重新下載資料，不重用既有資料集")
     run.add_argument("--json", action="store_true", help="只輸出 JSON 結果")
@@ -135,17 +193,24 @@ def main(argv=None):
                                     help="只重建資料集的 SEC 基本面證據（另存新版本，不重抓新聞與行情）")
     refresh.add_argument("cases", nargs="*", help="TICKER:分析日，例如 NVDA:2024-12-31")
     refresh.add_argument("--all", action="store_true", help="研究範圍內所有股票 × 季末")
-    subparsers.add_parser("version")
-    subparsers.add_parser("doctor")
-    power = subparsers.add_parser("power-plan", help="simulation-based design planning")
+    news = subparsers.add_parser("refresh-news",
+                                 help="只重建資料集的新聞（不截斷、全部以 FinBERT 評分；另存新版本，行情、財報、總經不變）")
+    news.add_argument("--preregistered", required=True, metavar="PROTOCOL_HASH",
+                      help="重建這個協議事前登記的所有資料集")
+    news.add_argument("--output", default="refreshed-news.json", help="寫出舊→新資料集對照（JSON）")
+    news.add_argument("--allow-live", action="store_true", help="本機新聞檔不足時呼叫 Alpha Vantage（會用掉額度）")
+    subparsers.add_parser("studies", help="正式實驗（事前登記的研究）的整批進度")
+    subparsers.add_parser("version", help="顯示版本")
+    subparsers.add_parser("doctor", help="檢查安裝、資料目錄與金鑰是否就緒")
+    power = subparsers.add_parser("power-plan", help="以模擬估計樣本數與檢定力")
     power.add_argument("--total-cases", type=int, default=180)
     power.add_argument("--cluster-size", type=int, default=9)
     power.add_argument("--replicates", type=int, default=2000)
     power.add_argument("--seed", type=int, default=905)
-    canary = subparsers.add_parser("model-canary", help="synthetic provider qualification")
+    canary = subparsers.add_parser("model-canary", help="用合成案例檢查模型是否能正確回答（正式實驗前的資格測試）")
     canary.add_argument("--model", default=None)
     canary.add_argument("--allow-small-model", action="store_true")
-    serve = subparsers.add_parser("serve", help="start the FastAPI service")
+    serve = subparsers.add_parser("serve", help="開啟網頁研究台（預設 http://127.0.0.1:8000/）")
     serve.add_argument("--host", default="127.0.0.1")
     serve.add_argument("--port", type=int, default=8000)
     serve.add_argument("--reload", action="store_true")
@@ -173,10 +238,14 @@ def main(argv=None):
         return 0 if result["status"] == "pass" else 1
     if args.command in ("run", "resume"):
         return _run(args)
+    if args.command == "refresh-news":
+        return _refresh_news(args)
     if args.command == "refresh-fundamentals":
         return _refresh_fundamentals(args)
     if args.command == "jobs":
         return _jobs()
+    if args.command == "studies":
+        return _studies()
     if args.command == "serve":
         import uvicorn
         uvicorn.run("research_service.app:create_app", factory=True, host=args.host, port=args.port, reload=args.reload)

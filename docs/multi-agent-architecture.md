@@ -1,6 +1,6 @@
 # 多代理架構說明
 
-本文件依 `research_service/protocol.py` 與 `research_service/engine.py` 整理（協議版本 v3-0922.4）。圖檔：[multi-agent-architecture.svg](img/multi-agent-architecture.svg)（圖中對交換輪歷史的描述為早期版本，尚待更新）。
+本文件依 `research_service/protocol.py` 與 `research_service/engine.py` 整理（現行待執行協議：季度 v3-0930.3、月度 v3-0930.4）。圖檔：[multi-agent-architecture.svg](img/multi-agent-architecture.svg)（舊圖對交換輪歷史的描述尚待更新）。
 
 ![多代理決策架構](img/multi-agent-architecture.svg)
 
@@ -23,16 +23,18 @@
 | C | 多頭 / 空頭各發言，共 3 輪，再由裁決者裁決 | 3×2 + 1 = 7 |
 | D | 同 C，但**第 2 輪兩位辯論者互換立場，且必須反駁自己第 1 輪的主張** | 7 |
 
-   B 的取樣、其他組的對話歷史彼此隔離（`visible_history`）。D 組交換輪（`switch_isolation=True`，預設開啟）只看得到**自己**第 1 輪的發言、看不到對手的，逼模型直接對抗自己剛才的論點，而不是照抄對手的說法；輸出須包含 `rebutted_claim`（指出被推翻的原主張）與 `confidence_shift`（交換前後的信心變化，-1 到 1）。
+   B 的取樣、其他組的對話歷史彼此隔離（`visible_history`）。C 組第 2 輪可見雙方第 1 輪發言；D 組交換輪（`switch_isolation=True`）只可見該代理人自己的第 1 輪發言。這項資訊可見性差異會延續影響後續對話。D 的輸出須包含 `rebutted_claim` 與 `confidence_shift`。
 
 5. **Gatekeeper**（`engine.gate`）：檢查領域覆蓋、引用通過率（下限 0.80）、年化波動率（上限 0.80）、歷史準確度；預期報酬落在 ±0.5σ 中性帶則為 Hold，否則 Buy 或 Sell（`derive_action`）。資料不足時依 `missing_data_policy` 處理。動作鎖定後才進入回測。
 6. **回測與統計**：持有期 30 / 60 / 90 天，主要終點 60 天；成本模型 zero 與 Corwin-Schultz；block bootstrap 比較各組。
 
 ## 研究設計重點
 
-- **D 相對於 C 的差異只有「第 2 輪互換立場」**，用來測量立場交換本身是否改變決策。
+- **D 對 C 的估計量是整套交換機制的效果**：立場互換與交換輪只看自身歷史同時改變，不能解讀為「只改變立場交換」的因果效果。
 - **A、B 是對照**：B 與 C/D 的呼叫數相同，用來排除「只是多跑幾次」的效果。
 - 溫度、種子、重試次數、閘門門檻都在 `StudyProtocol` 內，變更會改變協議雜湊。
+
+若後續要單獨識別立場互換，可新增 E 組：與 C 一樣可見雙方完整歷史，但只在第 2 輪交換立場；E 對 C 才能估計同等資訊可見性下的交換效果，D 對 E 則可檢查交換條件下自我歷史隔離的影響。新增組別需另行事前登記與完整重跑，不可回溯套用到既有資料。
 
 ## 尚未釐清的地方
 

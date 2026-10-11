@@ -13,7 +13,7 @@ from ..gputw import (active as gputw_active, api_url as gputw_api_url, configure
                      instance_id as gputw_instance_id, ollama_base_url as gputw_ollama_base_url,
                      resources as gputw_resources, status as gputw_status)
 from ..logging_config import get_logger
-from ..protocol import DEFAULT_RESEARCH_MODEL, QUARTER_DATES, TICKERS, StudyProtocol
+from ..protocol import DEFAULT_RESEARCH_MODEL, QUARTER_DATES, TICKERS, StudyProtocol, prompt_source_digest
 from ..security import client_address
 from .ollama import probe_models
 
@@ -54,6 +54,7 @@ def build_router(ctx):
     @router.get("/health")
     def health():
         return {"status": "ok", "version": StudyProtocol().version,
+                "source_digest": prompt_source_digest(),
                 "authentication_required": bool(ctx.access_key), "demo_mode": ctx.demo_mode}
 
     @router.post("/api/login")
@@ -114,7 +115,12 @@ def build_router(ctx):
     @router.get("/api/gputw/status")
     def gpu_cloud_status():
         """Read GPUtw status; this endpoint never creates or stops compute."""
-        return gputw_status()
+        result = gputw_status()
+        if ctx.autostop is not None:
+            result["autostop"] = ctx.autostop.public()
+        if getattr(ctx, "breaker", None) is not None:
+            result["breaker"] = ctx.breaker.public()
+        return result
 
     @router.get("/api/gputw/resources")
     def gpu_cloud_resources():

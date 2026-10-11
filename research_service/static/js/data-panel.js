@@ -31,10 +31,10 @@ function renderCollectionFlow(dataset, phase) {
     : state.selectedJob ? undefined : {status: 'idle', sub: '建立後不再變動'};
   flow.setMany(update);
   flow.metric('evidence', dataset ? dataset.evidence_count : '—');
-  if (phase === 'running') flow.caption('資料 Agent 正在同時從四個來源蒐集證據，完成後存成資料集…');
+  if (phase === 'running') flow.caption('資料代理人正在同時從四個來源蒐集分析日前的證據，完成後存成資料快照…');
   else if (state.selectedJob) return;
   else if (dataset) flow.caption(`資料集 ${dataset.ticker} v${dataset.version}（研究日 ${datasetCut(dataset) || '未記錄'}）已就緒，可用於 A/B/C/D 實驗。`);
-  else flow.caption('選擇股票與研究分析日，啟動資料 Agent 讓資料開始流動。');
+  else flow.caption('選擇股票與研究分析日，啟動資料代理人讓資料開始流動。');
 }
 
 export function renderCollectionAgents(dataset = null, phase = 'idle') {
@@ -45,8 +45,8 @@ export function renderCollectionAgents(dataset = null, phase = 'idle') {
     if (ok) complete++; else if (dataset) gaps++;
   }
   const readiness = $('data-readiness');
-  if (phase === 'running') readiness.textContent = '四個資料 Agent 已啟動，正在同時蒐集技術、基本面、情緒與總經資料。';
-  else if (!dataset) readiness.textContent = '選擇股票與研究分析日後，讓四個 Agent 開始蒐集與驗證資料。';
+  if (phase === 'running') readiness.textContent = '四個資料代理人已啟動，正在同時蒐集技術、基本面、情緒與總經資料。';
+  else if (!dataset) readiness.textContent = '選擇股票與研究分析日後，讓四個資料代理人開始蒐集與驗證資料。';
   else if (gaps === 0) {
     const quality = dataset.coverage?.sentiment_quality || {}, pending = [];
     if (!dataset.coverage?.fundamental_quality?.passes_quality_gate) pending.push('SEC 基本面缺少可比較期間');
@@ -126,8 +126,8 @@ async function collect() {
   const refresh = $('refresh-data').checked, useFinbert = $('download-finbert').checked;
   resetTerminal();
   terminalLine('YOU', `collect --ticker ${ticker} --as-of ${analysisDate} --domains all${refresh ? ' --refresh' : ''}${useFinbert ? ' --finbert' : ''}`, 'command');
-  terminalLine('COORD', refresh ? `強制建立 ${analysisDate} 的新版資料集，派出 4 個資料 Agent` : `先尋找 ${ticker}／${analysisDate} 可重用、四個面向都齊全的資料集`);
-  notify('資料 Agent 正在檢查既有資料集與來源…');
+  terminalLine('COORD', refresh ? `強制建立 ${analysisDate} 的新版資料集，派出 4 個資料代理人` : `先尋找 ${ticker}／${analysisDate} 可重用、四個面向都齊全的資料集`);
+  notify('資料代理人正在檢查既有資料集與來源…');
   renderCollectionAgents(null, 'running');
   let r, reported;
   try { ({result: r, reported} = await runCollectionTask({ticker, analysis_date: analysisDate, refresh, use_finbert: useFinbert})); }
@@ -142,7 +142,7 @@ async function collect() {
   await refreshReadiness();
   selectDataset(r.id, r.analysis_date);
   setTab('experiment');
-  notify(r.reused ? '已重用符合條件的既有資料集，沒有重新呼叫資料來源。' : '資料 Agent 已完成，資料集已儲存。\n' + r.limitations.join('\n'));
+  notify(r.reused ? '已重用符合條件的既有資料集，沒有重新呼叫資料來源。' : '資料代理人已完成，資料快照已儲存。\n' + r.limitations.join('\n'));
 }
 
 async function pollAlphaVantageArchive() {

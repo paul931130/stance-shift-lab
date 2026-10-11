@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import date
 
-from .protocol import QUARTER_DATES, TICKERS
+from .protocol import DESIGNS, MONTH_END_DATES, QUARTER_DATES, TICKERS
 
 
 SPLIT_SCHEMA = "stance-shift-temporal-split/v1"
@@ -42,7 +42,7 @@ def classify_analysis_date(analysis_date: str) -> str:
         parsed = date.fromisoformat(str(analysis_date))
     except (TypeError, ValueError):
         return "live"
-    if str(analysis_date) not in QUARTER_DATES:
+    if str(analysis_date) not in QUARTER_DATES and str(analysis_date) not in MONTH_END_DATES:
         return "live"
     for name, definition in SPLIT_DEFINITIONS.items():
         if parsed.year in definition["years"]:
@@ -62,11 +62,19 @@ def split_for_date(analysis_date: str) -> str:
     return split
 
 
-def temporal_split_summary(cases: list[dict]) -> dict:
-    """Aggregate readiness independently for each temporal split."""
+def temporal_split_summary(cases: list[dict], design: str | None = None) -> dict:
+    """Aggregate readiness with targets from the selected quarterly or monthly frame."""
+    if design is None:
+        observed_dates = {case.get("analysis_date") for case in cases}
+        design = ("monthly" if any(day in MONTH_END_DATES and day not in QUARTER_DATES
+                                   for day in observed_dates) else "quarterly")
+    if design not in DESIGNS:
+        raise ValueError("Unsupported study design")
+    expected_dates = DESIGNS[design]["dates"]
     result = {}
     for name, definition in SPLIT_DEFINITIONS.items():
-        target = len(TICKERS) * len(definition["years"]) * 4
+        target_dates = [day for day in expected_dates if int(day[:4]) in definition["years"]]
+        target = len(TICKERS) * len(target_dates)
         result[name] = {
             "label": definition["label"],
             "years": list(definition["years"]),
@@ -104,6 +112,7 @@ def temporal_split_summary(cases: list[dict]) -> dict:
         item["missing_cases"] = item["target_cases"] - item["available_cases"]
     return {
         "schema": SPLIT_SCHEMA,
+        "design": design,
         "test_frozen": True,
         "basis": "requested_analysis_date",
         "splits": result,

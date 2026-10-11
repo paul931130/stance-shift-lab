@@ -147,6 +147,89 @@ class SecFundamentalTests(unittest.TestCase):
         revenue = next(item for item in items if item["metric"] == "Revenue")
         self.assertEqual(revenue["current_period"], "2024-09-30")
 
+    def test_finbert_scores_more_than_one_hundred_headlines(self):
+        import tempfile
+        from research_service.data import score_sentiment_finbert
+        from research_service.demo import demo_dataset
+
+        data = demo_dataset()
+        data["evidence"] = [item for item in data["evidence"] if item["domain"] != "sentiment"] + [
+            {"evidence_id": f"n{i}", "domain": "sentiment", "claim": f"Headline {i}", "headline": f"Headline {i}",
+             "available_at": "2024-12-01", "source": f"https://example.com/{i}"} for i in range(150)]
+        with tempfile.TemporaryDirectory() as directory, patch.dict("os.environ", {"RESEARCH_DATA_DIR": directory}):
+            scored = score_sentiment_finbert(
+                data, requester=lambda text: [{"label": "positive", "score": 0.6}, {"label": "negative", "score": 0.1},
+                                              {"label": "neutral", "score": 0.3}])
+        sentiment = [item for item in scored["evidence"] if item["domain"] == "sentiment"]
+        self.assertEqual(len(sentiment), 150)
+        self.assertTrue(all(item.get("sentiment_score") is not None for item in sentiment))
+
+    def test_refresh_news_carries_live_api_headlines_missing_from_local_files(self):
+        import tempfile
+        from research_service.collect import refresh_news
+        from research_service.demo import demo_dataset
+        from research_service.storage import Store
+
+        live = [{"evidence_id": f"av-{i}", "domain": "sentiment", "claim": f"Live {i}", "headline": f"Live {i}",
+                 "available_at": "2024-12-01", "source": f"https://example.com/live{i}",
+                 "source_type": "alpha_vantage_news_sentiment"} for i in range(5)]
+        local = [{"evidence_id": "fn-1", "domain": "sentiment", "claim": "Local", "headline": "Local",
+                  "available_at": "2024-12-02", "source": "https://example.com/local", "source_type": "FNSPID"},
+                 {**live[0], "evidence_id": "dup-of-live-0", "source_type": "alpha_vantage_news_cache"}]
+        base = {**demo_dataset(), "kind": "historical", "requested_analysis_date": "2024-12-31"}
+        base["evidence"] = [item for item in base["evidence"] if item["domain"] != "sentiment"] + live
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            old_id = store.add_dataset(base)
+            with patch("research_service.collect.fetch_sentiment", return_value=(local, "")), \
+                 patch("research_service.collect.score_sentiment_finbert", side_effect=lambda data, progress=None: data):
+                result = refresh_news(store, old_id)
+        self.assertEqual((result["local_items"], result["carried_live_items"]), (2, 5))
+        self.assertEqual(result["items"], 6)  # live-0 and its local copy are one article
+
+    def test_uncapped_news_keeps_every_headline_after_deduplication(self):
+        from research_service.data import fetch_sentiment
+
+        rows = [{"evidence_id": f"n{i}", "domain": "sentiment", "claim": f"Headline {i}", "headline": f"Headline {i}",
+                 "available_at": f"2024-12-{1 + i % 28:02d}", "source": f"https://example.com/a{i}",
+                 "source_type": "FNSPID"} for i in range(150)]
+        with patch.dict("os.environ", {"FNSPID_NEWS_PATH": "x.csv", "ALPHA_VANTAGE_NEWS_PATH": "",
+                                       "ALPHA_VANTAGE_API_KEY": ""}),              patch("research_service.data._resolve_alpha_vantage_cache_path", return_value=""),              patch("research_service.data._fnspid_news", return_value=rows):
+            uncapped, _ = fetch_sentiment("NVDA", "2024-12-31", allow_live=False, item_limit=None)
+            legacy, _ = fetch_sentiment("NVDA", "2024-12-31", allow_live=False)
+        self.assertEqual(len(uncapped), 150)
+        self.assertEqual(len(legacy), 100)
+
+    def test_refresh_news_replaces_only_sentiment_and_marks_uncapped(self):
+        import tempfile
+        from research_service.collect import refresh_news
+        from research_service.demo import demo_dataset
+        from research_service.storage import Store
+
+        base = {**demo_dataset(), "kind": "historical", "requested_analysis_date": "2024-12-31"}
+        headlines = [{"evidence_id": f"news-{i}", "domain": "sentiment", "claim": f"Headline {i}",
+                      "headline": f"Headline {i}", "available_at": "2024-12-01", "source": "https://example.com/",
+                      "evidence_scope": "target"} for i in range(60)]
+        with tempfile.TemporaryDirectory() as directory:
+            store = Store(directory)
+            old_id = store.add_dataset(base)
+            with patch("research_service.collect.fetch_sentiment", return_value=(headlines, "")) as fetch,                  patch("research_service.collect.score_sentiment_finbert", side_effect=lambda data, progress=None: data):
+                result = refresh_news(store, old_id)
+            fresh = store.dataset(result["id"])
+        self.assertEqual(fetch.call_args.kwargs["item_limit"], None)
+        self.assertFalse(fetch.call_args.kwargs["allow_live"])
+        self.assertEqual(result["items"], 60)
+        self.assertEqual(fresh["parent_dataset_id"], old_id)
+        self.assertEqual(fresh["collection_rules"]["news_item_limit"], "uncapped")
+        self.assertEqual([item["evidence_id"] for item in fresh["evidence"] if item["domain"] == "sentiment"],
+                         [item["evidence_id"] for item in headlines])
+
+        def others(data):
+            return [item for item in data["evidence"] if item["domain"] != "sentiment"]
+
+        self.assertEqual(others(fresh), others(base))
+        self.assertEqual(fresh["prices"], base["prices"])
+
     def test_refresh_fundamentals_keeps_other_domains_and_links_parent(self):
         import tempfile
         from research_service.collect import refresh_fundamentals

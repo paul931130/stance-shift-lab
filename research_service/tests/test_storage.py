@@ -22,6 +22,7 @@ class JobSummaryTests(unittest.TestCase):
 
             store = Store(directory)
             [summary] = store.job_summaries()
+            self.assertEqual(store.get("old")["lease_generation"], 0)
         self.assertEqual(summary["steps"], 3)
         self.assertEqual(summary["config"], {"ticker": "NVDA"})
         self.assertNotIn("state", summary)

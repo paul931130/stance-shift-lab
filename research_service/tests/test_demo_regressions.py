@@ -189,7 +189,7 @@ class DemoRegressionTests(unittest.TestCase):
             score_sentiment_finbert(data, requester)
         self.assertEqual(data, original)
 
-    def test_pause_running_job_changes_state_and_resume_queues_it(self):
+    def test_pause_resume_keeps_the_inflight_lease_until_checkpoint(self):
         with tempfile.TemporaryDirectory() as directory:
             store = Store(Path(directory))
             config = {
@@ -197,13 +197,17 @@ class DemoRegressionTests(unittest.TestCase):
                 "protocol": {"version": StudyProtocol().version}, "protocol_hash": "fixture",
             }
             job = store.create(config)
-            store.claim()  # transition queued -> running, as the worker does
+            claimed = store.claim()  # transition queued -> running, as the worker does
             store.control(job["id"], "pause")
             self.assertEqual(store.get(job["id"])["status"], "paused")
             store.control(job["id"], "resume")
             resumed = store.get(job["id"])
-            self.assertEqual(resumed["status"], "queued")
+            self.assertEqual(resumed["status"], "running")
             self.assertEqual(resumed["wants_run"], 1)
+            self.assertIsNone(store.claim("worker:other"))
+            store.save_step(job["id"], claimed["state"], owner=claimed["owner"],
+                            generation=claimed["lease_generation"])
+            self.assertEqual(store.get(job["id"])["status"], "queued")
 
 
 if __name__ == "__main__":

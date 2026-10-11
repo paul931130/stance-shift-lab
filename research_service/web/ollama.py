@@ -61,6 +61,10 @@ def _with_cloud(result, cloud):
     return result
 
 
+GPU_OFF_MESSAGE = ("遠端 GPU（GPUtw）目前連不上，執行個體可能已關機。請先在 GPUtw 開機；"
+                   "開機後約 10 分鐘模型才會載入完成，之後按「更新狀態」。")
+
+
 def probe_models(ctx):
     """List installed models from the configured (local or GPUtw) Ollama endpoint."""
     return _with_cloud(_probe_ollama(ctx), None if ctx.demo_mode else _cloud_default())
@@ -96,7 +100,10 @@ def _probe_ollama(ctx):
                 "default_available": configured_default in model_ids,
                 "formal_ready": bool(formal_models), "formal_models": formal_models}
     except HTTPError as error:
-        if error.code in (401, 403):
+        if configured_remote_ollama and error.code in (404, 502, 503, 504):
+            # GPUtw answers for a stopped instance's port instead of the model server.
+            message = GPU_OFF_MESSAGE
+        elif error.code in (401, 403):
             message = (f"{endpoint_label} 拒絕連線（HTTP {error.code}）。"
                        f"請確認 {endpoint_label} 可從本機存取，或填入端點存取 key。這是連線問題，不會被記成 NoTrade 決策。")
         elif error.code == 429:
@@ -105,7 +112,8 @@ def _probe_ollama(ctx):
             message = f"模型服務回應 HTTP {error.code}；請稍後重試。這是連線問題，不會被記成 NoTrade 決策。"
         return _unavailable(message, error_code="model_endpoint_http_error", http_status=error.code)
     except (URLError, TimeoutError, OSError):
-        return _unavailable(f"模型服務目前無法連線；請確認 {endpoint_label} 仍在執行。這是連線問題，不會被記成 NoTrade 決策。",
+        return _unavailable(GPU_OFF_MESSAGE if configured_remote_ollama else
+                            f"模型服務目前無法連線；請確認 {endpoint_label} 仍在執行。這是連線問題，不會被記成 NoTrade 決策。",
                             error_code="model_endpoint_unreachable")
     except Exception:
         return _unavailable("Ollama 尚未連線；請開啟 Ollama，或設定可用的雲端模型金鑰")

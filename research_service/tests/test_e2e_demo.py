@@ -51,7 +51,7 @@ class DemoExperimentE2E(unittest.TestCase):
             time.sleep(.05)
         cls.playwright = sync_playwright().start()
         try:
-            cls.browser = cls.playwright.chromium.launch()
+            cls.browser = cls.playwright.chromium.launch(channel=os.getenv("PLAYWRIGHT_BROWSER_CHANNEL"))
         except PlaywrightError as error:
             cls.playwright.stop()
             cls.tearDownServer()
@@ -84,6 +84,12 @@ class DemoExperimentE2E(unittest.TestCase):
         # The live pipeline map renders and the demo snapshot opens step 2.
         page.wait_for_selector(".flow-svg .flow-node")
         page.wait_for_selector('[data-panel="experiment"]:not([hidden])')
+        # Multi-case planning works in the page (the demo has no historical datasets to match).
+        page.click('[data-exp-mode="batch"]')
+        page.click("#plan-button")
+        page.wait_for_selector("#plan-result .plan-summary")
+        self.assertIn("0 / 180", page.inner_text("#plan-result"))
+        page.click('[data-exp-mode="single"]')
         # The server-side preflight approves the demo case before the run button unlocks.
         page.wait_for_selector("#experiment-guard.ready")
         self.assertTrue(page.is_enabled("#run-button"))
@@ -92,7 +98,7 @@ class DemoExperimentE2E(unittest.TestCase):
         # The job runs to completion; finishing moves the UI to the statistics step.
         page.wait_for_selector('[data-panel="stats"]:not([hidden])', timeout=60_000)
         page.wait_for_selector("#statistics .stats-substep", timeout=20_000)
-        self.assertIn("同協議研究比較", page.inner_text("#statistics"))
+        self.assertIn("四組績效與主要比較", page.inner_text("#statistics"))
 
         # Step 3 shows the finished run, and the map reports every model output.
         page.click('.tabs [data-tab-button="runs"]')

@@ -6,7 +6,8 @@ saved protocol can be audited before any data download or inference occurs.
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, timedelta
+import functools
 import hashlib
 import json
 import re
@@ -22,6 +23,55 @@ from .errors import PreflightError
 STUDY_TICKERS = ("AAPL", "NVDA", "GOOGL", "MSFT", "AMZN", "JPM", "MCD", "INTC", "GE")
 TICKERS = STUDY_TICKERS  # Backwards-compatible name used by the API and tests.
 QUARTER_DATES = tuple(f"{year}-{suffix}" for year in range(2021, 2026) for suffix in ("03-31", "06-30", "09-30", "12-31"))
+def _month_end_dates():
+    dates = []
+    for year in range(2021, 2026):
+        for month in range(1, 13):
+            following = date(year + (month == 12), month % 12 + 1, 1)
+            dates.append((following - timedelta(days=1)).isoformat())
+    return tuple(dates)
+
+
+MONTH_END_DATES = _month_end_dates()
+# Study designs. The quarterly design is the original 180-case study (60-session
+# primary horizon, 90-day news window). The monthly design scales it to one
+# month: 540 cases, a 20-session primary horizon that does not overlap the next
+# case, and a 30-day news window. Robustness horizons keep the same ratios.
+DESIGNS = {
+    "quarterly": {"dates": QUARTER_DATES, "primary_horizon": 60, "horizons": (30, 60, 90), "news_window_days": 90},
+    "monthly": {"dates": MONTH_END_DATES, "primary_horizon": 20, "horizons": (10, 20, 30), "news_window_days": 30},
+}
+QUARTERLY_VERSION = "v3-1002.3"
+# RQ2 Model Router (see research_service/model_router.py): v3-1002.3 plus per-debater model
+# assignment for arms C and D (AA homogeneous, AB/BA heterogeneous, optional BB control).
+ROUTER_VERSION = "v3-1006.1"
+ROUTER_VERSIONS = frozenset({ROUTER_VERSION})
+DEBATE_ASSIGNMENTS = ("AA", "AB", "BA", "BB")
+# Researcher decision 2026-10-08: model A = qwen3:32b (also Judge/research), model B = gemma3:27b.
+DEFAULT_DEBATE_MODEL_A = "ollama/qwen3:32b"
+DEFAULT_DEBATE_MODEL_B = "ollama/gemma3:27b"
+DEFAULT_DEBATE_ASSIGNMENTS = ("AA", "AB", "BA")
+MONTHLY_VERSION = "v3-1002.4"
+MONTHLY_VERSIONS = frozenset({"v3-0930.2", "v3-0930.4", "v3-1001.2", "v3-1001.4", "v3-1002.2", MONTHLY_VERSION})
+# From v3-1001.x the inference settings that change model output (context length,
+# concurrent Ollama calls) are protocol fields, and numeric claims and the
+# role-switch rebuttal are checked more strictly (see models.validate_*).
+FROZEN_INFERENCE_VERSIONS = frozenset({"v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION, ROUTER_VERSION})
+STRICT_VALIDATION_VERSIONS = FROZEN_INFERENCE_VERSIONS
+CANONICAL_CLAIM_VERSIONS = frozenset({"v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION, ROUTER_VERSION})
+# The canonical numeric sentences made qwen3:32b outputs reach the 1024-token cap
+# (truncated JSON in the first v3-1001.3 case); v3-1002.x allows 2048.
+LONG_OUTPUT_VERSIONS = frozenset({"v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION, ROUTER_VERSION})
+# From v3-1002.3 agents refer to facts by evidence ID instead of restating numbers: every reader
+# also receives the evidence list with exact values. The numeric validator is unchanged and still
+# records any unbound number that appears anyway; from v3-1002.3 numbers are recorded, never removed
+# (removal made research summaries unreadable in the Gemini prompt check) and never retried.
+EVIDENCE_REF_VERSIONS = frozenset({QUARTERLY_VERSION, MONTHLY_VERSION, ROUTER_VERSION})
+DEFAULT_CONTEXT_LENGTH = 8192
+# From v3-0930.1 the prompt carries FinBERT indicators computed over every eligible headline instead of a
+# 12-headline sample (see data.research_inputs); earlier versions keep the headline sample.
+INDICATOR_VERSIONS = ("v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION, ROUTER_VERSION)
+NUMERIC_CLAIM_VERSIONS = frozenset({"v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION, ROUTER_VERSION})
 DOMAIN_NAMES = ("technical", "fundamental", "sentiment", "macro")
 BASE_RATE_MIN_WINDOWS = 8
 DEFAULT_RESEARCH_MODEL = "ollama/qwen3:14b"
@@ -46,19 +96,22 @@ COMPANY_NAMES = {
 class StudyProtocol:
     # Display, extraction and validation rules change what enters a report.
     # Version them so a partially completed job cannot mix evidence rules.
-    version: str = "v3-0929.1"
+    version: str = QUARTERLY_VERSION
+    design: Literal["quarterly", "monthly"] = "quarterly"
     study: Literal["study1", "study2"] = "study1"
     model: str = DEFAULT_RESEARCH_MODEL
     allow_small_model: bool = False
     temperature: float = 0.2
     voting_temperature: float = 0.8
-    max_output_tokens: int = 1024
+    # None = the version default: 2048 from v3-1002.x, 1024 before (hashes of older versions unchanged).
+    max_output_tokens: int | None = None
     max_rounds: int = 3
     voting_samples: Literal[5, 7] = 7
     primary_horizon: int = 60
     horizons: tuple[int, ...] = (30, 60, 90)
     cost_models: tuple[str, ...] = ("zero", "corwin_schultz")
-    anonymize_ticker: bool = False
+    # None = the version default: anonymized from v3-1002.3, not before (older hashes unchanged).
+    anonymize_ticker: bool | None = None
     dataset_kind: Literal["historical", "synthetic"] = "historical"
     missing_data_policy: Literal["allow_decision", "force_no_trade"] = "allow_decision"
     allow_point_fundamental: bool = False
@@ -68,8 +121,9 @@ class StudyProtocol:
     news_relevance_floor: float = 0.35
     target_context_priority: bool = True
     switch_isolation: bool = True
-    hold_band_sigma: float = 0.5
-    action_source: Literal["model", "derived"] = "derived"
+    # None = 0.5. From v3-1002.3 the band only labels the diagnostic derived_action (action_source="model").
+    hold_band_sigma: float | None = None
+    action_source: Literal["model", "derived"] | None = None
     spread_window: int = 20
     bootstrap_seed: int = 905
     bootstrap_replicates: int = 1999
@@ -77,10 +131,35 @@ class StudyProtocol:
     inference_seed: int = 905
     provider_retry_attempts: int = 3
     study_universe: tuple[str, ...] = STUDY_TICKERS
+    # Frozen inference settings (v3-1001.x); None in older versions, which read the environment.
+    model_context_length: int | None = None
+    ollama_parallel: int | None = None
+    # Rationale length asked for and shown to later turns (v3-1002.3+: 600; None = the old 320).
+    rationale_chars: int | None = None
 
     def __post_init__(self):
-        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1"):
+        if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION, ROUTER_VERSION):
             raise ValueError("Unsupported protocol version")
+        if (self.version in ROUTER_VERSIONS) != isinstance(self, RouterProtocol):
+            raise ValueError(f"Protocol version {ROUTER_VERSION} (and only it) is built as RouterProtocol")
+        if self.anonymize_ticker is None:
+            object.__setattr__(self, "anonymize_ticker", self.version in EVIDENCE_REF_VERSIONS)
+        if self.max_output_tokens is None:
+            object.__setattr__(self, "max_output_tokens", 2048 if self.version in LONG_OUTPUT_VERSIONS else 1024)
+        if self.hold_band_sigma is None:
+            object.__setattr__(self, "hold_band_sigma", 0.5)
+        if self.action_source is None:
+            # v3-1002.3+: the model's own Buy/Hold/Sell is the decision; Hold means no position.
+            object.__setattr__(self, "action_source", "model" if self.version in EVIDENCE_REF_VERSIONS else "derived")
+        if self.rationale_chars is None and self.version in EVIDENCE_REF_VERSIONS:
+            object.__setattr__(self, "rationale_chars", 600)
+        if self.version in FROZEN_INFERENCE_VERSIONS:
+            if self.model_context_length is None:
+                object.__setattr__(self, "model_context_length", DEFAULT_CONTEXT_LENGTH)
+            if self.ollama_parallel is None:
+                object.__setattr__(self, "ollama_parallel", 1)
+            if not 1024 <= self.model_context_length <= 131072 or not 1 <= self.ollama_parallel <= 8:
+                raise ValueError("model_context_length must be 1024-131072 and ollama_parallel 1-8")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")
         if self.version == "v3-0905.1" and self.missing_data_policy != "force_no_trade":
@@ -93,8 +172,13 @@ class StudyProtocol:
             raise PreflightError("model_too_small", "模型參數量未達正式門檻（14B；qwen3:8b 除外）；若只是測試，請勾選「允許 14B 以下的模型」（allow_small_model=True）")
         if self.max_rounds != 3 or self.voting_samples not in (5, 7):
             raise ValueError("v3 fixes three rounds and supports voting n=5 or n=7")
-        if self.primary_horizon != 60 or self.horizons != (30, 60, 90):
-            raise ValueError("The primary endpoint must remain 60 days")
+        if self.design not in DESIGNS:
+            raise ValueError("Unsupported study design")
+        if ((self.design == "monthly") != (self.version in MONTHLY_VERSIONS)):
+            raise ValueError(f"Monthly versions are {', '.join(sorted(MONTHLY_VERSIONS))}; quarterly protocols cannot use them")
+        design = DESIGNS[self.design]
+        if self.primary_horizon != design["primary_horizon"] or tuple(self.horizons) != design["horizons"]:
+            raise ValueError(f"The {self.design} design fixes the primary endpoint at {design['primary_horizon']} sessions")
         if not 0 <= self.temperature <= 2 or not 0 <= self.voting_temperature <= 2 or self.voting_temperature < self.temperature or self.max_output_tokens < 64:
             raise ValueError("Invalid model generation parameters")
         if self.confidence_floor is not None and not 0 <= self.confidence_floor <= 1:
@@ -116,13 +200,85 @@ class StudyProtocol:
         if tuple(self.study_universe) != STUDY_TICKERS:
             raise ValueError("v3-0907.3 fixes the current backtest universe to the nine FNSPID-covered stocks")
 
+    @classmethod
+    def monthly(cls, **overrides):
+        """The monthly study design: month-end anchors, 20-session primary horizon, 30-day news window."""
+        design = DESIGNS["monthly"]
+        return cls(version=MONTHLY_VERSION, design="monthly", primary_horizon=design["primary_horizon"],
+                   horizons=design["horizons"], **overrides)
+
+    @classmethod
+    def router(cls, **overrides):
+        """The RQ2 Model Router design: Judge/research and model A = qwen3:32b, model B = gemma3:27b,
+        assignments AA/AB/BA (add "BB" for the B/B control). Every value can be overridden."""
+        settings = {"version": ROUTER_VERSION, "model": DEFAULT_DEBATE_MODEL_A,
+                    "debate_model_b": DEFAULT_DEBATE_MODEL_B, "debate_assignments": DEFAULT_DEBATE_ASSIGNMENTS}
+        return RouterProtocol(**{**settings, **overrides})
+
+    @property
+    def analysis_dates(self) -> tuple[str, ...]:
+        return DESIGNS[self.design]["dates"]
+
+    @property
+    def sentiment_indicators(self) -> bool:
+        """Whether sentiment reaches the models as FinBERT indicators over all headlines (v3-0930.1+)."""
+        return self.version in INDICATOR_VERSIONS
+
+    @property
+    def news_window_days(self) -> int:
+        return DESIGNS[self.design]["news_window_days"]
+
     @property
     def fingerprint(self) -> str:
-        return hashlib.sha256(json.dumps(asdict(self), sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+        payload = asdict(self)
+        # Protocols saved before the design field existed are quarterly; leaving the
+        # default out keeps their recorded hashes valid.
+        if payload["design"] == "quarterly":
+            del payload["design"]
+        # Older protocols had no frozen inference fields; their hashes stay unchanged.
+        for key in ("model_context_length", "ollama_parallel", "rationale_chars"):
+            if payload[key] is None:
+                del payload[key]
+        # RouterProtocol only: endpoints without their transport URL (see RouterProtocol).
+        if payload.get("model_endpoints") is None:
+            payload.pop("model_endpoints", None)
+        else:
+            payload["model_endpoints"] = {model: {key: value for key, value in spec.items() if key != "api_base"}
+                                          for model, spec in payload["model_endpoints"].items()}
+        # v3-1002.3+: prompt text is part of the protocol. Editing any prompt-building or
+        # answer-checking code after a registration changes the hash, so enqueue refuses to
+        # mix the edited run with the registered one.
+        if self.version in EVIDENCE_REF_VERSIONS:
+            payload["prompt_source"] = prompt_source_digest(
+                ROUTER_SOURCE_MODULES if self.version in ROUTER_VERSIONS else PROTOCOL_SOURCE_MODULES)
+        return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
 
     @property
     def compute_matched(self) -> bool:
         return self.voting_samples == 7
+
+
+@dataclass(frozen=True)
+class RouterProtocol(StudyProtocol):
+    """RQ2 Model Router protocol (ROUTER_VERSION): v3-1002.3 plus per-debater model routing.
+
+    A subclass, so StudyProtocol's fields (and every older version's hash) are untouched.
+    Bull ("agent-a") and Bear ("agent-b") of arms C and D are routed to model A or B per
+    assignment; research agents and the Judge always use ``model``.
+    """
+    version: str = ROUTER_VERSION
+    debate_model_a: str | None = None  # None = ``model``
+    debate_model_b: str | None = None  # None = DEFAULT_DEBATE_MODEL_B
+    debate_assignments: tuple[str, ...] | None = None  # None = DEFAULT_DEBATE_ASSIGNMENTS
+    # {model id: {"api_base": url, "timeout_seconds": int, "api_key_env": ENV_VAR_NAME}}. Secrets are
+    # never stored: only the NAME of an environment variable may be given. api_base is transport,
+    # not identity (a GPU instance restart moves it), so it is left out of the fingerprint; the
+    # weight digests frozen in the job config lock the identity instead.
+    model_endpoints: dict | None = None
+
+    def __post_init__(self):
+        super().__post_init__()
+        _validate_router_fields(self)
 
 
 @dataclass(frozen=True)
@@ -136,9 +292,112 @@ class DecisionCall:
     sample: int | None = None
 
 
+@dataclass(frozen=True)
+class RoutedDecisionCall(DecisionCall):
+    """A C/D call under ROUTER_VERSION. Older versions keep plain DecisionCall records unchanged.
+
+    ``agent`` is the persistent debater identity (agent-a = original Bull, agent-b = original
+    Bear); ``stance`` is the round stance; ``model_slot`` ("A"/"B") never changes across rounds.
+    """
+    assignment: str = "AA"
+    original_stance: str | None = None
+    model_slot: str | None = None
+
+
+ENDPOINT_KEYS = frozenset({"api_base", "timeout_seconds", "api_key_env"})
+_ENV_NAME = re.compile(r"^[A-Z][A-Z0-9_]{0,63}$")
+
+
+def _validate_api_base(value):
+    from urllib.parse import urlsplit
+    parts = urlsplit(value) if isinstance(value, str) else None
+    if (parts is None or parts.scheme not in ("http", "https") or not parts.hostname
+            or parts.username or parts.password or parts.query or parts.fragment):
+        raise ValueError("model_endpoints api_base must be an http(s) URL without credentials, query or fragment; "
+                         "give tokens through api_key_env (an environment variable name)")
+
+
+def _validate_router_fields(protocol):
+    if protocol.design != "quarterly":
+        raise ValueError(f"{ROUTER_VERSION} is defined for the quarterly design only")
+    model_a = (protocol.debate_model_a or protocol.model).strip()
+    model_b = (protocol.debate_model_b or DEFAULT_DEBATE_MODEL_B).strip()
+    object.__setattr__(protocol, "debate_model_a", model_a)
+    if not model_b:
+        raise ValueError(f"{ROUTER_VERSION} requires debate_model_b (model B of the Bull/Bear debaters)")
+    if model_b == model_a:
+        raise ValueError("debate_model_b must differ from debate_model_a")
+    object.__setattr__(protocol, "debate_model_b", model_b)
+    assignments = tuple(protocol.debate_assignments or DEFAULT_DEBATE_ASSIGNMENTS)
+    if len(set(assignments)) != len(assignments) or any(item not in DEBATE_ASSIGNMENTS for item in assignments):
+        raise ValueError(f"debate_assignments must be distinct values from {', '.join(DEBATE_ASSIGNMENTS)}")
+    if "AA" not in assignments:
+        raise ValueError("debate_assignments must include AA: the homogeneous arm is the within-case baseline")
+    if ("AB" in assignments) != ("BA" in assignments):
+        raise ValueError("AB and BA must be run together so model identity is balanced across initial stances")
+    object.__setattr__(protocol, "debate_assignments",
+                       tuple(item for item in DEBATE_ASSIGNMENTS if item in assignments))
+    for model in (model_a, model_b):
+        if (SMALL_MODEL_PATTERN.search(model) and model.lower() not in FORMAL_SMALL_MODEL_ALLOWLIST
+                and not protocol.allow_small_model):
+            raise PreflightError("model_too_small", f"辯論模型 {model} 參數量未達正式門檻；測試請設 allow_small_model=True")
+    endpoints = protocol.model_endpoints
+    if endpoints is not None:
+        if not isinstance(endpoints, dict):
+            raise ValueError("model_endpoints must map a model id to its endpoint settings")
+        known = {protocol.model, model_a, model_b}
+        cleaned = {}
+        for model, spec in endpoints.items():
+            if model not in known:
+                raise ValueError(f"model_endpoints names {model}, which is not the Judge/research model or model A/B")
+            if not isinstance(spec, dict) or set(spec) - ENDPOINT_KEYS:
+                raise ValueError(f"model_endpoints[{model}] accepts only {', '.join(sorted(ENDPOINT_KEYS))}; "
+                                 "never put passwords or tokens in the protocol")
+            if spec.get("api_base") is not None:
+                _validate_api_base(spec["api_base"])
+            timeout = spec.get("timeout_seconds")
+            if timeout is not None and (isinstance(timeout, bool) or not isinstance(timeout, int)
+                                        or not 10 <= timeout <= 3600):
+                raise ValueError("model_endpoints timeout_seconds must be an integer from 10 to 3600")
+            env_name = spec.get("api_key_env")
+            if env_name is not None and (not isinstance(env_name, str) or not _ENV_NAME.match(env_name)):
+                raise ValueError("model_endpoints api_key_env must be an environment variable NAME (A-Z, 0-9, _)")
+            cleaned[model] = {key: spec[key] for key in sorted(spec) if spec[key] is not None}
+        object.__setattr__(protocol, "model_endpoints", cleaned or None)
+
+
+def assignment_models(protocol, assignment):
+    """(model for agent-a / original Bull, model for agent-b / original Bear) under one assignment."""
+    slots = {"A": protocol.debate_model_a, "B": protocol.debate_model_b}
+    return slots[assignment[0]], slots[assignment[1]]
+
+
+def protocol_from(value: dict) -> StudyProtocol:
+    """Rebuild a frozen protocol from JSON data saved with a job."""
+    value = dict(value)
+    if value.get("version") == "v3-0905.1" and "missing_data_policy" not in value:
+        value["missing_data_policy"] = "force_no_trade"
+    for key in ("horizons", "cost_models", "study_universe", "debate_assignments"):
+        if value.get(key) is not None:
+            value[key] = tuple(value[key])
+    return (RouterProtocol if value.get("version") in ROUTER_VERSIONS else StudyProtocol)(**value)
+
+
+def protocol_matches_fingerprint(protocol: dict, stored_hash: str | None) -> bool:
+    """Fail closed when a prompt/source-frozen protocol no longer matches this checkout."""
+    if protocol.get("version") not in EVIDENCE_REF_VERSIONS:
+        return True  # Earlier versions did not include a source digest in their fingerprint.
+    try:
+        return bool(stored_hash) and protocol_from(protocol).fingerprint == stored_hash
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
 def decision_plan(protocol: StudyProtocol) -> tuple[DecisionCall, ...]:
     calls = [DecisionCall("a-decision", "A", "decision", "decision", "NEUTRAL")]
     calls.extend(DecisionCall(f"b-sample-{sample}", "B", "sample", "decision", "NEUTRAL", sample=sample) for sample in range(1, protocol.voting_samples + 1))
+    if protocol.version in ROUTER_VERSIONS:
+        return tuple(calls) + routed_debate_plan(protocol)
     for group in ("C", "D"):
         for round_number in range(1, 4):
             for agent, original_stance in (("agent-a", "BULL"), ("agent-b", "BEAR")):
@@ -147,6 +406,45 @@ def decision_plan(protocol: StudyProtocol) -> tuple[DecisionCall, ...]:
                 calls.append(DecisionCall(f"{group.lower()}-r{round_number}-{agent}", group, "debate", agent, stance, round_number))
         calls.append(DecisionCall(f"{group.lower()}-adjudication", group, "adjudication", "adjudicator", "NEUTRAL"))
     return tuple(calls)
+
+
+def arm_prefix(group: str, assignment: str | None) -> str:
+    """Key prefix of a C/D arm: AA keeps the RQ1 keys (c-r1-agent-a); others add the assignment (c-ab-r1-...)."""
+    return group.lower() if assignment in (None, "AA") else f"{group.lower()}-{assignment.lower()}"
+
+
+def routed_debate_plan(protocol: StudyProtocol) -> tuple[DecisionCall, ...]:
+    """C and D for every configured assignment. Model identity is fixed per agent across rounds;
+    in D only the round-2 stance flips, so the switch turn still belongs to the same agent and model."""
+    calls = []
+    for assignment in protocol.debate_assignments:
+        for group in ("C", "D"):
+            prefix = arm_prefix(group, assignment)
+            for round_number in range(1, 4):
+                for index, (agent, original_stance) in enumerate((("agent-a", "BULL"), ("agent-b", "BEAR"))):
+                    swapped = group == "D" and round_number == SWITCH_ROUND
+                    stance = ("BEAR" if original_stance == "BULL" else "BULL") if swapped else original_stance
+                    calls.append(RoutedDecisionCall(f"{prefix}-r{round_number}-{agent}", group, "debate", agent, stance,
+                                                    round_number, assignment=assignment,
+                                                    original_stance=original_stance, model_slot=assignment[index]))
+            calls.append(RoutedDecisionCall(f"{prefix}-adjudication", group, "adjudication", "adjudicator", "NEUTRAL",
+                                            assignment=assignment, original_stance="NEUTRAL", model_slot="JUDGE"))
+    return tuple(calls)
+
+
+def same_arm(record: dict, call: DecisionCall) -> bool:
+    """Same group and same model assignment (records of older versions have no assignment)."""
+    return record["group"] == call.group and record.get("assignment") == getattr(call, "assignment", None)
+
+
+def protocol_is_current(protocol: dict) -> bool:
+    """Whether a saved protocol is the current version of its own study design.
+
+    Older versions stay readable but are never resumed on a newer engine. Each design has its
+    own current version, so a quarterly and a monthly job never make each other look stale.
+    """
+    current = MONTHLY_VERSION if protocol.get("design", "quarterly") == "monthly" else QUARTERLY_VERSION
+    return protocol.get("version") == current or protocol.get("version") in ROUTER_VERSIONS
 
 
 def is_switched(protocol: StudyProtocol, call: DecisionCall) -> bool:
@@ -171,10 +469,10 @@ def visible_history(call: DecisionCall, records: list[dict], protocol: StudyProt
     if call.group in ("A", "B"):
         return []
     if protocol.switch_isolation and is_switched(protocol, call):
-        return [record for record in records if record["group"] == call.group
+        return [record for record in records if same_arm(record, call)
                 and record.get("kind") == "debate" and record.get("agent") == call.agent
                 and record["round"] < call.round]
-    return [record for record in records if record["group"] == call.group
+    return [record for record in records if same_arm(record, call)
             and record.get("kind") == "debate"
             and (call.kind == "adjudication" or record["round"] < call.round)]
 
@@ -184,25 +482,29 @@ def decision_wave(protocol: StudyProtocol, records: list[dict]) -> tuple[Decisio
     plan = decision_plan(protocol)
     done = {record["key"] for record in records}
     ready = [call for call in plan if call.group in ("A", "B") and call.key not in done]
-    for group in ("C", "D"):
+    arms = [(group, None) for group in ("C", "D")]
+    if protocol.version in ROUTER_VERSIONS:
+        arms = [(group, assignment) for assignment in protocol.debate_assignments for group in ("C", "D")]
+    for group, assignment in arms:
+        arm = [call for call in plan if call.group == group and getattr(call, "assignment", None) == assignment]
         for round_number in range(1, 4):
-            round_calls = [call for call in plan if call.group == group and call.round == round_number]
+            round_calls = [call for call in arm if call.round == round_number]
             missing = [call for call in round_calls if call.key not in done]
             if missing:
                 ready.extend(missing)
                 break
         else:
-            adjudication = next(call for call in plan if call.group == group and call.kind == "adjudication")
+            adjudication = next(call for call in arm if call.kind == "adjudication")
             if adjudication.key not in done:
                 ready.append(adjudication)
     order = {call.key: index for index, call in enumerate(plan)}
     return tuple(sorted(ready, key=lambda call: order[call.key]))
 
 
-def cases(tickers: tuple[str, ...] = STUDY_TICKERS) -> tuple[tuple[str, str], ...]:
+def cases(tickers: tuple[str, ...] = STUDY_TICKERS, design: str = "quarterly") -> tuple[tuple[str, str], ...]:
     if not tickers or len(set(tickers)) != len(tickers) or any(ticker not in STUDY_TICKERS for ticker in tickers):
         raise ValueError("Select unique tickers from the approved universe")
-    return tuple((ticker, analysis_date) for analysis_date in QUARTER_DATES for ticker in tickers)
+    return tuple((ticker, analysis_date) for analysis_date in DESIGNS[design]["dates"] for ticker in tickers)
 
 
 def is_live_case_date(analysis_date: str) -> bool:
@@ -212,7 +514,32 @@ def is_live_case_date(analysis_date: str) -> bool:
     return analysis_date == date.today().isoformat()
 
 
-def validate_case(ticker: str, analysis_date: str) -> None:
-    if ticker not in STUDY_TICKERS or (analysis_date not in QUARTER_DATES and not is_live_case_date(analysis_date)):
-        raise ValueError("Case must use an approved ticker and either a 2021–2025 quarter anchor or today's date")
+def validate_case(ticker: str, analysis_date: str, design: str = "quarterly") -> None:
+    if design not in DESIGNS:
+        raise ValueError("Unsupported study design")
+    if ticker not in STUDY_TICKERS or (analysis_date not in DESIGNS[design]["dates"] and not is_live_case_date(analysis_date)):
+        anchor = "month-end" if design == "monthly" else "quarter"
+        raise ValueError(f"Case must use an approved ticker and either a 2021–2025 {anchor} anchor or today's date")
     date.fromisoformat(analysis_date)
+
+
+# Modules that shape a case's inputs, prompts, answer checks, memory or backtest. Editing any of
+# them after a registration changes the v3-1002.3+ hash and blocks resuming its jobs. UI,
+# statistics, CLI and scripts are left out on purpose: fixing them mid-run must not void a
+# study, and they are not all copied into every image (scripts/ differs between images).
+PROTOCOL_SOURCE_MODULES = ("anonymize", "backtest", "data", "engine", "finbert", "model_identity",
+                           "models", "protocol", "storage")
+# The router version also freezes the routing, Judge-blinding and route-audit code.
+ROUTER_SOURCE_MODULES = PROTOCOL_SOURCE_MODULES + ("model_router",)
+
+
+@functools.lru_cache(maxsize=None)
+def prompt_source_digest(modules: tuple[str, ...] = PROTOCOL_SOURCE_MODULES) -> str:
+    """sha256 of the experiment-defining modules (line endings normalized, same in every image)."""
+    from pathlib import Path
+    package = Path(__file__).resolve().parent
+    digest = hashlib.sha256()
+    for name in modules:
+        text = (package / f"{name}.py").read_bytes().replace(bytes([13, 10]), bytes([10]))
+        digest.update(f"research_service/{name}.py".encode() + bytes([0]) + text + bytes([0]))
+    return digest.hexdigest()

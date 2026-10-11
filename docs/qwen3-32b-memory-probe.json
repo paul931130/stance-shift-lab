@@ -1,0 +1,603 @@
+{
+  "model": "ollama/qwen3:32b",
+  "horizon": 60,
+  "summary": {
+    "2022": {
+      "n": 9,
+      "accuracy": 0.333,
+      "majority_baseline": 0.667,
+      "mean_confidence": 0.644,
+      "mean_abs_error_pct": 35.93
+    },
+    "2023": {
+      "n": 9,
+      "accuracy": 0.333,
+      "majority_baseline": 0.667,
+      "mean_confidence": 0.0,
+      "mean_abs_error_pct": 19.78
+    },
+    "2024": {
+      "n": 9,
+      "accuracy": 0.556,
+      "majority_baseline": 0.556,
+      "mean_confidence": 0.0,
+      "mean_abs_error_pct": 14.62
+    },
+    "2025": {
+      "n": 36,
+      "accuracy": 0.722,
+      "majority_baseline": 0.722,
+      "mean_confidence": 0.0,
+      "mean_abs_error_pct": 14.46
+    }
+  },
+  "rows": [
+    {
+      "analysis_date": "2022-06-30",
+      "ticker": "AAPL",
+      "actual_pct": 12.43,
+      "answer_direction": "up",
+      "answer_pct": 15.0,
+      "confidence": 0.8,
+      "correct": true
+    },
+    {
+      "analysis_date": "2022-06-30",
+      "ticker": "AMZN",
+      "actual_pct": 10.26,
+      "answer_direction": "up",
+      "answer_pct": 15.0,
+      "confidence": 0.7,
+      "correct": true
+    },
+    {
+      "analysis_date": "2022-06-30",
+      "ticker": "GE",
+      "actual_pct": 2.27,
+      "answer_direction": "down",
+      "answer_pct": -12.5,
+      "confidence": 0.6,
+      "correct": false
+    },
+    {
+      "analysis_date": "2022-06-30",
+      "ticker": "GOOGL",
+      "actual_pct": -7.88,
+      "answer_direction": "up",
+      "answer_pct": 15.0,
+      "confidence": 0.0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2022-06-30",
+      "ticker": "INTC",
+      "actual_pct": -25.38,
+      "answer_direction": "up",
+      "answer_pct": 25.0,
+      "confidence": 0.7,
+      "correct": false
+    },
+    {
+      "analysis_date": "2022-06-30",
+      "ticker": "JPM",
+      "actual_pct": -3.5,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0.7,
+      "correct": false
+    },
+    {
+      "analysis_date": "2022-06-30",
+      "ticker": "MCD",
+      "actual_pct": -0.18,
+      "answer_direction": "down",
+      "answer_pct": -15.0,
+      "confidence": 0.7,
+      "correct": true
+    },
+    {
+      "analysis_date": "2022-06-30",
+      "ticker": "MSFT",
+      "actual_pct": -6.2,
+      "answer_direction": "up",
+      "answer_pct": 25.0,
+      "confidence": 0.8,
+      "correct": false
+    },
+    {
+      "analysis_date": "2022-06-30",
+      "ticker": "NVDA",
+      "actual_pct": -16.03,
+      "answer_direction": "up",
+      "answer_pct": 150.0,
+      "confidence": 0.8,
+      "correct": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "AAPL",
+      "actual_pct": -10.8,
+      "answer_direction": "up",
+      "answer_pct": 15.0,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "AMZN",
+      "actual_pct": -3.87,
+      "answer_direction": "up",
+      "answer_pct": 15.0,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "GE",
+      "actual_pct": 1.59,
+      "answer_direction": "down",
+      "answer_pct": -5.0,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "GOOGL",
+      "actual_pct": 7.82,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "INTC",
+      "actual_pct": 1.5,
+      "answer_direction": "up",
+      "answer_pct": 25.0,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "JPM",
+      "actual_pct": -0.0,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "MCD",
+      "actual_pct": -9.61,
+      "answer_direction": "down",
+      "answer_pct": -12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "MSFT",
+      "actual_pct": -7.73,
+      "answer_direction": "up",
+      "answer_pct": 15.0,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2023-06-30",
+      "ticker": "NVDA",
+      "actual_pct": -0.43,
+      "answer_direction": "up",
+      "answer_pct": 60.0,
+      "confidence": 0.0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "AAPL",
+      "actual_pct": 6.18,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "AMZN",
+      "actual_pct": 0.13,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "GE",
+      "actual_pct": 18.35,
+      "answer_direction": "up",
+      "answer_pct": 4.2,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "GOOGL",
+      "actual_pct": -11.66,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "INTC",
+      "actual_pct": -25.77,
+      "answer_direction": "up",
+      "answer_pct": 15.0,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "JPM",
+      "actual_pct": 4.94,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "MCD",
+      "actual_pct": 18.54,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "MSFT",
+      "actual_pct": -4.02,
+      "answer_direction": "up",
+      "answer_pct": 15.0,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2024-06-30",
+      "ticker": "NVDA",
+      "actual_pct": -1.17,
+      "answer_direction": "up",
+      "answer_pct": 0.0,
+      "confidence": 0.0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-03-31",
+      "ticker": "AAPL",
+      "actual_pct": -8.03,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-03-31",
+      "ticker": "AMZN",
+      "actual_pct": 17.07,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-03-31",
+      "ticker": "GE",
+      "actual_pct": 26.2,
+      "answer_direction": "up",
+      "answer_pct": 4.2,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-03-31",
+      "ticker": "GOOGL",
+      "actual_pct": 13.1,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-03-31",
+      "ticker": "INTC",
+      "actual_pct": 0.66,
+      "answer_direction": "up",
+      "answer_pct": 18.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-03-31",
+      "ticker": "JPM",
+      "actual_pct": 18.53,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-03-31",
+      "ticker": "MCD",
+      "actual_pct": -8.13,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-03-31",
+      "ticker": "MSFT",
+      "actual_pct": 33.05,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-03-31",
+      "ticker": "NVDA",
+      "actual_pct": 43.8,
+      "answer_direction": "up",
+      "answer_pct": 0.0,
+      "confidence": 0.0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-06-30",
+      "ticker": "AAPL",
+      "actual_pct": 22.66,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-06-30",
+      "ticker": "AMZN",
+      "actual_pct": 0.26,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-06-30",
+      "ticker": "GE",
+      "actual_pct": 16.89,
+      "answer_direction": "up",
+      "answer_pct": 4.2,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-06-30",
+      "ticker": "GOOGL",
+      "actual_pct": 39.19,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-06-30",
+      "ticker": "INTC",
+      "actual_pct": 41.56,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-06-30",
+      "ticker": "JPM",
+      "actual_pct": 8.51,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-06-30",
+      "ticker": "MCD",
+      "actual_pct": 5.17,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-06-30",
+      "ticker": "MSFT",
+      "actual_pct": 2.55,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-06-30",
+      "ticker": "NVDA",
+      "actual_pct": 11.64,
+      "answer_direction": "up",
+      "answer_pct": 0.0,
+      "confidence": 0.0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-09-30",
+      "ticker": "AAPL",
+      "actual_pct": 7.6,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-09-30",
+      "ticker": "AMZN",
+      "actual_pct": 6.75,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-09-30",
+      "ticker": "GE",
+      "actual_pct": 6.82,
+      "answer_direction": "up",
+      "answer_pct": 4.2,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-09-30",
+      "ticker": "GOOGL",
+      "actual_pct": 30.71,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-09-30",
+      "ticker": "INTC",
+      "actual_pct": 7.87,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-09-30",
+      "ticker": "JPM",
+      "actual_pct": 5.33,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-09-30",
+      "ticker": "MCD",
+      "actual_pct": 3.82,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-09-30",
+      "ticker": "MSFT",
+      "actual_pct": -5.28,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-09-30",
+      "ticker": "NVDA",
+      "actual_pct": 2.53,
+      "answer_direction": "up",
+      "answer_pct": 0.0,
+      "confidence": 0.0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-12-31",
+      "ticker": "AAPL",
+      "actual_pct": -8.86,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-12-31",
+      "ticker": "AMZN",
+      "actual_pct": -11.45,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-12-31",
+      "ticker": "GE",
+      "actual_pct": -10.14,
+      "answer_direction": "up",
+      "answer_pct": 4.2,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-12-31",
+      "ticker": "GOOGL",
+      "actual_pct": -12.2,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-12-31",
+      "ticker": "INTC",
+      "actual_pct": 11.07,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-12-31",
+      "ticker": "JPM",
+      "actual_pct": -10.15,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-12-31",
+      "ticker": "MCD",
+      "actual_pct": 2.19,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": true
+    },
+    {
+      "analysis_date": "2025-12-31",
+      "ticker": "MSFT",
+      "actual_pct": -24.57,
+      "answer_direction": "up",
+      "answer_pct": 12.5,
+      "confidence": 0,
+      "correct": false
+    },
+    {
+      "analysis_date": "2025-12-31",
+      "ticker": "NVDA",
+      "actual_pct": -12.04,
+      "answer_direction": "up",
+      "answer_pct": 0.0,
+      "confidence": 0,
+      "correct": false
+    }
+  ]
+}

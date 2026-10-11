@@ -1,4 +1,4 @@
-<#+
+﻿<#+
 .SYNOPSIS
 Run the research service without Docker Desktop.
 
@@ -32,11 +32,12 @@ if (-not (Test-Path -LiteralPath $python)) {
     if (-not $launcher) { throw '找不到 Python Launcher（py）。請先安裝 Python 3.12，再重跑 -Bootstrap。' }
     & $launcher.Source -3.12 -m venv $venv
     & $python -m pip install --upgrade pip
-    & $python -m pip install $root
+    # Editable: the native service and the venv's CLI entry points run the checked-out source.
+    & $python -m pip install -e $root
 }
 
 if (Test-Path -LiteralPath $settings) {
-    foreach ($line in Get-Content -LiteralPath $settings) {
+    foreach ($line in Get-Content -LiteralPath $settings -Encoding UTF8) {
         if ($line -match '^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*?)\s*$') {
             $name, $value = $Matches[1], $Matches[2].Trim('"').Trim("'")
             if ($value -like '/app/research-inputs/*') {

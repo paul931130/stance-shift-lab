@@ -61,7 +61,9 @@ def evaluate(prices, analysis_date, decisions, protocol):
                     equity, previous_equity, previous_mark = 1., 1., entry
                     benchmark_equity, previous_benchmark_equity = 1., 1.
                     insolvent, insolvent_date = False, None
-                    for index in range(1, horizon + 1):
+                    # Day 0 is the entry session (open -> close); later days are close -> close,
+                    # and the last day ends at the exit open. Each move is booked on its own date.
+                    for index in range(0, horizon + 1):
                         bar = selected[index]
                         mark_price = exit_price if index == horizon else bar["close"]
                         if insolvent:

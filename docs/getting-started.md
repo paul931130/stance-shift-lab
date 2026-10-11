@@ -39,7 +39,7 @@ Linux 使用本機 Ollama 時，Ollama 預設只聽 `127.0.0.1`，容器連不�
 
 4. 若要使用 FNSPID 新聞資料，將已授權的篩選檔放到 `research-inputs\Stock_news.csv`。沒有此檔仍可只用 Alpha Vantage；系統會明確顯示缺少哪個來源。
 5. 開啟 <http://127.0.0.1:8000/>，確認健康版本是目前的協議版本。
-6. 正式研究建議使用 14B 以上的模型，例如 `qwen3:14b`；`qwen3:8b` 已通過本專案的相容性測試（canary），是唯一可用於正式研究的小模型。也可以改用 GPUtw 或雲端模型 API，見 [選擇模型來源](model-sources.md)：
+6. 正式研究建議使用 14B 以上的模型：框架預設 `qwen3:14b`，本專題的正式實驗用 `qwen3:32b`；`qwen3:8b` 已通過本專案的相容性測試（canary），是唯一可用於正式研究的小模型。也可以改用 GPUtw 或雲端模型 API，見 [選擇模型來源](model-sources.md)：
 
 ```powershell
 ollama pull qwen3:14b

@@ -18,6 +18,10 @@ from .protocol import BASE_RATE_MIN_WINDOWS, COMPANY_NAMES, DOMAIN_NAMES
 
 
 MIN_NEWS_RELEVANCE = .35
+MAX_EVIDENCE_ITEMS = 10000  # one dataset keeps every headline of its news window
+SENTIMENT_BAND = .10  # |mean FinBERT score| above this is called positive/negative
+MIN_INDICATOR_HEADLINES = 3  # fewer scored headlines of one kind give a share of 0, 1/2 or 1: not reported
+NEWS_WINDOW_DAYS = 90  # quarterly design; the monthly design passes 30 (see protocol.DESIGNS)
 PRICE_HISTORY_CALENDAR_DAYS = 900
 PRICE_FUTURE_CALENDAR_DAYS = 220
 
@@ -63,7 +67,7 @@ def validate_dataset(data):
                 f"low={row['low']}, close={row['close']}）"
             )
     evidence = data.get("evidence", [])
-    if len(evidence) > 400:
+    if len(evidence) > MAX_EVIDENCE_ITEMS:
         raise ValueError("每個資料集最多 400 筆摘要證據")
     ids = set()
     for item in evidence:
@@ -178,16 +182,17 @@ def download_prices(ticker, analysis_date, chart_requester=get_json):
             f"本次行情下載路徑：{source}。"]})
 
 
-def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE):
+def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE,
+                        window_days=NEWS_WINDOW_DAYS, item_limit=50):
     key = os.getenv("ALPHA_VANTAGE_API_KEY", "")
     if not key:
         return None
     anchor = date.fromisoformat(analysis_date)
     query = urlencode({
         "function": "NEWS_SENTIMENT", "tickers": ticker,
-        "time_from": (anchor - timedelta(days=90)).strftime("%Y%m%dT0000"),
+        "time_from": (anchor - timedelta(days=window_days)).strftime("%Y%m%dT0000"),
         "time_to": (anchor - timedelta(days=1)).strftime("%Y%m%dT2359"),
-        "sort": "RELEVANCE", "limit": 200, "apikey": key,
+        "sort": "RELEVANCE", "limit": 200 if item_limit else 1000, "apikey": key,
     })
     payload = requester("https://www.alphavantage.co/query?" + query)
     provider_error = payload.get("Error Message") or payload.get("Information") or payload.get("Note")
@@ -204,7 +209,7 @@ def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_flo
         if len(published) < 8 or not published[:8].isdigit():
             continue
         available_at = f"{published[:4]}-{published[4:6]}-{published[6:8]}"
-        if not (anchor - timedelta(days=90)).isoformat() <= available_at < analysis_date:
+        if not (anchor - timedelta(days=window_days)).isoformat() <= available_at < analysis_date:
             continue
         title, source = str(row.get("title", "")).strip(), str(row.get("url", "")).strip()
         if not title or not source:
@@ -246,9 +251,9 @@ def _alpha_vantage_news(ticker, analysis_date, requester=get_json, relevance_flo
     return items, stats
 
 
-def _fnspid_news(path, ticker, analysis_date, limit=50):
+def _fnspid_news(path, ticker, analysis_date, limit=50, window_days=NEWS_WINDOW_DAYS):
     anchor = date.fromisoformat(analysis_date)
-    start = (anchor - timedelta(days=90)).isoformat()
+    start = (anchor - timedelta(days=window_days)).isoformat()
     items = []
     with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -290,7 +295,7 @@ def _fnspid_news(path, ticker, analysis_date, limit=50):
     return list(unique.values())[:limit]
 
 
-def _alpha_vantage_cached_news(path, ticker, analysis_date, limit=50):
+def _alpha_vantage_cached_news(path, ticker, analysis_date, limit=50, window_days=NEWS_WINDOW_DAYS):
     """Read a previously-fetched Alpha Vantage NEWS_SENTIMENT archive from disk.
 
     Unlike _alpha_vantage_news, this never calls the live API or spends a
@@ -299,7 +304,7 @@ def _alpha_vantage_cached_news(path, ticker, analysis_date, limit=50):
     reach) can serve a case without touching the daily rate limit.
     """
     anchor = date.fromisoformat(analysis_date)
-    start = (anchor - timedelta(days=90)).isoformat()
+    start = (anchor - timedelta(days=window_days)).isoformat()
     items = []
     with Path(path).open("r", encoding="utf-8-sig", newline="") as handle:
         reader = csv.DictReader(handle)
@@ -349,7 +354,7 @@ def _canonical_news_url(value):
 
 
 def _deduplicate_news(items, limit=100):
-    """Deduplicate syndicated rows across providers by canonical URL or title/date."""
+    """Deduplicate syndicated rows across providers by canonical URL or title/date; ``limit=None`` keeps all."""
     selected, seen, aliases = [], {}, {}
     for item in sorted(items, key=lambda row: (row["available_at"], row["evidence_id"]), reverse=True):
         canonical = _canonical_news_url(item.get("source", ""))
@@ -372,7 +377,7 @@ def _deduplicate_news(items, limit=100):
         selected.append(item)
         for key in keys:
             seen[key] = item
-        if len(selected) >= limit:
+        if limit is not None and len(selected) >= limit:
             break
     return selected, aliases
 
@@ -395,17 +400,18 @@ def _resolve_alpha_vantage_cache_path():
 
 
 def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=MIN_NEWS_RELEVANCE,
-                    allow_live=True):
+                    allow_live=True, window_days=NEWS_WINDOW_DAYS, item_limit=50):
     """Fetch point-in-time news without silently inventing sentiment evidence."""
     items, notes = [], []
     cache_path = _resolve_alpha_vantage_cache_path()
     cache_items = []
     if cache_path:
         try:
-            cache_items = _alpha_vantage_cached_news(cache_path, ticker, analysis_date)
+            cache_items = _alpha_vantage_cached_news(cache_path, ticker, analysis_date, limit=item_limit,
+                                                     window_days=window_days)
             items.extend(cache_items)
             if not cache_items:
-                notes.append("Alpha Vantage 快取檔在切點前 90 天無相符新聞")
+                notes.append(f"Alpha Vantage 快取檔在切點前 {window_days} 天無相符新聞")
         except FileNotFoundError:
             notes.append("ALPHA_VANTAGE_NEWS_PATH 檔案不存在；請確認路徑或清空改用即時 API")
         except Exception as error:
@@ -413,10 +419,10 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
     path = os.getenv("FNSPID_NEWS_PATH", "").strip()
     if path:
         try:
-            fnspid_items = _fnspid_news(path, ticker, analysis_date)
+            fnspid_items = _fnspid_news(path, ticker, analysis_date, limit=item_limit, window_days=window_days)
             items.extend(fnspid_items)
             if not fnspid_items:
-                notes.append("FNSPID 在切點前 90 天無相符新聞")
+                notes.append(f"FNSPID 在切點前 {window_days} 天無相符新聞")
         except FileNotFoundError:
             notes.append("FNSPID 檔案不存在；請將 CSV 放入 research-inputs/Stock_news.csv，或清空 FNSPID_NEWS_PATH 改用 Alpha Vantage")
         except Exception as error:
@@ -427,11 +433,12 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
     # source budget for this ticker and point-in-time window.
     if allow_live and alpha_configured and not cache_items and len(items) < 50:
         try:
-            alpha_items, alpha_stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor)
+            alpha_items, alpha_stats = _alpha_vantage_news(ticker, analysis_date, requester, relevance_floor,
+                                                           window_days=window_days, item_limit=item_limit)
             items.extend(alpha_items)
             notes.append(_alpha_note(alpha_stats))
             if not alpha_items:
-                notes.append("Alpha Vantage 在切點前 90 天無相符新聞")
+                notes.append(f"Alpha Vantage 在切點前 {window_days} 天無相符新聞")
         except Exception as error:
             detail = str(error) if isinstance(error, ValueError) else type(error).__name__
             notes.append(f"Alpha Vantage 下載失敗：{detail[:180]}")
@@ -441,7 +448,9 @@ def fetch_sentiment(ticker, analysis_date, requester=get_json, relevance_floor=M
         notes.append("離線新聞模式：未呼叫 Alpha Vantage 即時 API")
     if not alpha_configured and not path and not cache_path:
         notes.append("未設定 ALPHA_VANTAGE_API_KEY、ALPHA_VANTAGE_NEWS_PATH 或 FNSPID_NEWS_PATH；可匯入具公開時間的新聞摘要")
-    unique, aliases = _deduplicate_news(items)
+    # The uncapped rule (item_limit=None) keeps every headline of the window;
+    # the legacy capped rule keeps its 100-item cap so old snapshots reproduce.
+    unique, aliases = _deduplicate_news(items, limit=None if item_limit is None else 100)
     if aliases:
         notes.append(f"跨來源去除 {len(aliases)} 筆重複新聞")
     return unique, "；".join(notes)
@@ -510,10 +519,12 @@ def fetch_macro(analysis_date):
         for row in result.get("observations", []):
             if row["value"] == ".":
                 continue
+            units = {"FEDFUNDS": "percent_per_year", "CPIAUCSL": "index_points", "UNRATE": "percent"}
             items.append({"evidence_id": f"alfred-{series}-{analysis_date}", "domain": "macro",
                 "claim": f"{series}: {row['value']}，觀測期間 {row['date']}，截至 {analysis_date} 可知版本",
                 "source": f"https://alfred.stlouisfed.org/series?seid={series}",
-                "available_at": analysis_date, "vintage_date": analysis_date})
+                "available_at": analysis_date, "vintage_date": analysis_date,
+                "metric": series, "period": row["date"], "unit": units[series], "value": float(row["value"])})
     return items, "" if items else "ALFRED 無可用觀測值"
 
 
@@ -643,7 +654,8 @@ def fetch_fundamental(ticker, analysis_date, requester=get_json):
             "source": _filing_url(ticker, asset), "available_at": asset["filed"],
             "comparative": True, "metric": "LiabilitiesToAssets",
             "assets": asset["val"], "liabilities": liability["val"],
-            "ratio_pct": round(float(ratio), 6), "current_accession": asset["accn"],
+            "ratio_pct": round(float(ratio), 6), "period_end": asset["end"],
+            "current_accession": asset["accn"],
             "selection_rule": "same_accession_same_period_ratio_v1"})
 
     # Keep the domain auditable when a company has no comparable pair, but mark
@@ -740,6 +752,101 @@ def _sentiment_summary(items):
             "direction": direction, "score_definition": "mean(P(positive)-P(negative))"}
 
 
+def _finbert_values(items):
+    values = []
+    for item in items:
+        try:
+            score = float(item["sentiment_score"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if math.isfinite(score) and -1 <= score <= 1:
+            values.append(score)
+    return values
+
+
+def _sentiment_indicator_summary(items):
+    """Calibration block for the indicator rule: shares and mean over every scored headline."""
+    values = _finbert_values(items)
+    summary = _sentiment_summary(items)
+    if len(values) < MIN_INDICATOR_HEADLINES:
+        return {"headline_count": summary["count"], "scored_headlines": summary["scored_count"],
+                "mean_score": None, "direction": "unscored", "positive_share": None, "negative_share": None,
+                "score_definition": summary["score_definition"]}
+    return {"headline_count": summary["count"], "scored_headlines": summary["scored_count"],
+            "mean_score": summary["mean_score"], "direction": summary["direction"],
+            "positive_share": round(sum(v > SENTIMENT_BAND for v in values) / len(values), 6) if values else None,
+            "negative_share": round(sum(v < -SENTIMENT_BAND for v in values) / len(values), 6) if values else None,
+            "score_definition": summary["score_definition"]}
+
+
+def _sentiment_indicator_items(target_items, context_items, analysis_date):
+    """FinBERT indicators over every eligible headline of the window (protocol v3-0930.1+).
+
+    The prompt never carries headline text: models get deterministic, scale-free summaries of the
+    per-headline FinBERT scores, as they do for the technical features. Raw counts stay in the item
+    for audit but are not shown, because the news sources differ in volume by period.
+    """
+    indicators = []
+    for scope, items in (("target", target_items), ("context", context_items)):
+        scored = [(float(item["sentiment_score"]), item) for item in items
+                  if _finbert_values([item])]
+        if len(scored) < MIN_INDICATOR_HEADLINES:
+            continue
+        values = [value for value, _ in scored]
+        metrics = [("mean", sum(values) / len(values))]
+        if scope == "target":
+            metrics += [("positive_share", sum(value > SENTIMENT_BAND for value in values) / len(values)),
+                        ("negative_share", sum(value < -SENTIMENT_BAND for value in values) / len(values))]
+        members = digest(sorted(item["evidence_id"] for _, item in scored))
+        periods = sorted(item["available_at"] for _, item in scored)
+        for name, value in metrics:
+            unit = "finbert_score" if name == "mean" else "proportion"
+            indicators.append({
+                "evidence_id": f"sentiment-{scope}-{name}-{analysis_date}", "domain": "sentiment",
+                "claim": f"sentiment_{scope}_{name} = {value:.6f}", "value": value,
+                "available_at": max(item["available_at"] for _, item in scored),
+                "source": "finbert_scores_of_pre_cutoff_headlines", "source_type": "finbert_indicator",
+                "evidence_scope": scope, "headline_count": len(scored), "members_digest": members,
+                "metric": f"sentiment_{scope}_{name}", "period": f"{periods[0]}..{periods[-1]}",
+                "unit": unit})
+    return indicators
+
+
+def _news_coverage(sentiment_pool, window_days):
+    """Auditable headline coverage for the full sentiment window, not just prompt items."""
+    source_names = {
+        "alpha_vantage_news_sentiment": "Alpha Vantage",
+        "alpha_vantage_news_cache": "Alpha Vantage cache",
+        "FNSPID": "FNSPID",
+    }
+    result = {"window_days": window_days, "scopes": {}}
+    for scope, items in sentiment_pool.items():
+        by_source = {}
+        mixed_source_headlines = 0
+        for item in items:
+            source_types = item.get("source_types") or [item.get("source_type", "unknown")]
+            source_types = sorted({str(value) for value in source_types})
+            mixed_source_headlines += int(len(source_types) > 1)
+            scored = int(bool(_finbert_values([item])))
+            for source_type in source_types:
+                source = source_names.get(source_type, source_type)
+                bucket = by_source.setdefault(source, {"headline_count": 0, "scored_count": 0})
+                bucket["headline_count"] += 1
+                bucket["scored_count"] += scored
+        headline_count = len(items)
+        scored_count = sum(len(_finbert_values([item])) for item in items)
+        result["scopes"][scope] = {
+            "headline_count": headline_count,
+            "scored_count": scored_count,
+            "missing_score_count": headline_count - scored_count,
+            "missing_score_rate": ((headline_count - scored_count) / headline_count if headline_count else None),
+            "indicator_emitted": scored_count >= MIN_INDICATOR_HEADLINES,
+            "source_counts": by_source, "mixed_source_headlines": mixed_source_headlines,
+            "source_counts_are_nonexclusive": True,
+        }
+    return result
+
+
 def _technical_calibration(return20, mean_gap, volatility):
     if return20 > 0 and mean_gap > 0:
         direction = "upward"
@@ -793,24 +900,47 @@ def research_inputs(dataset, analysis_date, protocol=None):
     primary_horizon = getattr(protocol, "primary_horizon", 60)
     hold_band_sigma = getattr(protocol, "hold_band_sigma", .5)
     relevance_floor = getattr(protocol, "news_relevance_floor", MIN_NEWS_RELEVANCE)
+    news_window_days = getattr(protocol, "news_window_days", NEWS_WINDOW_DAYS)
+    news_window_start = (date.fromisoformat(analysis_date) - timedelta(days=news_window_days)).isoformat()
     target_context_priority = getattr(protocol, "target_context_priority", True)
+    indicator_mode = bool(getattr(protocol, "sentiment_indicators", False))
+    sentiment_pool = {"target": [], "context": []}
     evidence = []
     selection = {}
     ticker = str(dataset.get("ticker", "")).upper()
     for domain in ("fundamental", "sentiment", "macro"):
         domain_items = [item for item in eligible if item["domain"] == domain]
         if domain == "sentiment":
+            # Older frozen datasets can contain news outside the protocol's
+            # window. Keep both prompt indicators and coverage within bounds.
+            domain_items = [item for item in domain_items
+                            if news_window_start <= item["available_at"] < analysis_date]
             domain_items = [item for item in domain_items if _passes_relevance(item, relevance_floor)]
             domain_items.sort(key=lambda item: (round(_relevance_value(item), 2),
                                                 item["available_at"], item["evidence_id"]), reverse=True)
         else:
             domain_items.sort(key=lambda item: (item["available_at"], item["evidence_id"]), reverse=True)
+        if domain == "sentiment" and indicator_mode:
+            for item in domain_items:
+                item["evidence_scope"] = _sentiment_scope(item, ticker)
+            sentiment_pool = {scope: [item for item in domain_items if item["evidence_scope"] == scope]
+                              for scope in ("target", "context")}
+            selected = _sentiment_indicator_items(sentiment_pool["target"], sentiment_pool["context"], analysis_date)
+            evidence.extend(selected)
+            selection[domain] = {"available": len(domain_items), "selected": len(selected),
+                                 "target_available": len(sentiment_pool["target"]),
+                                 "context_available": len(sentiment_pool["context"]),
+                                 "target_selected": sum(item["evidence_scope"] == "target" for item in selected),
+                                 "context_selected": sum(item["evidence_scope"] == "context" for item in selected),
+                                 "relevance_floor": relevance_floor, "strategy": "finbert_indicators_v1"}
+            continue
         limit = 12 if domain == "sentiment" else len(domain_items)
         if domain == "sentiment":
             for item in domain_items:
                 item["evidence_scope"] = _sentiment_scope(item, ticker)
             target_items = [item for item in domain_items if item["evidence_scope"] == "target"]
             context_items = [item for item in domain_items if item["evidence_scope"] == "context"]
+            sentiment_pool = {"target": target_items, "context": context_items}
             if target_context_priority:
                 # Direct company evidence gets the first eight slots, while a
                 # bounded contextual sample remains available for sector risk.
@@ -850,20 +980,27 @@ def research_inputs(dataset, analysis_date, protocol=None):
                  ("mean20_vs_mean60", mean20 / mean60 - 1),
                  ("volatility60_annual", vol)]
     for key, value in technical:
+        unit = "annualized_decimal_volatility" if key == "volatility60_annual" else "decimal_return"
         evidence.append({"evidence_id": f"price-{key}-{history[-1]['date']}", "domain": "technical",
-            "claim": f"{key} = {value:.6f}", "value": value, "available_at": history[-1]["date"], "source": dataset["source"]})
+            "claim": f"{key} = {value:.6f}", "value": value, "available_at": history[-1]["date"],
+            "source": dataset["source"], "metric": key, "period": history[-1]["date"], "unit": unit})
     selection["technical"] = {"available": len(technical), "selected": len(technical),
                               "strategy": "derived_from_pre_cutoff_ohlc"}
     selected_sentiment = [item for item in evidence if item["domain"] == "sentiment"]
     selected_fundamental = [item for item in evidence if item["domain"] == "fundamental"]
     target_sentiment = [item for item in selected_sentiment if item.get("evidence_scope") == "target"]
     context_sentiment = [item for item in selected_sentiment if item.get("evidence_scope") == "context"]
+    if indicator_mode:  # calibration covers every eligible headline, not a sample
+        sentiment_calibration = {"target": _sentiment_indicator_summary(sentiment_pool["target"]),
+                                 "context": _sentiment_indicator_summary(sentiment_pool["context"])}
+    else:
+        sentiment_calibration = {"target": _sentiment_summary(target_sentiment),
+                                 "context": _sentiment_summary(context_sentiment)}
     base_rates = _base_rates(history, primary_horizon, vol, hold_band_sigma)
     decision_calibration = {
-        "rules_version": "target-context-calibration-v1",
+        "rules_version": "finbert-indicators-v1" if indicator_mode else "target-context-calibration-v1",
         "technical": _technical_calibration(dict(technical)["return20"], dict(technical)["mean20_vs_mean60"], vol),
-        "sentiment": {"target": _sentiment_summary(target_sentiment),
-                      "context": _sentiment_summary(context_sentiment)},
+        "sentiment": sentiment_calibration,
         "limits": [
             "Context-only news is market or sector context, not a direct target-company fact.",
             ("Supplied fundamental evidence contains deterministic same-concept comparisons or ratios; it still provides no valuation or peer benchmark."
@@ -872,8 +1009,12 @@ def research_inputs(dataset, analysis_date, protocol=None):
             "Supplied macro values are point-in-time levels; they do not by themselves prove a rate, inflation, or employment trend.",
         ],
     }
+    sentiment_coverage = _news_coverage(sentiment_pool, news_window_days)
+    sentiment_coverage.update({"window_start_inclusive": news_window_start,
+                               "window_end_exclusive": analysis_date})
     return {"domains": {domain: [e for e in evidence if e["domain"] == domain] for domain in DOMAIN_NAMES},
             "evidence": evidence, "volatility": vol, "last_price_date": history[-1]["date"],
             "evidence_selection": selection, "decision_calibration": decision_calibration,
+            "sentiment_coverage": sentiment_coverage,
             "base_rates": base_rates, "horizon_sigma_pct": base_rates["horizon_sigma_pct"],
             "boundary": "strictly before analysis_date; analysis-day releases excluded"}

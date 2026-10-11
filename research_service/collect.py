@@ -2,10 +2,10 @@
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, timedelta
 
-from .data import (download_prices, fetch_fundamental, fetch_macro, fetch_sentiment,
+from .data import (NEWS_WINDOW_DAYS, _deduplicate_news, download_prices, fetch_fundamental, fetch_macro, fetch_sentiment,
                    score_sentiment_finbert, validate_dataset)
 from .logging_config import get_logger
-from .protocol import validate_case
+from .protocol import DESIGNS, validate_case
 
 logger = get_logger(__name__)
 
@@ -50,10 +50,69 @@ def refresh_fundamentals(store, key, requester=None):
     return {"id": store.add_dataset(validate_dataset(data)), "parent_dataset_id": key, "items": len(fetched)}
 
 
-def reusable_snapshot(store, ticker, analysis_date):
-    """The newest complete historical snapshot for this case, if any."""
-    for existing in store.datasets():
+# Headlines fetched from the live Alpha Vantage API when a snapshot was collected
+# were never written to the local archive; refresh_news carries them over.
+LIVE_NEWS_SOURCE_TYPES = ("alpha_vantage_news_sentiment",)
+
+
+def refresh_news(store, key, allow_live=False, progress=None, carry_live=True):
+    """Rebuild only the sentiment evidence of a snapshot under the uncapped news rule, as a new version.
+
+    Prices, fundamentals and macro data are kept byte for byte, so an
+    experiment rerun on the new snapshot differs from the old one only in its
+    news. Every headline of the window is kept and FinBERT-scored. By default
+    only local news files are read (no Alpha Vantage quota).
+    """
+    data = store.dataset(key)
+    analysis_date = data.get("requested_analysis_date")
+    if data.get("kind") != "historical" or not analysis_date:
+        raise ValueError("只能重建有研究分析日的歷史資料集")
+    rules = data.get("collection_rules") or {}
+    window_days = rules.get("news_window_days", NEWS_WINDOW_DAYS)
+    fetched, note = fetch_sentiment(data["ticker"], analysis_date, allow_live=allow_live,
+                                    window_days=window_days, item_limit=None)
+    by_domain = {domain: [item for item in data["evidence"] if item.get("domain") == domain] for domain in DOMAINS}
+    previous = len(by_domain["sentiment"])
+    local_items = len(fetched)
+    carried = [item for item in by_domain["sentiment"]
+               if item.get("source_type") in LIVE_NEWS_SOURCE_TYPES] if carry_live else []
+    if carried:
+        # Same cross-source de-duplication as a fresh collection, with no cap.
+        fetched, _ = _deduplicate_news([*fetched, *carried], limit=None)
+    by_domain["sentiment"] = fetched
+    data["evidence"] = [item for domain in DOMAINS for item in by_domain[domain]]
+    data["parent_dataset_id"] = key
+    data["collection_rules"] = {**rules, "news_item_limit": "uncapped"}
+    if note:
+        data["limitations"] = [*data.get("limitations", []), note]
+    data.setdefault("processing", {}).pop("sentiment", None)
+    data["processing"]["news_refresh"] = {"refreshed_from": key, "previous_items": previous,
+                                          "items": len(fetched), "local_items": local_items,
+                                          "carried_live_items": len(carried), "window_days": window_days,
+                                          "live_sources": bool(allow_live)}
+    if fetched:
+        data = score_sentiment_finbert(data, progress=progress)
+    if isinstance(data.get("_collection"), dict):
+        data["_collection"]["sentiment"] = {"status": "complete" if fetched else "needs_input",
+                                            "records": len(fetched),
+                                            "message": f"已依不截斷規則重建 {len(fetched)} 則新聞並以 FinBERT 評分"}
+    return {"id": store.add_dataset(validate_dataset(data)), "parent_dataset_id": key,
+            "items": len(fetched), "previous_items": previous,
+            "local_items": local_items, "carried_live_items": len(carried)}
+
+
+def reusable_snapshot(store, ticker, analysis_date, design="quarterly", datasets=None):
+    """The newest complete historical snapshot for this case and study design, if any.
+
+    A month-end that is also a quarter-end has two snapshots (90-day and 30-day
+    news windows); the design keeps them apart. Pass ``datasets`` (from
+    ``store.datasets()``) when looking up many cases, to list them only once.
+    """
+    for existing in (store.datasets() if datasets is None else datasets):
+        rules = existing.get("collection_rules") or {}
         if (existing.get("ticker") == ticker and existing.get("kind") == "historical"
+                and rules.get("design", "quarterly") == design
+                and rules.get("news_item_limit") == "uncapped"
                 and existing.get("requested_analysis_date") == analysis_date
                 and existing.get("coverage", {}).get("research_ready")):
             return existing
@@ -61,15 +120,16 @@ def reusable_snapshot(store, ticker, analysis_date):
 
 
 def collect_dataset(store, ticker, analysis_date, *, refresh=False, use_finbert=False,
-                    offline_news_only=False, progress=None, apply_finbert=None):
+                    offline_news_only=False, progress=None, apply_finbert=None, design="quarterly"):
     """Build (or reuse) one dataset snapshot for a case.
 
     Shared by the web API, its background tasks, the CLI and the Python API.
     ``progress(**values)`` receives ``stage`` and per-domain ``agents`` updates.
     """
     report = progress or (lambda **_: None)
-    validate_case(ticker, analysis_date)
-    existing = None if refresh else reusable_snapshot(store, ticker, analysis_date)
+    validate_case(ticker, analysis_date, design)
+    news_window_days = DESIGNS[design]["news_window_days"]
+    existing = None if refresh else reusable_snapshot(store, ticker, analysis_date, design)
     if existing:
         result_id = ((apply_finbert(existing["id"]) if apply_finbert else finbert_version(store, existing["id"]))["id"]
                      if use_finbert else existing["id"])
@@ -84,7 +144,8 @@ def collect_dataset(store, ticker, analysis_date, *, refresh=False, use_finbert=
             pool.submit(download_prices, ticker, analysis_date): "technical",
             pool.submit(fetch_fundamental, ticker, analysis_date): "fundamental",
             pool.submit(fetch_sentiment, ticker, analysis_date,
-                        allow_live=not offline_news_only): "sentiment",
+                        allow_live=not offline_news_only, window_days=news_window_days,
+                        item_limit=None): "sentiment",
             pool.submit(fetch_macro, cutoff): "macro",
         }
         # Report each domain as soon as its agent finishes so the UI can
@@ -114,6 +175,11 @@ def collect_dataset(store, ticker, analysis_date, *, refresh=False, use_finbert=
                     agents[domain] = {"status": "error", "records": 0,
                         "message": f"{name} 下載失敗：{type(error).__name__}"}
             report(agents={key: dict(value) for key, value in agents.items()})
+    # Every headline of the window is kept (no per-source cap); the protocol decides how much reaches a prompt.
+    data["collection_rules"] = {**data.get("collection_rules", {}), "news_item_limit": "uncapped"}
+    if design != "quarterly":
+        data["collection_rules"] = {**data["collection_rules"], "design": design,
+                                    "news_window_days": news_window_days}
     for domain in ("fundamental", "sentiment", "macro"):
         evidence, notes = collected[domain]
         data["evidence"].extend(evidence)

@@ -26,6 +26,10 @@ class AppContext:
     # A test or demo model replaces the real provider, so Ollama checks are skipped.
     injected_model_call: bool
     trusted_proxies: set = field(default_factory=set)
+    # GPU idle watchdog (research_service.autostop); None in tests that build a bare context.
+    autostop: object = None
+    # Holds the queue while the model endpoint keeps failing (research_service.breaker).
+    breaker: object = None
 
 
 class TaskRegistry:
@@ -66,6 +70,16 @@ class DownloadInput(BaseModel):
     refresh: bool = False
     use_finbert: bool = False
     offline_news_only: bool = False
+    design: str = "quarterly"
+
+
+class BatchCollectInput(BaseModel):
+    tickers: list[str] = Field(min_length=1, max_length=20)
+    dates: list[str] = Field(min_length=1, max_length=120)
+    refresh: bool = False
+    use_finbert: bool = True
+    offline_news_only: bool = False
+    design: str = "quarterly"
 
 
 class JobInput(BaseModel):
@@ -74,12 +88,41 @@ class JobInput(BaseModel):
     model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
     voting_samples: int = 7
     study: str = "study1"
-    anonymize_ticker: bool = False
+    anonymize_ticker: bool | None = None
     missing_data_policy: str = "allow_decision"
     allow_point_fundamental: bool = False
     allow_small_model: bool = False
     allow_low_quality_sentiment: bool = False
+    design: str = "quarterly"
+    # Frozen inference settings; None keeps the protocol default (8192 tokens, one call at a time).
+    model_context_length: int | None = None
+    ollama_parallel: int | None = None
+    # RQ2 Model Router (protocol v3-1006.1). Giving debate_model_b selects the router version;
+    # `model` stays the Judge/research model and is model A unless debate_model_a says otherwise.
+    debate_model_a: str | None = Field(default=None, max_length=200)
+    debate_model_b: str | None = Field(default=None, max_length=200)
+    debate_assignments: list[str] | None = None
+    # {model id: {"api_base", "timeout_seconds", "api_key_env"}}; never a password or token.
+    model_endpoints: dict | None = None
 
 
 class BatchInput(BaseModel):
-    cases: list[JobInput] = Field(min_length=1, max_length=200)
+    cases: list[JobInput] = Field(min_length=1, max_length=600)
+
+
+class PlanInput(BaseModel):
+    """Tickers x analysis dates plus the settings every case of a study shares."""
+    tickers: list[str] = Field(min_length=1, max_length=20)
+    dates: list[str] = Field(min_length=1, max_length=120)
+    model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
+    voting_samples: int = 7
+    study: str = "study1"
+    anonymize_ticker: bool | None = None
+    missing_data_policy: str = "allow_decision"
+    design: str = "quarterly"
+    model_context_length: int | None = None
+    ollama_parallel: int | None = None
+    debate_model_a: str | None = Field(default=None, max_length=200)
+    debate_model_b: str | None = Field(default=None, max_length=200)
+    debate_assignments: list[str] | None = None
+    model_endpoints: dict | None = None

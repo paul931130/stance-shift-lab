@@ -55,6 +55,21 @@ class BacktestTests(unittest.TestCase):
         self.assertFalse(hold["hold_was_justified"])
         self.assertGreater(hold["hold_opportunity_cost"], 0.0)
 
+    def test_entry_day_move_is_booked_on_the_entry_date(self):
+        data = prices()
+        analysis_date = data[60]["date"]
+        decisions = {group: {"candidate_action": "Buy", "action": "Buy", "hold_band_pct": 1.0} for group in "ABCD"}
+        rows, daily = evaluate(data, analysis_date, decisions, protocol())
+        row = next(r for r in rows if r["group"] == "A" and r["decision_layer"] == "candidate"
+                   and r["cost_model"] == "zero" and r["horizon"] == 60)
+        days = [d for d in daily if d["group"] == "A" and d["decision_layer"] == "candidate"
+                and d["cost_model"] == "zero" and d["horizon"] == 60]
+        entry_bar = next(p for p in data if p["date"] == row["entry_date"])
+        self.assertEqual((days[0]["date"], days[-1]["date"]), (row["entry_date"], row["maturity_date"]))
+        self.assertAlmostEqual(days[0]["return"], entry_bar["close"] / entry_bar["open"] - 1, places=12)
+        self.assertEqual(len(days), 61)
+        self.assertAlmostEqual(math.prod(1 + d["return"] for d in days) - 1, row["net_return"], places=12)
+
     def test_buy_and_hold_benchmark_uses_the_same_cost_basis(self):
         analysis_date = prices()[60]["date"]
         decisions = {group: {"candidate_action": "Buy", "action": "Buy", "hold_band_pct": 1.0}

@@ -1,0 +1,41 @@
+\documentclass[12pt,a4paper]{article}
+\usepackage[T1]{fontenc}
+\usepackage{newtxtext}
+\usepackage[left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm]{geometry}
+\usepackage{CJKutf8}
+\usepackage{setspace,enumitem}
+\setstretch{1.4}
+\setlength{\parindent}{0pt}
+\pagestyle{empty}
+\begin{document}
+\begin{CJK}{UTF8}{bkai}
+
+{\centering\fontsize{16}{24}\selectfont 補充資料說明\par}
+\vspace{2pt}
+{\centering 多代理人立場交換辯論機制應用於投資決策（國立陽明交通大學管理科學系專題）\par}
+\vspace{10pt}
+
+\textbf{一、本附件內容}\par
+附件為專題報告完整版（28 頁）。申請書所附專題報告為依系上範本撰寫之精簡版（17 頁）；完整版另含統計檢定細節、探索性分析、前導記憶與匿名辨識診斷、研究限制全文。兩版研究問題、數字與結論一致。
+
+\vspace{8pt}
+\textbf{二、研究與主要結果}\par
+在相同資料與相同名目決策呼叫次數（各 7 次）下，檢驗「自我反駁式立場交換辯論」（D）是否優於「固定立場辯論」（C）。以 qwen3:32b 於九檔美國大型股、180 個季度案例，規則鎖定後進行回溯比較。60 日方向準確率 D 為 55.0\%、C 為 58.3\%（McNemar $p=0.21$）；年化 Sharpe D 為 0.54、C 為 0.59（$p=0.80$）。兩者皆未達事前指定之優越性判準，因此不支持 D 優於 C；本研究亦不主張兩者等效。
+
+\vspace{8pt}
+\textbf{三、建議閱讀位置（完整版）}
+\begin{itemize}[itemsep=2pt,topsep=4pt]
+\item 1.3 研究問題：RQ1--RQ3 與工作假設 H1；RQ3 尚未執行。
+\item 4.4--4.5 實驗設計、績效衡量與統計檢定：主要端點、判定規則、Sharpe 與區塊自助法之定義。
+\item 6.1 主要 RQ1：四組績效、配對檢定、信賴區間、等效界線與條件式 MDE。
+\item 6.3 探索性分析：Gemini 3 Flash 同批比較（非獨立樣本複製）、與一律看多之比較。
+\item 6.4 前導記憶與匿名辨識診斷：模型是否記得標的之探針結果。
+\item 6.5 研究限制：回溯性質、匿名化不完全、不一致案例僅 16 個等。
+\end{itemize}
+
+\vspace{4pt}
+\textbf{四、需留意之處}\par
+本研究結論為負面結果：未觀察到 D 優於 C。樣本曾用於前導試跑，故屬規則鎖定後之回溯比較，非全新樣本外驗證。逐案原始資料與執行紀錄存於研究主機，未隨附。
+
+\end{CJK}
+\end{document}

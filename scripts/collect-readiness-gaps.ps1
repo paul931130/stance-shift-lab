@@ -1,4 +1,4 @@
-<#
+﻿<#
 .SYNOPSIS
 Rebuild only the formal-study cases currently missing sentiment evidence.
 

@@ -44,9 +44,20 @@ class Store:
                 CREATE TABLE IF NOT EXISTS services(id TEXT PRIMARY KEY, heartbeat_at TEXT);
                 CREATE TABLE IF NOT EXISTS preregistrations(
                     protocol_hash TEXT PRIMARY KEY, dataset_ids TEXT, frozen_at TEXT);
+                -- The exact case requests a study was registered with, so it can be
+                -- queued later in one step (older registrations may lack this).
+                CREATE TABLE IF NOT EXISTS preregistration_cases(
+                    protocol_hash TEXT PRIMARY KEY, cases TEXT, saved_at TEXT);
+                -- Which protocol version/model/design a registration is for, so a study can be
+                -- labelled (current or old) before any of its jobs exist.
+                CREATE TABLE IF NOT EXISTS preregistration_meta(
+                    protocol_hash TEXT PRIMARY KEY, version TEXT, model TEXT, design TEXT);
             """)
             self._ensure_steps_column(db)
             self._ensure_owner_column(db)
+            self._ensure_lease_generation_column(db)
+            if "model_digest" not in {row["name"] for row in db.execute("PRAGMA table_info(preregistration_meta)")}:
+                db.execute("ALTER TABLE preregistration_meta ADD COLUMN model_digest TEXT")
         self.backfill_case_results()
 
     @staticmethod
@@ -55,6 +66,12 @@ class Store:
         columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
         if "owner" not in columns:
             db.execute("ALTER TABLE jobs ADD COLUMN owner TEXT NOT NULL DEFAULT ''")
+
+    @staticmethod
+    def _ensure_lease_generation_column(db):
+        columns = {row["name"] for row in db.execute("PRAGMA table_info(jobs)")}
+        if "lease_generation" not in columns:
+            db.execute("ALTER TABLE jobs ADD COLUMN lease_generation INTEGER NOT NULL DEFAULT 0")
 
     @staticmethod
     def _ensure_steps_column(db):
@@ -87,6 +104,12 @@ class Store:
             db.execute("INSERT INTO services(id, heartbeat_at) VALUES(?, ?) "
                        "ON CONFLICT(id) DO UPDATE SET heartbeat_at=excluded.heartbeat_at", (service_id, now()))
 
+    def active_job_count(self):
+        """Queued jobs and all in-flight leases, even after pause or cancel."""
+        with self.connect() as db:
+            return db.execute("""SELECT COUNT(*) FROM jobs WHERE status IN ('queued','running')
+                OR (owner != '' AND status IN ('paused','cancelled'))""").fetchone()[0]
+
     def recover(self, dead_before, idle_before):
         """Pause worker jobs whose service stopped; never touch a live service's or a CLI's job.
 
@@ -96,9 +119,13 @@ class Store:
         ``idle_before``. CLI leases expire on their own (see acquire).
         """
         with self.connect() as db:
-            return db.execute("""UPDATE jobs SET status='paused', wants_run=0, owner='',
-                error='研究服務曾重新啟動；已完成的步驟都保留，請按「繼續執行」'
-                WHERE status='running' AND owner NOT LIKE 'cli:%' AND (
+            return db.execute("""UPDATE jobs
+                SET status=CASE WHEN status='cancelled' THEN 'cancelled' ELSE 'paused' END,
+                    wants_run=0, owner='', lease_generation=lease_generation+1,
+                    error=CASE WHEN status='cancelled' THEN error
+                        ELSE '研究服務曾重新啟動；已完成的步驟都保留，請按「繼續執行」' END
+                WHERE status IN ('running','paused','queued','cancelled')
+                    AND (owner != '' OR status='running') AND owner NOT LIKE 'cli:%' AND (
                     (owner LIKE 'worker:%' AND substr(owner, 8) NOT IN
                         (SELECT id FROM services WHERE heartbeat_at >= ?))
                     OR (owner IN ('', 'worker') AND updated_at < ?))""",
@@ -214,6 +241,26 @@ class Store:
                     ORDER BY created_at DESC""", (protocol_hash,))
             return [self.unpack(row) for row in rows]
 
+    def study_rows(self, protocol_hash):
+        """One protocol's jobs without state JSON: enough to show batch progress cheaply."""
+        with self.connect() as db:
+            rows = db.execute("""SELECT id, status, error, created_at, updated_at, steps,
+                    json_extract(config, '$.ticker') AS ticker,
+                    json_extract(config, '$.analysis_date') AS analysis_date,
+                    json_extract(config, '$.dataset_id') AS dataset_id,
+                    json_extract(config, '$.protocol.version') AS version,
+                    json_extract(config, '$.protocol.model') AS model,
+                    json_extract(config, '$.protocol.design') AS design
+                FROM jobs WHERE json_extract(config, '$.protocol_hash')=?""", (protocol_hash,)).fetchall()
+        return [dict(row) for row in rows]
+
+    def preregistrations(self):
+        with self.connect() as db:
+            rows = db.execute("SELECT protocol_hash, dataset_ids, frozen_at FROM preregistrations "
+                              "ORDER BY frozen_at DESC").fetchall()
+        return [{"protocol_hash": row["protocol_hash"], "cases": len(json.loads(row["dataset_ids"])),
+                 "frozen_at": row["frozen_at"]} for row in rows]
+
     def job_summaries(self):
         """Job list without the state JSON, for the frequently polled dashboard."""
         with self.connect() as db:
@@ -223,11 +270,12 @@ class Store:
 
     def control(self, key, command):
         with self.connect() as db:
+            db.execute("BEGIN IMMEDIATE")
             job = self.unpack(db.execute("SELECT * FROM jobs WHERE id=?", (key,)).fetchone())
             if job["status"] in ("complete", "cancelled"):
                 raise ValueError("已完成或取消的實驗不能變更；可建立新實驗")
-            from .protocol import StudyProtocol
-            if command == "resume" and job["config"]["protocol"].get("version") != StudyProtocol().version:
+            from .protocol import protocol_is_current
+            if command == "resume" and not protocol_is_current(job["config"]["protocol"]):
                 raise ValueError("舊版實驗不能混用新版引擎；請使用複製至新版，原始紀錄會保留")
             wanted = int(command == "resume")
             # A pause request must be visible to the worker even when the job
@@ -239,7 +287,7 @@ class Store:
             elif command == "pause":
                 status = "paused"
             else:
-                status = "running" if job["status"] == "running" else "queued"
+                status = "running" if job["status"] == "running" or job.get("owner") else "queued"
             # A previous provider failure should not remain attached to a
             # deliberately resumed job; otherwise the UI shows a stale error
             # while the worker is already progressing again.
@@ -253,16 +301,19 @@ class Store:
         can be taken over; a job the web worker is running never can.
         """
         with self.connect() as db:
-            changed = db.execute("""UPDATE jobs SET status='running', wants_run=0, owner=?, error='', updated_at=?
-                WHERE id=? AND (status IN ('paused', 'queued')
-                                OR (status='running' AND owner LIKE 'cli:%' AND updated_at < ?))""",
+            changed = db.execute("""UPDATE jobs SET status='running', wants_run=0, owner=?, error='', updated_at=?,
+                    lease_generation=lease_generation+1
+                WHERE id=? AND ((status IN ('paused', 'queued') AND owner='')
+                                OR (status IN ('running','paused','queued') AND owner LIKE 'cli:%' AND updated_at < ?))""",
                 (owner, now(), key, stale_before)).rowcount
         return changed == 1
 
     def release(self, key, owner):
         """Give up a lease that is still held (e.g. the CLI was interrupted)."""
         with self.connect() as db:
-            db.execute("UPDATE jobs SET status='paused', owner='', updated_at=? WHERE id=? AND owner=? AND status='running'",
+            db.execute("""UPDATE jobs SET status=CASE WHEN status='cancelled' THEN 'cancelled'
+                    WHEN wants_run=1 THEN 'queued' ELSE 'paused' END, owner='', updated_at=?
+                WHERE id=? AND owner=? AND status IN ('running','paused','queued','cancelled')""",
                        (now(), key, owner))
 
     def claim(self, owner="worker"):
@@ -272,30 +323,34 @@ class Store:
             # memory only contains earlier matured cases of the same protocol,
             # so processing earlier dates first makes that memory independent
             # of the order in which a batch happened to be queued.
-            row = db.execute("""SELECT * FROM jobs WHERE status='queued' AND wants_run=1
+            row = db.execute("""SELECT * FROM jobs WHERE status='queued' AND wants_run=1 AND owner=''
                 ORDER BY json_extract(config, '$.analysis_date'), created_at LIMIT 1""").fetchone()
             if not row:
                 return None
-            db.execute("UPDATE jobs SET status='running',owner=?,updated_at=? WHERE id=?", (owner, now(), row["id"]))
-            job = self.unpack(row)
-            from .protocol import StudyProtocol
-            if job["config"]["protocol"].get("version") != StudyProtocol().version:
-                db.execute("UPDATE jobs SET status='paused',wants_run=0,error=? WHERE id=?",
+            db.execute("""UPDATE jobs SET status='running',owner=?,updated_at=?,
+                lease_generation=lease_generation+1 WHERE id=?""", (owner, now(), row["id"]))
+            job = self.unpack(db.execute("SELECT * FROM jobs WHERE id=?", (row["id"],)).fetchone())
+            from .protocol import protocol_is_current
+            if not protocol_is_current(job["config"]["protocol"]):
+                db.execute("UPDATE jobs SET status='paused',wants_run=0,owner='',error=? WHERE id=?",
                            ("舊版實驗已隔離；請複製至新版重新執行", row["id"]))
                 return None
             return job
 
-    def save_step(self, key, state, error="", owner=None):
-        """Persist one step. With ``owner`` (a CLI lease) the write happens only while that lease is held."""
+    def save_step(self, key, state, error="", owner=None, generation=None):
+        """Persist only under the current lease; worker leases end at each checkpoint."""
         with self.connect() as db:
             db.execute("BEGIN IMMEDIATE")
-            row = db.execute("SELECT wants_run,status,config,created_at,owner FROM jobs WHERE id=?", (key,)).fetchone()
-            if owner is None:
+            row = db.execute("SELECT wants_run,status,config,created_at,owner,lease_generation FROM jobs WHERE id=?", (key,)).fetchone()
+            worker_checkpoint = owner is not None and (owner == "worker" or owner.startswith("worker:"))
+            if ((owner is None and row["owner"]) or (owner is not None and row["owner"] != owner)
+                    or (worker_checkpoint and generation is None)
+                    or (generation is not None and row["lease_generation"] != generation)):
+                raise JobLeaseLost("此實驗的執行權已被其他程序取走；本次結果未寫入")
+            if owner is None or worker_checkpoint:
                 status = "cancelled" if row["status"] == "cancelled" else "paused" if error else "complete" if state.get("finished") else "queued" if row["wants_run"] else "paused"
                 wants_run = 0 if error else row["wants_run"]
             else:
-                if row["owner"] != owner:
-                    raise JobLeaseLost("此實驗的執行權已被其他程序取走；本次結果未寫入")
                 # Keep the lease while the job runs; a pause or cancel pressed
                 # in the web UI ends it after this step.
                 status = ("cancelled" if row["status"] == "cancelled" else "paused" if error
@@ -304,7 +359,7 @@ class Store:
                 wants_run = 0
             db.execute("UPDATE jobs SET state=?,status=?,wants_run=?,error=?,updated_at=?,steps=?,owner=? WHERE id=?",
                 (json.dumps(state, ensure_ascii=False, allow_nan=False), status, wants_run, error, now(),
-                 len(state.get("records", [])), owner if owner is not None and status == "running" else "", key))
+                 len(state.get("records", [])), owner if not worker_checkpoint and owner is not None and status == "running" else "", key))
             # A job cancelled during its final step must not feed memory or statistics.
             if state.get("finished") and status == "complete":
                 self._upsert_case_results(db, key, json.loads(row["config"]), state, row["created_at"])
@@ -336,17 +391,24 @@ class Store:
                     self._upsert_case_results(db, row["id"], json.loads(row["config"]), state, row["created_at"])
 
     def memory(self, config, group):
+        from .reporting import stable_model_identity
         protocol = config.get("protocol", {})
         with self.connect() as db:
-            rows = db.execute("""SELECT * FROM case_results
+            rows = db.execute("""SELECT case_results.*, jobs.config AS source_config FROM case_results
+                JOIN jobs ON jobs.id=case_results.job_id
                 WHERE protocol_hash=? AND ticker=? AND "group"=? AND horizon=? AND cost_model=?
                   AND decision_layer='gated' AND maturity_date < ? AND analysis_date < ? AND degraded=0
-                ORDER BY analysis_date DESC, created_at ASC""", (
+                ORDER BY analysis_date DESC, case_results.created_at ASC""", (
                 config["protocol_hash"], config["ticker"], group, protocol.get("primary_horizon", 60),
                 "corwin_schultz", config["analysis_date"], config["analysis_date"])).fetchall()
         unique = {}
         for row in rows:
             value = dict(row)
+            source = json.loads(value.pop("source_config"))
+            if source.get("execution_purpose") == "qualification":
+                continue
+            if stable_model_identity(source) != stable_model_identity(config):
+                continue
             value["correct"] = None if value["correct"] is None else bool(value["correct"])
             unique.setdefault(value["analysis_date"], value)
         return list(unique.values())[:20]
@@ -359,14 +421,17 @@ class Store:
         order-dependent memory visible in the job state and its export.
         """
         with self.connect() as db:
-            rows = db.execute("""SELECT id, status, json_extract(config, '$.analysis_date') AS analysis_date
+            rows = db.execute("""SELECT id, status, config, json_extract(config, '$.analysis_date') AS analysis_date
                 FROM jobs WHERE json_extract(config, '$.protocol_hash')=? AND json_extract(config, '$.ticker')=?
                   AND json_extract(config, '$.analysis_date') < ? AND status NOT IN ('complete', 'cancelled')
                 ORDER BY analysis_date, created_at""",
                 (config["protocol_hash"], config["ticker"], config["analysis_date"])).fetchall()
-        return {"rule": "memory uses earlier matured cases of the same protocol and ticker; "
+        from .reporting import stable_model_identity
+        pending = [{key: row[key] for key in ("id", "status", "analysis_date")} for row in rows
+                   if stable_model_identity(json.loads(row["config"])) == stable_model_identity(config)]
+        return {"rule": "memory uses earlier matured cases of the same protocol, model identity and ticker; "
                         "cases are scheduled by analysis date",
-                "pending_earlier_cases": [dict(row) for row in rows]}
+                "pending_earlier_cases": pending}
 
     def freeze(self, protocol_hash, dataset_ids):
         """Record the dataset IDs a study analyzed at the moment it was frozen.
@@ -387,6 +452,29 @@ class Store:
             db.execute("INSERT INTO preregistrations VALUES(?,?,?)",
                        (protocol_hash, json.dumps(dataset_ids), stamp))
             return {"protocol_hash": protocol_hash, "dataset_ids": dataset_ids, "frozen_at": stamp}
+
+    def save_registered_cases(self, protocol_hash, cases):
+        """Keep the first case list a study was registered or queued with; later calls never replace it."""
+        with self.connect() as db:
+            db.execute("INSERT OR IGNORE INTO preregistration_cases VALUES(?,?,?)",
+                       (protocol_hash, json.dumps(cases, ensure_ascii=False), now()))
+
+    def save_registration_meta(self, protocol_hash, version, model, design, model_digest=None):
+        with self.connect() as db:
+            db.execute("INSERT OR IGNORE INTO preregistration_meta(protocol_hash, version, model, design, model_digest) "
+                       "VALUES(?,?,?,?,?)", (protocol_hash, version, model, design, model_digest))
+
+    def registration_meta(self, protocol_hash):
+        with self.connect() as db:
+            row = db.execute("SELECT version, model, design, model_digest FROM preregistration_meta WHERE protocol_hash=?",
+                             (protocol_hash,)).fetchone()
+        return dict(row) if row else None
+
+    def registered_cases(self, protocol_hash):
+        with self.connect() as db:
+            row = db.execute("SELECT cases FROM preregistration_cases WHERE protocol_hash=?",
+                             (protocol_hash,)).fetchone()
+        return json.loads(row["cases"]) if row else None
 
     def preregistration(self, protocol_hash):
         with self.connect() as db:

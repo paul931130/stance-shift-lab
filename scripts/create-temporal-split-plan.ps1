@@ -1,4 +1,4 @@
-<#+
+﻿<#+
 .SYNOPSIS
 Create a reproducible train/validation/test case manifest from readiness data.
 

@@ -3,7 +3,7 @@ import math
 import re
 from statistics import median
 
-from .protocol import BASE_RATE_MIN_WINDOWS, COMPANY_NAMES, TICKERS, QUARTER_DATES
+from .protocol import BASE_RATE_MIN_WINDOWS, COMPANY_NAMES, DESIGNS, TICKERS, QUARTER_DATES
 from .splits import split_for_date, temporal_split_summary
 
 
@@ -101,14 +101,17 @@ def coverage(data, analysis_date=None):
     counts["technical"] = len(past)
     ready = len(past) >= 61 and all(counts[name] for name in ("fundamental", "sentiment", "macro"))
     # N price observations contain N-1 session returns.  Each calibration
-    # window consumes 60 returns; adjacent windows may share an endpoint.
-    base_rate_windows = max(0, (len(past) - 1) // 60)
+    # window consumes one primary horizon of returns (60 quarterly, 20 monthly);
+    # adjacent windows may share an endpoint.
+    design = DESIGNS.get((data.get("collection_rules") or {}).get("design", "quarterly"), DESIGNS["quarterly"])
+    primary_horizon = design["primary_horizon"]
+    base_rate_windows = max(0, (len(past) - 1) // primary_horizon)
     base_rate_history_ready = base_rate_windows >= BASE_RATE_MIN_WINDOWS
     sentiment_quality = _sentiment_quality(data, day)
     fundamental_quality = _fundamental_quality(data, day)
     historical = data["kind"] == "historical"
-    horizons = {str(n): len(future) >= n + 1 for n in (30, 60, 90)}
-    backtest_ready = horizons["60"]
+    horizons = {str(n): len(future) >= n + 1 for n in design["horizons"]}
+    backtest_ready = horizons[str(primary_horizon)]
     all_horizons_ready = all(horizons.values())
     formal_ready = (historical and ready and backtest_ready
                     and base_rate_history_ready

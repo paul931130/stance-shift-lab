@@ -30,6 +30,64 @@ def mcnemar(correct_a, correct_b) -> dict:
             "warning": "Case dependence across stocks/dates is not corrected by the classical McNemar test; interpret with paired cluster/block sensitivity analysis."}
 
 
+def date_cluster_block_accuracy(pairs_by_date, *, block_lengths=(1, 2, 4), replicates=1999, seed=905):
+    """Paired accuracy-difference intervals resampling whole dates and contiguous date blocks.
+
+    This is a sensitivity interval, not a replacement p-value for McNemar. Sampling each
+    date as a cluster preserves within-date cross-sectional dependence; longer circular
+    blocks also retain some serial dependence from overlapping forecast horizons.
+    """
+    dates = sorted(pairs_by_date)
+    if len(dates) < 3 or replicates < 199 or not block_lengths:
+        return {"status": "not_estimable", "reason": "需要至少 3 個日期群聚與 199 次重抽樣", "n_dates": len(dates)}
+    normalized = {}
+    for day in dates:
+        pairs = list(pairs_by_date[day])
+        if any(len(pair) != 2 or not all(isinstance(value, (bool, np.bool_)) for value in pair)
+               for pair in pairs):
+            raise ValueError("Date-cluster bootstrap requires paired Boolean correctness values")
+        normalized[day] = [(bool(first), bool(second)) for first, second in pairs]
+    total_pairs = sum(len(value) for value in normalized.values())
+    if not total_pairs:
+        return {"status": "not_estimable", "reason": "沒有雙方皆有方向的配對案例", "n_dates": len(dates)}
+
+    def difference(indices):
+        values = [pair for index in indices for pair in normalized[dates[int(index)]]]
+        if not values:
+            return None
+        return sum(int(first) - int(second) for first, second in values) / len(values)
+
+    estimate = difference(np.arange(len(dates)))
+    results = []
+    for offset, block_length in enumerate(block_lengths):
+        if block_length < 1 or len(dates) < 3 * block_length:
+            results.append({"block_length_dates": block_length, "status": "not_estimable",
+                            "reason": "日期群聚不足三個區塊"})
+            continue
+        rng = np.random.default_rng(seed + 7919 * (offset + 1))
+        samples = []
+        blocks = math.ceil(len(dates) / block_length)
+        for _ in range(replicates):
+            starts = rng.integers(0, len(dates), size=blocks)
+            indices = np.concatenate([(start + np.arange(block_length)) % len(dates) for start in starts])[:len(dates)]
+            value = difference(indices)
+            if value is not None:
+                samples.append(value)
+        if len(samples) < .9 * replicates:
+            results.append({"block_length_dates": block_length, "status": "not_estimable",
+                            "reason": "有效重抽樣少於 90%"})
+            continue
+        results.append({"block_length_dates": block_length, "status": "ok",
+                        "confidence_interval": [float(np.quantile(samples, .025)),
+                                                float(np.quantile(samples, .975))],
+                        "valid_replicates": len(samples)})
+    return {"method": "paired_date_cluster_circular_block_percentile_interval",
+            "status": "ok" if any(item.get("status") == "ok" for item in results) else "not_estimable",
+            "estimate": estimate, "n_dates": len(dates), "n_pairs": total_pairs,
+            "replicates": replicates, "seed": seed, "by_block_length": results,
+            "warning": "敏感度區間，不提供獨立顯著性 p 值；季度只有少量日期群聚，結果仍需保守解讀。"}
+
+
 def _paired_returns(a, b) -> np.ndarray:
     values = np.column_stack((np.asarray(a, dtype=float), np.asarray(b, dtype=float)))
     if values.ndim != 2 or values.shape[1] != 2 or len(values) < 5 or not np.isfinite(values).all():

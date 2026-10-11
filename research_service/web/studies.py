@@ -1,16 +1,26 @@
 """Protocol-level statistics, preregistration and diagnostics."""
-from fastapi import APIRouter
+import threading
+
+from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from .context import BatchInput
-from .jobs import prepare
+from .context import BatchInput, JobInput, PlanInput
+from .jobs import prepare, probe_once
 
+from .. import model_router
+from ..collect import reusable_snapshot
+from ..errors import PreflightError
+from ..progress import study_progress
+from ..protocol import EVIDENCE_REF_VERSIONS, protocol_from, protocol_matches_fingerprint
 from ..reporting import csv_text, hold_band_sensitivity, pilot_diagnostics, stability_report, study_report
 
 
 def build_router(ctx):
     router = APIRouter()
     store = ctx.store
+    # Check-then-create must not interleave: two overlapping enqueues would both see
+    # no existing jobs and create the whole study twice.
+    enqueue_lock = threading.Lock()
 
     def protocol_jobs(protocol_hash):
         return store.jobs(protocol_hash)
@@ -30,6 +40,143 @@ def build_router(ctx):
             result["preregistration"] = None
         return result
 
+    @router.get("/api/studies")
+    def studies():
+        """Preregistered studies, newest first, each with its batch progress."""
+        return [{**item, "has_saved_cases": store.registered_cases(item["protocol_hash"]) is not None,
+                 "progress": study_progress(store.preregistration(item["protocol_hash"]),
+                                            store.study_rows(item["protocol_hash"]),
+                                            meta=store.registration_meta(item["protocol_hash"]))}
+                for item in store.preregistrations()]
+
+    @router.get("/api/studies/{protocol_hash}/progress")
+    def progress(protocol_hash: str):
+        return study_progress(store.preregistration(protocol_hash), store.study_rows(protocol_hash),
+                              meta=store.registration_meta(protocol_hash))
+
+    def real_weights_expected():
+        """An injected model (tests) or the demo provider has no weight digest to freeze."""
+        return not (ctx.injected_model_call or ctx.demo_mode)
+
+    @router.post("/api/studies/{protocol_hash}/enqueue")
+    def enqueue(protocol_hash: str, payload: BatchInput | None = None):
+        """Queue a preregistered study. Safe to repeat: cases that already have a job are skipped.
+
+        Without a body the case list saved at registration is used.
+        """
+        registration = store.preregistration(protocol_hash)
+        if not registration:
+            raise ValueError("這個協議還沒有事前登記；請先用 POST /api/studies/preregister 鎖定樣本")
+        meta = store.registration_meta(protocol_hash)
+        if meta and not study_progress(registration, [], meta=meta)["current"]:
+            raise ValueError(f"這個研究登記的是舊版協議 {meta['version']}，目前的引擎不能執行；請用目前版本重新規劃並事前登記")
+        if payload is None:
+            saved = store.registered_cases(protocol_hash)
+            if not saved:
+                raise ValueError("這個研究登記時沒有保存案例清單；請用「排入批次檔」上傳登記時的批次檔")
+            payload = BatchInput(cases=saved)
+        frozen = set(registration["dataset_ids"])
+        probe = probe_once(ctx)
+        prepared = [prepare(ctx, item, model_probe=probe) for item in payload.cases]
+        wrong = [item["dataset_id"] for item in prepared if item["protocol_hash"] != protocol_hash]
+        frozen_digest = (meta or {}).get("model_digest")
+        protocol = prepared[0]["protocol"] if prepared else {}
+        digest_required = (protocol.get("version") in EVIDENCE_REF_VERSIONS and real_weights_expected()
+                           and (model_router.uses_ollama(protocol_from(protocol)) if model_router.is_routed(protocol)
+                                else str(protocol.get("model", "")).startswith("ollama/")))
+        if digest_required and not frozen_digest:
+            raise ValueError("此正式協議未凍結模型權重 digest；請用目前版本重新事前登記")
+        # Router protocols lock one value over every routed model's digest (Judge, A and B).
+        if frozen_digest and any(model_router.registration_digest(item) != frozen_digest for item in prepared):
+            raise ValueError("模型權重 digest 與事前登記時不同；全部未排入")
+        if wrong:
+            raise ValueError(f"{len(wrong)} 個案例的協議與登記不符（例如設定或模型不同），全部未排入")
+        outside = [item["dataset_id"] for item in prepared if item["dataset_id"] not in frozen]
+        if outside:
+            raise ValueError(f"{len(outside)} 個案例不在事前登記的樣本內，全部未排入")
+        # A list that passed both checks reproduces the registration; keep it for one-click re-queueing.
+        store.save_registered_cases(protocol_hash, [item.model_dump() for item in payload.cases])
+        with enqueue_lock:
+            existing = {row["dataset_id"] for row in store.study_rows(protocol_hash) if row["status"] != "cancelled"}
+            created = []
+            for item in prepared:
+                if item["dataset_id"] not in existing:  # also drops a case listed twice in one request
+                    existing.add(item["dataset_id"])
+                    created.append(store.create(item)["id"])
+        return {"created": len(created), "skipped_existing": len(prepared) - len(created),
+                "progress": study_progress(registration, store.study_rows(protocol_hash))}
+
+    @router.post("/api/studies/plan")
+    def plan(payload: PlanInput):
+        """Match tickers x dates to their newest complete dataset and check each case's readiness.
+
+        The model endpoint is not contacted, so a study can be planned while the
+        GPU is off; queueing still checks the model for real.
+        """
+        def assume_model():
+            # The weight digest is checked when jobs are queued, not part of the protocol hash.
+            return {"ready": True, "models": [payload.model], "details": [{"id": payload.model, "digest": "planned"}]}
+
+        def assume_route(protocol, model):
+            return {"id": model, "digest": "planned", "endpoint": model_router.endpoint_label(protocol, model)}
+        cases, ready = [], []
+        snapshots = store.datasets()
+        for analysis_date in payload.dates:
+            for ticker in payload.tickers:
+                dataset = reusable_snapshot(store, ticker, analysis_date, payload.design, datasets=snapshots)
+                row = {"ticker": ticker, "analysis_date": analysis_date,
+                       "dataset_id": dataset["id"] if dataset else None}
+                if not dataset:
+                    row.update(ready=False, reason="no_dataset", message="沒有完整的資料集；請先在「資料準備」建立")
+                else:
+                    request = JobInput(dataset_id=dataset["id"], analysis_date=analysis_date, model=payload.model,
+                                       voting_samples=payload.voting_samples, study=payload.study,
+                                       anonymize_ticker=payload.anonymize_ticker,
+                                       missing_data_policy=payload.missing_data_policy, design=payload.design,
+                                       model_context_length=payload.model_context_length,
+                                       ollama_parallel=payload.ollama_parallel,
+                                       **{key: value for key in ("debate_model_a", "debate_model_b",
+                                                                 "debate_assignments", "model_endpoints")
+                                          if (value := getattr(payload, key, None)) is not None})
+                    try:
+                        config = prepare(ctx, request, model_probe=assume_model, route_probe=assume_route)
+                        row.update(ready=True, protocol_hash=config["protocol_hash"])
+                        ready.append(request.model_dump())
+                    except (PreflightError, ValueError) as error:
+                        row.update(ready=False, reason=getattr(error, "reason", "invalid"), message=str(error))
+                cases.append(row)
+        hashes = sorted({row["protocol_hash"] for row in cases if row.get("protocol_hash")})
+        registration = store.preregistration(hashes[0]) if len(hashes) == 1 else None
+        return {"cases": cases, "ready_cases": ready, "ready": len(ready), "total": len(cases),
+                "protocol_hash": hashes[0] if len(hashes) == 1 else None,
+                "already_preregistered": bool(registration),
+                "frozen_at": registration["frozen_at"] if registration else None}
+
+    @router.post("/api/studies/{protocol_hash}/{command}-all")
+    def control_all(protocol_hash: str, command: str):
+        """Pause or resume every job of a study in one step (e.g. before stopping the GPU)."""
+        if command not in ("pause", "resume"):
+            raise HTTPException(404)
+        rows = store.study_rows(protocol_hash)
+        if command == "resume" and not study_progress(store.preregistration(protocol_hash), rows,
+                                                      meta=store.registration_meta(protocol_hash))["current"]:
+            raise ValueError("這是舊版協議的研究，不能用目前的引擎續跑；結果保留供查看")
+        if command == "resume":
+            stale = [job["id"] for job in store.jobs(protocol_hash)
+                     if job["status"] in ("queued", "running", "paused")
+                     and not protocol_matches_fingerprint(job["config"].get("protocol", {}),
+                                                          job["config"].get("protocol_hash"))]
+            if stale:
+                raise ValueError("此研究的凍結協議/source fingerprint 與目前程式不符；不可續跑，請重新預覽並事前登記")
+        movable = ("queued", "running") if command == "pause" else ("paused",)
+        changed = 0
+        for row in rows:
+            if row["status"] in movable:
+                store.control(row["id"], command)
+                changed += 1
+        return {"changed": changed,
+                "progress": study_progress(store.preregistration(protocol_hash), store.study_rows(protocol_hash))}
+
     @router.post("/api/studies/preregister")
     def preregister(payload: BatchInput):
         """Lock a planned sample before any of it runs; creates no jobs.
@@ -38,12 +185,29 @@ def build_router(ctx):
         records the exact protocol the batch will run under. Only jobs created
         after this lock count as formal results.
         """
-        prepared = [prepare(ctx, item) for item in payload.cases]
+        probe = probe_once(ctx)
+        prepared = [prepare(ctx, item, model_probe=probe) for item in payload.cases]
         hashes = {item["protocol_hash"] for item in prepared}
         if len(hashes) != 1:
             raise ValueError("批次內的案例必須使用同一套研究協議（相同模型與設定）才能一起鎖定樣本")
         [protocol_hash] = hashes
-        return {**store.freeze(protocol_hash, {item["dataset_id"] for item in prepared}), "cases": len(prepared)}
+        protocol = prepared[0]["protocol"]
+        if protocol["version"] in EVIDENCE_REF_VERSIONS and not protocol.get("anonymize_ticker"):
+            raise ValueError("v3-1002.3 起的正式研究須匿名化股票代號；請勾選匿名化後重新預覽")
+        model_digest = model_router.registration_digest(prepared[0])
+        routed = model_router.is_routed(protocol)
+        if (protocol["version"] in EVIDENCE_REF_VERSIONS
+                and (model_router.uses_ollama(protocol_from(protocol)) if routed else protocol["model"].startswith("ollama/"))
+                and real_weights_expected()):
+            if not model_digest or any(model_router.registration_digest(item) != model_digest
+                                       for item in prepared):
+                raise ValueError("正式登記必須取得所有案例一致的模型權重 digest；尚未鎖定樣本")
+        frozen = store.freeze(protocol_hash, {item["dataset_id"] for item in prepared})
+        store.save_registered_cases(protocol_hash, [item.model_dump() for item in payload.cases])
+        store.save_registration_meta(protocol_hash, protocol["version"], protocol["model"],
+                                     protocol.get("design", "quarterly"),
+                                     model_digest)
+        return {**frozen, "cases": len(prepared)}
 
     @router.post("/api/studies/{protocol_hash}/freeze")
     def freeze_study(protocol_hash: str):

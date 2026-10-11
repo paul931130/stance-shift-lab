@@ -1,0 +1,13 @@
+{
+  "citation_count": 24,
+  "bibliography_count": 25,
+  "missing_citations": [],
+  "missing_refs": [],
+  "formal_pending_marker_count": 31,
+  "original_sources_unchanged": {
+    "application.tex": true,
+    "stance-shift-ssrn.tex": true,
+    "references.bib": true
+  },
+  "compile_status": "built-in compiler failed: Unable to find standard directories for platform; no verified PDF"
+}

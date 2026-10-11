@@ -14,9 +14,11 @@
 | `docs/` | 操作、研究口徑與部署文件 | 是 |
 | Docker volume `research-data` | SQLite、工作進度與結果 | 否；需另行備份 |
 | `CHANGELOG.md` | 各協議版本的行為變更紀錄 | 是 |
+| `compose.research.yaml`、`compose.ollama*.yaml`、`compose.production.yaml` | 框架服務：主服務、選用的 Ollama 容器（CPU／NVIDIA）、遠端部署附加設定 | 是 |
+| `experiments/` | 本專題各實驗（E1–E3）固定映像、資料庫與連接埠的 compose 檔，見其 README | 是 |
 | `.github/workflows/ci.yml` | ruff、Python 測試、前端語法檢查、瀏覽器端對端測試、Docker build | 是 |
 | `ruff.toml` | Python lint 規則（正確性導向：語法錯誤、未使用 import/變數） | 是 |
 
-舊版 Sites/Next 展示原型（`app/`、`lib/`、`db/`、`drizzle/`、`worker/`、Node/Vite/Cloudflare 設定）已於 2026-09-12 移除；其設計背景保留在 [design-notes-v3-0908.md](design-notes-v3-0908.md)，需要參考原始碼可從 git 歷史還原。正式服務只讀專案根目錄的 `research-inputs/Stock_news.csv`。
+舊版 Sites/Next 展示原型（`app/`、`lib/`、`db/`、`drizzle/`、`worker/`、Node/Vite/Cloudflare 設定）已於 2026-09-12 移除；其設計背景保留在 [design-notes-v3-0908.md](archive/design-notes-v3-0908.md)，需要參考原始碼可從 git 歷史還原。正式服務只讀專案根目錄的 `research-inputs/Stock_news.csv`。
 
 資料快照存進 SQLite 後，以 dataset ID 鎖定內容。相同資料集可供多個模型或 A/B/C/D 重跑；除非研究者明確要求新版資料快照，否則不重新呼叫來源 API。
