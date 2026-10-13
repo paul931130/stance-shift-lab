@@ -7,11 +7,11 @@ from fastapi.responses import Response
 from .context import BatchInput, JobInput, PlanInput
 from .jobs import prepare, probe_once
 
-from .. import model_router
+from .. import domain_debate, model_router
 from ..collect import reusable_snapshot
 from ..errors import PreflightError
 from ..progress import study_progress
-from ..protocol import EVIDENCE_REF_VERSIONS, protocol_from, protocol_matches_fingerprint
+from ..protocol import EVIDENCE_REF_VERSIONS, protocol_from
 from ..reporting import csv_text, hold_band_sensitivity, pilot_diagnostics, stability_report, study_report
 
 
@@ -136,7 +136,8 @@ def build_router(ctx):
                                        model_context_length=payload.model_context_length,
                                        ollama_parallel=payload.ollama_parallel,
                                        **{key: value for key in ("debate_model_a", "debate_model_b",
-                                                                 "debate_assignments", "model_endpoints")
+                                                                 "debate_assignments", "model_endpoints",
+                                                                 "domain_debate")
                                           if (value := getattr(payload, key, None)) is not None})
                     try:
                         config = prepare(ctx, request, model_probe=assume_model, route_probe=assume_route)
@@ -164,8 +165,7 @@ def build_router(ctx):
         if command == "resume":
             stale = [job["id"] for job in store.jobs(protocol_hash)
                      if job["status"] in ("queued", "running", "paused")
-                     and not protocol_matches_fingerprint(job["config"].get("protocol", {}),
-                                                          job["config"].get("protocol_hash"))]
+                     and not domain_debate.config_matches_fingerprint(job["config"])]
             if stale:
                 raise ValueError("此研究的凍結協議/source fingerprint 與目前程式不符；不可續跑，請重新預覽並事前登記")
         movable = ("queued", "running") if command == "pause" else ("paused",)

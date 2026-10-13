@@ -8,11 +8,11 @@ import zipfile
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import Response
 
-from .. import model_router
+from .. import domain_debate, model_router
 from ..data import research_inputs
 from ..errors import NotFoundError, PreflightError
 from ..protocol import (DEFAULT_RESEARCH_MODEL, FORMAL_SMALL_MODEL_ALLOWLIST, SMALL_MODEL_PATTERN,
-                        RouterProtocol, StudyProtocol, protocol_is_current, protocol_matches_fingerprint, validate_case)
+                        RouterProtocol, StudyProtocol, protocol_is_current, validate_case)
 from ..readiness import coverage
 from ..reporting import export_job, study_report
 from ..splits import classify_analysis_date
@@ -72,6 +72,16 @@ def prepare(ctx, payload, model_probe=None, route_probe=None):
         build_protocol = RouterProtocol
         if router_fields.get("debate_assignments") is not None:
             router_fields["debate_assignments"] = tuple(router_fields["debate_assignments"])
+    domain_settings = None
+    if payload.domain_debate is not None:
+        if router_fields:
+            raise PreflightError("design_mismatch", "RQ2 模型指派與 RQ3 領域辯論不能在同一個工作同時使用")
+        if payload.design != "quarterly":
+            raise PreflightError("design_mismatch", "RQ3 領域辯論目前只定義季度設計")
+        try:
+            domain_settings = domain_debate.settings_from_request(payload.domain_debate)
+        except (TypeError, ValueError) as error:
+            raise PreflightError("invalid_domain_debate", str(error)) from None
     protocol = build_protocol(model=effective_model, voting_samples=payload.voting_samples, study=payload.study,
         anonymize_ticker=payload.anonymize_ticker, dataset_kind=data["kind"],
         missing_data_policy=payload.missing_data_policy,
@@ -140,6 +150,12 @@ def prepare(ctx, payload, model_probe=None, route_probe=None):
         model_identity = {"id": effective_model,
                           "provider": "built_in_demo" if ctx.demo_mode else ("test_override" if ctx.injected_model_call else "cloud_alias"),
                           "resolved_at": now()}
+    rq3_fields = {}
+    if domain_settings is not None:
+        try:
+            rq3_fields = domain_debate.rq3_job_fields(protocol, domain_settings)
+        except ValueError as error:
+            raise PreflightError("invalid_domain_debate", str(error)) from None
     return {"ticker": data["ticker"], "analysis_date": payload.analysis_date,
         "evaluation_split": classify_analysis_date(payload.analysis_date), "dataset_id": payload.dataset_id,
         "dataset_hash": payload.dataset_id, "protocol": asdict(protocol), "protocol_hash": protocol.fingerprint,
@@ -156,7 +172,7 @@ def prepare(ctx, payload, model_probe=None, route_probe=None):
                if payload.allow_low_quality_sentiment and quality_problem else {}),
             **({"allow_point_fundamental": True, "fundamental_quality": fundamental_quality}
                if payload.allow_point_fundamental and fundamental_problem else {}),
-        }}
+        }, **rq3_fields}
 
 
 def clone_request(ctx, original):
@@ -187,7 +203,8 @@ def clone_request(ctx, original):
         allow_point_fundamental=allow_point_fundamental,
         allow_small_model=allow_small, allow_low_quality_sentiment=allow_low_quality,
         **{key: p[key] for key in ("debate_model_a", "debate_model_b", "debate_assignments", "model_endpoints")
-           if p.get(key) is not None})
+           if p.get(key) is not None},
+        **({"domain_debate": old["domain_debate"]} if old.get("domain_debate") is not None else {}))
     migration = ({"from_protocol_version": p.get("version", "unknown"),
                   "legacy_small_model_override": allow_small,
                   "legacy_low_quality_sentiment_override": allow_low_quality} if legacy else None)
@@ -272,7 +289,7 @@ def build_router(ctx):
             protocol = config.get("protocol", {})
             if not protocol_is_current(protocol):
                 raise ValueError("舊版實驗已隔離；請複製至新版")
-            if not protocol_matches_fingerprint(protocol, config.get("protocol_hash")):
+            if not domain_debate.config_matches_fingerprint(config):
                 raise ValueError("此工作的凍結協議/source fingerprint 與目前程式不符；不可續跑，請重新預覽並事前登記")
         store.control(key, command)
         return store.get(key)

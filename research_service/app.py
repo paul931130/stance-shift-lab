@@ -17,7 +17,7 @@ from fastapi.responses import JSONResponse
 
 from .autostop import AutoStop
 from .breaker import Breaker, is_provider_failure
-from .engine import Engine
+from .domain_debate import DomainDebateEngine
 from .errors import NotFoundError
 from .logging_config import get_logger
 from .security import SessionAuth
@@ -82,7 +82,7 @@ def create_app(store=None, model_call=None, start_worker=True):
     breaker = Breaker(lambda: model_call is not None or ctx.demo_mode or probe_models(ctx).get("ready"))
     ctx = AppContext(
         store=store, settings=settings,
-        engine=Engine(store, model_call) if model_call else Engine(store),
+        engine=DomainDebateEngine(store, model_call) if model_call else DomainDebateEngine(store),
         auth=SessionAuth(access_key), access_key=access_key, remote=remote,
         demo_mode=demo_mode, demo_model_id=demo_model_id, demo_dataset_id=demo_dataset_id,
         injected_model_call=model_call is not None,
@@ -180,6 +180,7 @@ def create_app(store=None, model_call=None, start_worker=True):
     # The auth middleware below still protects it in remote mode.
     app = FastAPI(title="Stance Shift Research v3", lifespan=lifespan)
     app.state.store = store
+    app.state.engine = ctx.engine
     app.state.breaker = ctx.breaker = breaker
 
     @app.middleware("http")

@@ -40,8 +40,8 @@ from .engine import Engine, compute_usage, derive_action, gate, validation_hint
 from .logging_config import get_logger
 from .models import (_compact_history, _compact_report, _decision_evidence, alias_messages, evidence_aliases,
                      messages_for, prompt_text, validate_financial_interpretation, validate_financial_numbers)
-from .protocol import (DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, SWITCH_ROUND, DecisionCall, decision_plan,
-                       protocol_from)
+from .protocol import (DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, QUARTERLY_VERSION, SWITCH_ROUND, DecisionCall,
+                       decision_plan, protocol_from, protocol_matches_fingerprint)
 from .storage import now
 
 logger = get_logger(__name__)
@@ -182,6 +182,33 @@ def rq3_fingerprint(protocol, settings):
     payload = {"base_protocol_hash": protocol.fingerprint, "domain_debate": asdict(settings),
                "rq3_source": rq3_source_digest()}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def config_matches_fingerprint(config):
+    """Whether a stored job hash still matches this checkout, for RQ1/RQ2 and RQ3 jobs alike."""
+    settings = settings_from_config(config)
+    if settings is None:
+        return protocol_matches_fingerprint(config.get("protocol", {}), config.get("protocol_hash"))
+    try:
+        return config.get("protocol_hash") == rq3_fingerprint(protocol_from(config["protocol"]), settings)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def settings_from_request(value):
+    """Validate RQ3 settings sent by a client; unknown keys are an error, not silently dropped."""
+    unknown = sorted(set(value) - {item.name for item in fields(DomainDebateSettings)})
+    if unknown:
+        raise ValueError(f"未知的 RQ3 設定欄位：{', '.join(unknown)}")
+    return DomainDebateSettings.from_dict(value)
+
+
+def rq3_job_fields(protocol, settings):
+    """The config fields that turn a prepared v3-1002.3 job into an RQ3 job."""
+    if protocol.version != QUARTERLY_VERSION:
+        raise ValueError(f"RQ3 只定義在季度 {QUARTERLY_VERSION} 協議上")
+    return {"domain_debate": asdict(settings), "base_protocol_hash": protocol.fingerprint,
+            "protocol_hash": rq3_fingerprint(protocol, settings)}
 
 
 def rq3_job_config(protocol, settings, **config):

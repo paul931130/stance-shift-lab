@@ -104,6 +104,8 @@ class JobInput(BaseModel):
     debate_assignments: list[str] | None = None
     # {model id: {"api_base", "timeout_seconds", "api_key_env"}}; never a password or token.
     model_endpoints: dict | None = None
+    # RQ3 domain-specialized debate settings (domain_debate.DomainDebateSettings); not combinable with RQ2.
+    domain_debate: dict | None = None
 
 
 class BatchInput(BaseModel):
@@ -126,3 +128,4 @@ class PlanInput(BaseModel):
     debate_model_b: str | None = Field(default=None, max_length=200)
     debate_assignments: list[str] | None = None
     model_endpoints: dict | None = None
+    domain_debate: dict | None = None

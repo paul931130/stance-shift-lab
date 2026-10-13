@@ -11,7 +11,7 @@ from research_service.domain_debate import (DomainDebateEngine, DomainDebateSett
                                             rq3_job_config)
 from research_service.engine import Engine
 from research_service.protocol import (DOMAIN_NAMES, PROTOCOL_SOURCE_MODULES, StudyProtocol, decision_plan,
-                                       prompt_source_digest)
+                                       prompt_source_digest, protocol_from)
 from research_service.rq3_reporting import rq3_study_report
 from research_service.storage import Store
 
@@ -347,6 +347,76 @@ class EngineTests(unittest.TestCase):
     def test_demo_provider_completes_an_rq3_case(self):
         job = self.run_case(DomainDebateSettings(rule="both"), demo_model, demo_dataset())
         self.assertEqual(set(job["state"]["decisions"]), {"A", "B", "C", "D", "C_domain", "D_domain"})
+
+
+class WebApiTests(unittest.TestCase):
+    """RQ3 jobs are created through /api/jobs and run by the web service's own engine."""
+
+    def client(self, directory):
+        import os
+        from unittest.mock import patch
+        from fastapi.testclient import TestClient
+        from research_service.app import create_app
+        env = patch.dict(os.environ, {"RESEARCH_DEMO_MODE": "true"}, clear=False)
+        env.start()
+        self.addCleanup(env.stop)
+        app = create_app(Store(directory), start_worker=False)
+        return app, TestClient(app)
+
+    def test_api_creates_an_rq3_job_and_the_web_engine_runs_it(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app, client = self.client(directory)
+            with client:
+                dataset = client.get("/api/datasets").json()[0]
+                response = client.post("/api/jobs", json={
+                    "dataset_id": dataset["id"], "analysis_date": "2024-12-31",
+                    "domain_debate": {"rule": "fixed", "aggregator_order": "fixed"}})
+                self.assertEqual(response.status_code, 200, response.text)
+                job = response.json()
+                config = job["config"]
+                self.assertEqual(config["domain_debate"]["rule"], "fixed")
+                self.assertEqual(config["base_protocol_hash"], protocol_from(config["protocol"]).fingerprint)
+                self.assertNotEqual(config["protocol_hash"], config["base_protocol_hash"])
+                self.assertTrue(domain_debate.config_matches_fingerprint(config))
+                self.assertIsInstance(app.state.engine, DomainDebateEngine)
+                store = app.state.store
+                job = store.get(job["id"])
+                for _ in range(80):
+                    store.save_step(job["id"], app.state.engine.advance(job))
+                    job = store.get(job["id"])
+                    if job["status"] == "complete":
+                        break
+                self.assertEqual(job["status"], "complete")
+                self.assertEqual(set(job["state"]["decisions"]), {"A", "B", "C", "D", "C_domain"})
+
+    def test_resume_accepts_an_rq3_hash_and_rejects_a_tampered_one(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app, client = self.client(directory)
+            with client:
+                dataset = client.get("/api/datasets").json()[0]
+                job = client.post("/api/jobs", json={
+                    "dataset_id": dataset["id"], "analysis_date": "2024-12-31",
+                    "domain_debate": {"rule": "switch"}}).json()
+                self.assertEqual(client.post(f"/api/jobs/{job['id']}/pause").status_code, 200)
+                self.assertEqual(client.post(f"/api/jobs/{job['id']}/resume").status_code, 200)
+                tampered = {**job["config"], "domain_debate": {**job["config"]["domain_debate"], "rule": "both"}}
+                self.assertFalse(domain_debate.config_matches_fingerprint(tampered))
+
+    def test_invalid_or_combined_settings_are_refused(self):
+        with tempfile.TemporaryDirectory() as directory:
+            app, client = self.client(directory)
+            with client:
+                dataset = client.get("/api/datasets").json()[0]
+                base = {"dataset_id": dataset["id"], "analysis_date": "2024-12-31"}
+                unknown = client.post("/api/jobs", json={**base, "domain_debate": {"rule": "fixed", "rulez": 1}})
+                self.assertGreaterEqual(unknown.status_code, 400)
+                self.assertIn("rulez", unknown.text)
+                bad_rule = client.post("/api/jobs", json={**base, "domain_debate": {"rule": "sometimes"}})
+                self.assertGreaterEqual(bad_rule.status_code, 400)
+                combined = client.post("/api/jobs", json={**base, "domain_debate": {"rule": "fixed"},
+                                                          "debate_model_b": "ollama/demo-synthetic-b"})
+                self.assertGreaterEqual(combined.status_code, 400)
+                self.assertEqual(app.state.store.job_summaries(), [])
 
 
 if __name__ == "__main__":
