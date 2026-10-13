@@ -12,6 +12,7 @@ from ..collect import reusable_snapshot
 from ..errors import PreflightError
 from ..progress import study_progress
 from ..protocol import EVIDENCE_REF_VERSIONS, protocol_from
+from ..rq3_reporting import rq3_study_report
 from ..reporting import csv_text, hold_band_sensitivity, pilot_diagnostics, stability_report, study_report
 
 
@@ -220,6 +221,17 @@ def build_router(ctx):
         if not dataset_ids:
             raise ValueError("這個協議版本還沒有任何實驗，無法鎖定研究樣本")
         return store.freeze(protocol_hash, dataset_ids)
+
+    @router.get("/api/studies/{protocol_hash}/rq2")
+    def rq2(protocol_hash: str):
+        """Descriptive RQ2 per-arm accuracy and interaction for this protocol's jobs (no p-values)."""
+        jobs = [job for job in protocol_jobs(protocol_hash) if job["status"] == "complete"]
+        return model_router.rq2_summary(jobs)
+
+    @router.get("/api/studies/{protocol_hash}/rq3")
+    def rq3(protocol_hash: str):
+        """RQ3 rule-matched Generalist vs Domain comparison, cost and view agreement."""
+        return rq3_study_report([job for job in protocol_jobs(protocol_hash) if job["status"] == "complete"])
 
     @router.get("/api/studies/{protocol_hash}/pilot")
     def pilot(protocol_hash: str):

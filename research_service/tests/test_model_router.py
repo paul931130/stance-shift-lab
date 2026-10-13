@@ -357,6 +357,15 @@ class DemoModeRouterTests(unittest.TestCase):
                     break
             self.assertEqual(job["status"], "complete")
             self.assertEqual(set(job["state"]["routed_decisions"]), {"C@AB", "D@AB", "C@BA", "D@BA"})
+            with patch.dict(os.environ, {"RESEARCH_DEMO_MODE": "true"}, clear=False):
+                with TestClient(create_app(store, start_worker=False)) as client:
+                    summary = client.get(f"/api/studies/{config['protocol_hash']}/rq2")
+                    self.assertEqual(summary.status_code, 200, summary.text)
+                    body = summary.json()
+                    self.assertEqual(body["cases"], 1 if body["accuracy"] else 0)
+                    self.assertIn("interaction", body)
+                    self.assertIn("note", body)
+                    self.assertEqual(client.get("/api/studies/nope/rq2").json()["cases"], 0)
 
 
 if __name__ == "__main__":

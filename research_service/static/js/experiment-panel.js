@@ -7,6 +7,7 @@ import { api, task, BATCH_TIMEOUT } from './api.js';
 import { flow } from './flow.js';
 import { setTab } from './nav.js';
 import { refreshJobs } from './runs-panel.js';
+import { mountDesign, designPayload, designSummary, refreshNominal } from './design-panel.js';
 
 const OVERRIDE_FOR = {sentiment_quality: 'override-sentiment', fundamental_quality: 'override-fundamental', model_too_small: 'override-model'};
 const PREFLIGHT_DEBOUNCE_MS = 250;
@@ -22,6 +23,7 @@ function jobPayload() {
     allow_point_fundamental: $('allow-point-fundamental').checked,
     allow_small_model: $('allow-small-model').checked,
     allow_low_quality_sentiment: $('allow-low-quality-sentiment').checked,
+    ...designPayload('job'),
   };
 }
 
@@ -43,6 +45,7 @@ export function syncExperimentGuard() {
   clearTimeout(preflightTimer);
   const seq = ++preflightSeq;
   if (!$('dataset').value) { showGuard(false, 'no_dataset', '尚未選擇資料集，因此不能啟動實驗。'); return; }
+  try { jobPayload(); } catch (error) { showGuard(false, 'design', error.message); return; }  // local mistakes, e.g. credentials in a URL
   showGuard(false, 'checking', '正在向伺服器確認資料集、分析日與模型…');
   preflightTimer = setTimeout(async () => {
     let result;
@@ -152,12 +155,14 @@ async function submitJob() {
   const payload = jobPayload();
   const job = await api('/api/jobs', payload);
   state.selectedJob = job.id;
-  notify(`研究已加入背景佇列，模型為 ${payload.model}。本次設定（含決策規則與品質例外）已固定在這筆實驗中。`);
+  notify(`研究已加入背景佇列（${designSummary('job')}），模型為 ${payload.model}。本次設定（含決策規則與品質例外）已固定在這筆實驗中。`);
   setTab('runs');
   await refreshJobs();
 }
 
 export function initExperimentPanel(config, models) {
+  mountDesign($('job-design'), 'job', {voting: () => $('voting').value, onChange: syncExperimentGuard});
+  $('voting').addEventListener('change', () => { refreshNominal('job', $('voting').value); });
   const todayIso = new Date().toISOString().slice(0, 10);
   $('analysis-date').innerHTML = config.dates.map(v => `<option value="${escape(v)}">${escape(v)} · 季末研究日</option>`).join('')
     + `<option value="${escape(todayIso)}">${escape(todayIso)} · 今天（當下分析，非正式研究）</option>`;

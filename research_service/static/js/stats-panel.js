@@ -4,6 +4,7 @@ import { state, on } from './store.js';
 import { api, task } from './api.js';
 import { flow } from './flow.js';
 import { setTab } from './nav.js';
+import { rqStatsSection } from './rq-stats.js';
 
 const GROUP_TONES = {A: 'a', B: 'b', C: 'c', D: 'd'};
 const GROUP_NAMES = {A: '單次判斷', B: '獨立投票', C: '固定立場辯論', D: '立場交換辯論'};
@@ -145,6 +146,8 @@ export async function showStatistics() {
     api(`/api/studies/${protocol}`), api(`/api/studies/${protocol}/pilot`), api(`/api/studies/${protocol}/hold-band`),
   ]);
   const element = $('statistics');
+  const job = state.allJobs.find(item => item.id === state.selectedJob) || state.allJobs.find(item => item.config.protocol_hash === protocol);
+  const rqSection = job ? await rqStatsSection(job.config) : '';
   const primaryHorizon = report.primary_horizon || 60;
   const primary = report.summary.filter(r => r.horizon === primaryHorizon && r.cost_model === 'corwin_schultz' && r.decision_layer === 'candidate' && r.portfolio_basis === 'all');
   const completionStatus = report.completion;
@@ -171,6 +174,7 @@ export async function showStatistics() {
     ${verdictBlock(report.primary_inference, ready)}
     <div class="chart-pair">${comparisonBars(groups, 'selective_accuracy', '條件準確率', percentage)}${comparisonBars(groups, 'sharpe', `年化 Sharpe${benchmark?.sharpe != null ? `（買進持有參照 ${benchmark.sharpe.toFixed(2)}）` : ''}`, sharpe2)}</div>
     ${performanceTable(groups, benchmark, primaryHorizon)}</section>
+    ${rqSection}
     <section class="stats-substep"><div class="section-label">4.2 / 配對檢定</div>${pairedTestsTable(report.comparisons, primaryHorizon, report.primary_inference) || '<p class="hint">完成案例達最低統計門檻後，才會計算 D 對 C、B、A 之配對檢定。</p>'}${primaryInferenceBlock(report.primary_inference)}${directionBlocks}</section>
     <details class="stats-group"><summary>4.3 / 敏感性分析與資料品質（完成狀態、年度切分、數字品質、新聞覆蓋、知識截止日）</summary>${completion}${splits}${numericQuality}${newsCoverage}${knowledgeCutoffBlock(report.knowledge_cutoff)}</details>
     <section class="stats-substep"><div class="section-label">4.4 / 品質與匯出</div><p class="hint">試跑檢查（pilot）：${pilot.verdict === 'proceed' ? '通過，可以開始正式批次' : pilot.verdict === 'blocked' ? '尚未通過' : '—'}。這是正式批次前的健檢，用來確認各組結果沒有異常（例如全部都 Hold）。「Hold 門檻」的敏感度分析是用既有預測重算，不會重新呼叫模型。</p>${pilotReasons(pilot.blocking_reasons)}<div class="actions"><a href="/api/studies/${protocol}/summary.csv">下載摘要表（summary.csv）</a><a href="/api/studies/${protocol}" download="statistics.json">下載完整統計（statistics.json）</a></div></section>

@@ -388,6 +388,11 @@ class WebApiTests(unittest.TestCase):
                         break
                 self.assertEqual(job["status"], "complete")
                 self.assertEqual(set(job["state"]["decisions"]), {"A", "B", "C", "D", "C_domain"})
+                report = client.get(f"/api/studies/{config['protocol_hash']}/rq3")
+                self.assertEqual(report.status_code, 200, report.text)
+                self.assertEqual(report.json()["status"], "complete")
+                self.assertEqual(report.json()["cases"], 1)
+                self.assertEqual(client.get("/api/studies/nope/rq3").json()["status"], "no_complete_rq3_cases")
 
     def test_resume_accepts_an_rq3_hash_and_rejects_a_tampered_one(self):
         with tempfile.TemporaryDirectory() as directory:
