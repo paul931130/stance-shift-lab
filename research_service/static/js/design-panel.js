@@ -186,3 +186,17 @@ export function designSummary(prefix) {
 }
 
 export function refreshNominal(prefix, voting) { describe(prefix, voting); }
+
+// The header shows the question of the design being viewed (report, 研究問題 section).
+const QUESTIONS = {
+  rq1: ['RQ1', '在相同資料與相同決策呼叫次數下，自我反駁式「立場交換辯論」（D）之方向準確率與風險調整後報酬，是否優於「固定立場辯論」（C）？'],
+  rq2: ['RQ2', '當看多與看空代理人由不同基礎模型擔任時，自我反駁式立場交換辯論（D）相對固定立場辯論（C）的投資決策效果是否改變？'],
+  rq3: ['RQ3', '相較於將四類資訊整合後交由共同多空代理人辯論，若改由技術面、基本面、情緒面與總經面代理人分別在各自領域辯論，再由上層整合，是否能改善方向準確率與風險調整後績效？'],
+};
+export function setResearchQuestion(design = 'rq1') {
+  const box = document.querySelector('.research-question');
+  const [label, text] = QUESTIONS[design] || QUESTIONS.rq1;
+  if (!box) return;
+  box.querySelector('b').textContent = label;
+  box.querySelector('span').textContent = text;
+}

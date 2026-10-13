@@ -7,7 +7,7 @@ import { flow } from './flow.js';
 import { setTab, syncUrl } from './nav.js';
 import { showStatistics } from './stats-panel.js';
 import { refreshStudies } from './study-panel.js';
-import { designOf, designLabel, stripOllama } from './design-panel.js';
+import { designOf, designLabel, stripOllama, setResearchQuestion } from './design-panel.js';
 import { rq2RunPanel, rq3RunPanel } from './rq-run.js';
 
 const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
@@ -31,14 +31,24 @@ function announceTransitions(jobs) {
   }
   const running = jobs.filter(job => job.status === 'running');
   document.title = running.length
-    ? `(${running.map(job => `${job.steps}/${jobTotal(job.config.protocol)}`).join(', ')}) ${BASE_TITLE}`
+    ? `(${running.map(job => `${job.steps}/${generalistTotal(job.config.protocol)}`).join(', ')}) ${BASE_TITLE}`
     : BASE_TITLE;
 }
 
 // RQ2 runs C and D once per model assignment; RQ3 keeps the four generalist arms (domain arms are counted apart).
 const assignmentCount = protocol => (protocol.debate_assignments || ['AA']).length;
 const groupTotals = protocol => ({A: 1, B: protocol.voting_samples, C: 7 * assignmentCount(protocol), D: 7 * assignmentCount(protocol)});
-const jobTotal = protocol => 15 + protocol.voting_samples + 14 * (assignmentCount(protocol) - 1);
+const generalistTotal = protocol => 15 + protocol.voting_samples + 14 * (assignmentCount(protocol) - 1);
+// RQ3 adds 29 nominal calls per domain arm (4 domains x (6 turns + 1 view) + 1 aggregator).
+const domainArms = config => config.domain_debate ? (config.domain_debate.rule === 'both' ? 2 : 1) : 0;
+const jobTotal = config => generalistTotal(config.protocol) + 29 * domainArms(config);
+// Domains without usable evidence get a recorded InsufficientInfo view and skip their calls.
+const domainCalls = s => (s.domain_records || []).filter(record => !record.audit?.deterministic).length;
+const outputsDone = s => (s.records || []).length + domainCalls(s);
+function outputText(job, s, total) {
+  const done = outputsDone(s), skipped = job.status === 'complete' ? total - done : 0;
+  return skipped > 0 ? `${done} 次模型輸出（名義 ${total} 次，資訊不足的領域略過 ${skipped} 次）` : `${done}/${total} 模型輸出`;
+}
 
 // What the pipeline map needs to know about a job's research design.
 function mapDesign(config) {
@@ -87,7 +97,7 @@ function renderJobList() {
   if (!state.allJobs.length) { list.textContent = '尚無實驗。先準備資料，再建立第一筆研究。'; return; }
   if (!jobs.length) { list.textContent = `沒有符合條件的實驗（共 ${state.allJobs.length} 筆）。`; return; }
   list.innerHTML = jobs.map(j => {
-    const total = jobTotal(j.config.protocol), ratio = Math.min(100, Math.round((j.steps / total) * 100));
+    const total = generalistTotal(j.config.protocol), ratio = Math.min(100, Math.round((j.steps / total) * 100));
     return `<button type="button" class="job${j.id === state.selectedJob ? ' selected' : ''}" data-open="${escape(j.id)}" aria-pressed="${j.id === state.selectedJob}">
       <span class="job-head"><strong>${escape(j.config.ticker)} · ${escape(j.config.analysis_date)}</strong><span class="status ${escape(j.status)}">${escape(statuses[j.status])}</span></span>
       <small>${escape(j.config.protocol.model)} · ${j.steps}/${total} 模型輸出${j.wants_run === 0 && j.status === 'running' ? ' · 將在本波次後暫停' : ''}</small>
@@ -168,7 +178,7 @@ function backtestComparison(s) {
 
 function estimateRemaining(s, total, jobStatus) {
   if (['complete', 'cancelled'].includes(jobStatus)) return null;
-  const done = (s.records || []).length, remaining = total - done;
+  const done = outputsDone(s), remaining = total - done;
   if (remaining <= 0) return null;
   const elapsed = (s.records || []).map(r => r.audit?.usage?.client_elapsed_seconds).filter(v => typeof v === 'number' && Number.isFinite(v) && v > 0);
   if (elapsed.length < 2) return null;
@@ -188,6 +198,7 @@ function decisionCards(s) {
 function renderJobFlow(job, s, total) {
   const kind = designOf(job.config);
   flow.setDesign(mapDesign(job.config));
+  setResearchQuestion(kind);
   const live = ['running', 'queued'].includes(job.status), paused = job.status === 'paused';
   const moving = live ? 'active' : paused ? 'warn' : 'idle';
   const update = {snapshot: {status: 'done'}};
@@ -233,11 +244,11 @@ function renderJobFlow(job, s, total) {
   if (flow.get('stats') !== 'done') update.stats = {status: job.status === 'complete' ? 'ready' : 'idle'};
   if (job.error) for (const value of Object.values(update)) if (value.status === 'active') value.status = 'error';
   flow.setMany(update);
-  flow.metric('outputs', (s.records || []).length + (s.domain_records || []).filter(record => !record.audit?.deterministic).length);
+  flow.metric('outputs', outputsDone(s));
   const last = s.trace?.at(-1)?.node;
   const tag = kind === 'rq1' ? '' : `${designLabel(job.config)} · `;
   flow.caption(job.error ? `${job.config.ticker} · 執行中斷：${friendlyJobError(job.error)}`
-    : `${tag}${job.config.ticker} · ${job.config.analysis_date} · ${statuses[job.status]} — ${last ? traceMessage(last) : '等待協調者領取工作'}（${(s.records || []).length}/${total} 模型輸出）`);
+    : `${tag}${job.config.ticker} · ${job.config.analysis_date} · ${statuses[job.status]} — ${last ? traceMessage(last) : '等待協調者領取工作'} · ${outputText(job, s, total)}`);
 }
 
 function designBlocks(job, s) {
@@ -248,7 +259,7 @@ function designBlocks(job, s) {
 export async function showJob(id, loadedJob = null) {
   state.selectedJob = id;
   syncUrl();
-  const job = loadedJob || await api(`/api/jobs/${id}?detail=true`), s = job.state, total = jobTotal(job.config.protocol);
+  const job = loadedJob || await api(`/api/jobs/${id}?detail=true`), s = job.state, total = jobTotal(job.config);
   state.selectedProtocol = job.config.protocol_hash;
   const isFinal = ['complete', 'cancelled'].includes(job.status);
   const trace = s.trace.at(-1)?.node || '等待協調者';
@@ -267,7 +278,7 @@ export async function showJob(id, loadedJob = null) {
   output.hidden = false;
   // Keep the open/closed state of the audit <details> across poll refreshes.
   const openDetails = [...output.querySelectorAll('details')].map(d => d.open);
-  output.innerHTML = `<div class="run-head"><div><div class="section-label">CASE / ${escape(id.slice(0, 8))}</div><h2>${escape(job.config.ticker)} · ${escape(job.config.analysis_date)} <span class="status ${escape(job.status)}">${escape(statuses[job.status])}</span></h2></div><div class="run-progress"><strong>${s.records.length}<small>/${total}</small></strong><span>決策輸出</span></div></div>
+  output.innerHTML = `<div class="run-head"><div><div class="section-label">CASE / ${escape(id.slice(0, 8))}</div><h2>${escape(job.config.ticker)} · ${escape(job.config.analysis_date)} <span class="status ${escape(job.status)}">${escape(statuses[job.status])}</span></h2></div><div class="run-progress"><strong>${outputsDone(s)}<small>/${total}</small></strong><span>${job.config.domain_debate ? '模型輸出（含領域辯論）' : '決策輸出'}</span></div></div>
     <p class="${oldProtocol ? 'protocol-warning' : 'hint'}">${escape(protocolNotice)}</p>${memoryNotice}
     <p class="hint">目前：${escape(trace)} · 已存檔 ${s.attempts.length} 次${eta ? ` · 依目前平均耗時預估剩餘 ${escape(eta)}` : ''}</p>
     <progress class="progress" max="${total}" value="${s.records.length}" aria-label="決策推論進度"></progress>
