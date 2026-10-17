@@ -8,6 +8,7 @@ outputs of one case, never four independent observations.
 from __future__ import annotations
 
 from collections import Counter
+import math
 
 from .domain_debate import GENERALIST_ARM_FOR
 
@@ -30,13 +31,28 @@ def _resource_totals(diagnostics, arm):
         values = item["resources"].get(arm, {})
         for metric in RESOURCE_METRICS:
             value = values.get(metric)
-            if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and math.isfinite(value):
                 totals[metric] = totals.get(metric, 0) + value
             else:
                 missing[metric] += 1
     n = len(diagnostics)
-    return {"cases": n, "totals": totals, "means": {key: value / n for key, value in totals.items()} if n else {},
+    return {"cases": n, "totals": totals,
+            "means": {key: value / n if not missing[key] else None for key, value in totals.items()} if n else {},
+            "observed_means": {key: value / (n - missing[key]) for key, value in totals.items()},
+            "cases_observed_metric": {key: n - missing[key] for key in RESOURCE_METRICS},
             "cases_missing_metric": dict(missing)}
+
+
+def _paired_cost_ratio(diagnostics, generalist, domain, metric):
+    pairs = []
+    for item in diagnostics:
+        a, b = (item["resources"].get(arm, {}).get(metric) for arm in (generalist, domain))
+        if all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v)
+               for v in (a, b)):
+            pairs.append((a, b))
+    denominator = sum(a for a, _ in pairs)
+    return {"ratio": sum(b for _, b in pairs) / denominator if denominator else None,
+            "paired_cases": len(pairs), "excluded_cases": len(diagnostics) - len(pairs)}
 
 
 def rq3_study_report(jobs, horizon=60, cost_model="corwin_schultz", layer="candidate"):
@@ -62,10 +78,9 @@ def rq3_study_report(jobs, horizon=60, cost_model="corwin_schultz", layer="candi
                 counts[("both_correct" if a and b else "generalist_only" if a else
                         "domain_only" if b else "both_wrong")] += 1
         scored = sum(counts[key] for key in ("both_correct", "generalist_only", "domain_only", "both_wrong"))
-        generalist_cost, domain_cost = _resource_totals(diagnostics, generalist), _resource_totals(diagnostics, domain)
-        ratios = {metric: (domain_cost["totals"][metric] / generalist_cost["totals"][metric]
-                           if generalist_cost["totals"].get(metric) and metric in domain_cost["totals"] else None)
-                  for metric in RESOURCE_METRICS}
+        paired_cost = {metric: _paired_cost_ratio(diagnostics, generalist, domain, metric)
+                       for metric in RESOURCE_METRICS}
+        ratios = {metric: row["ratio"] for metric, row in paired_cost.items()}
         pairs.append({"rule": item["rule"], "generalist": generalist, "domain": domain, "scored_pairs": scored,
                       "outcomes": dict(counts),
                       "accuracy": {generalist: (counts["both_correct"] + counts["generalist_only"]) / scored
@@ -74,7 +89,7 @@ def rq3_study_report(jobs, horizon=60, cost_model="corwin_schultz", layer="candi
                                    if scored else None},
                       "discordant": {"generalist_only": counts["generalist_only"],
                                      "domain_only": counts["domain_only"]},
-                      "domain_over_generalist_cost": ratios})
+                      "domain_over_generalist_cost": ratios, "paired_cost_coverage": paired_cost})
     agreement = {}
     for arm in arms:
         if arm not in GENERALIST_ARM_FOR:

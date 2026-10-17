@@ -44,13 +44,13 @@ DESIGNS = {
 QUARTERLY_VERSION = "v3-1002.3"
 # RQ2 Model Router (see research_service/model_router.py): v3-1002.3 plus per-debater model
 # assignment for arms C and D (AA homogeneous, AB/BA heterogeneous, optional BB control).
-ROUTER_VERSION = "v3-1006.1"
+ROUTER_VERSION = "v3-1015.1"
 ROUTER_VERSIONS = frozenset({ROUTER_VERSION})
 DEBATE_ASSIGNMENTS = ("AA", "AB", "BA", "BB")
 # Researcher decision 2026-10-08: model A = qwen3:32b (also Judge/research), model B = gemma3:27b.
 DEFAULT_DEBATE_MODEL_A = "ollama/qwen3:32b"
 DEFAULT_DEBATE_MODEL_B = "ollama/gemma3:27b"
-DEFAULT_DEBATE_ASSIGNMENTS = ("AA", "AB", "BA")
+DEFAULT_DEBATE_ASSIGNMENTS = ("AA", "AB", "BA", "BB")
 MONTHLY_VERSION = "v3-1002.4"
 MONTHLY_VERSIONS = frozenset({"v3-0930.2", "v3-0930.4", "v3-1001.2", "v3-1001.4", "v3-1002.2", MONTHLY_VERSION})
 # From v3-1001.x the inference settings that change model output (context length,
@@ -530,7 +530,7 @@ def validate_case(ticker: str, analysis_date: str, design: str = "quarterly") ->
 PROTOCOL_SOURCE_MODULES = ("anonymize", "backtest", "data", "engine", "finbert", "model_identity",
                            "models", "protocol", "storage")
 # The router version also freezes the routing, Judge-blinding and route-audit code.
-ROUTER_SOURCE_MODULES = PROTOCOL_SOURCE_MODULES + ("model_router",)
+ROUTER_SOURCE_MODULES = PROTOCOL_SOURCE_MODULES + ("model_router", "shared_reports")
 
 
 @functools.lru_cache(maxsize=None)

@@ -12,8 +12,9 @@ from ..collect import reusable_snapshot
 from ..errors import PreflightError
 from ..progress import study_progress
 from ..protocol import EVIDENCE_REF_VERSIONS, protocol_from
-from ..rq3_reporting import rq3_study_report
+from ..rq_study import rq2_study_report, rq3_summary
 from ..reporting import csv_text, hold_band_sensitivity, pilot_diagnostics, stability_report, study_report
+from ..shared_reports import check_registered_reports
 
 
 def build_router(ctx):
@@ -95,6 +96,7 @@ def build_router(ctx):
         outside = [item["dataset_id"] for item in prepared if item["dataset_id"] not in frozen]
         if outside:
             raise ValueError(f"{len(outside)} 個案例不在事前登記的樣本內，全部未排入")
+        check_registered_reports(store, protocol_hash, prepared)
         # A list that passed both checks reproduces the registration; keep it for one-click re-queueing.
         store.save_registered_cases(protocol_hash, [item.model_dump() for item in payload.cases])
         with enqueue_lock:
@@ -132,6 +134,7 @@ def build_router(ctx):
                 else:
                     request = JobInput(dataset_id=dataset["id"], analysis_date=analysis_date, model=payload.model,
                                        voting_samples=payload.voting_samples, study=payload.study,
+                                       inference_seed=payload.inference_seed,
                                        anonymize_ticker=payload.anonymize_ticker,
                                        missing_data_policy=payload.missing_data_policy, design=payload.design,
                                        model_context_length=payload.model_context_length,
@@ -193,6 +196,13 @@ def build_router(ctx):
             raise ValueError("批次內的案例必須使用同一套研究協議（相同模型與設定）才能一起鎖定樣本")
         [protocol_hash] = hashes
         protocol = prepared[0]["protocol"]
+        if protocol["version"] == "v3-1015.1" and set(protocol.get("debate_assignments", [])) != {"AA", "AB", "BA", "BB"}:
+            raise ValueError("新版 RQ2 正式登記需要 AA、AB、BA、BB 全部對照；其他配置僅供探索")
+        if protocol["version"] == "v3-1015.1" and any(not item.get("shared_neutral_report") for item in prepared):
+            raise ValueError("新版 RQ2 正式登記須逐案指定共用 Neutral Report 來源與 hash，供所有 seed 使用")
+        domain = prepared[0].get("domain_debate")
+        if domain and (domain.get("rule") != "fixed" or domain.get("include_controls") is not True):
+            raise ValueError("新版 RQ3 正式登記需固定立場與兩個必要對照；其他配置僅供探索")
         if protocol["version"] in EVIDENCE_REF_VERSIONS and not protocol.get("anonymize_ticker"):
             raise ValueError("v3-1002.3 起的正式研究須匿名化股票代號；請勾選匿名化後重新預覽")
         model_digest = model_router.registration_digest(prepared[0])
@@ -225,13 +235,18 @@ def build_router(ctx):
     @router.get("/api/studies/{protocol_hash}/rq2")
     def rq2(protocol_hash: str):
         """Descriptive RQ2 per-arm accuracy and interaction for this protocol's jobs (no p-values)."""
-        jobs = [job for job in protocol_jobs(protocol_hash) if job["status"] == "complete"]
-        return model_router.rq2_summary(jobs)
+        registration = store.preregistration(protocol_hash)
+        return rq2_study_report(protocol_jobs(protocol_hash), formal_only=not ctx.demo_mode,
+                                eligible_dataset_ids=registration["dataset_ids"] if registration else None,
+                                frozen_at=registration["frozen_at"] if registration else None)
 
     @router.get("/api/studies/{protocol_hash}/rq3")
     def rq3(protocol_hash: str):
         """RQ3 rule-matched Generalist vs Domain comparison, cost and view agreement."""
-        return rq3_study_report([job for job in protocol_jobs(protocol_hash) if job["status"] == "complete"])
+        registration = store.preregistration(protocol_hash)
+        return rq3_summary(protocol_jobs(protocol_hash), formal_only=not ctx.demo_mode,
+                           eligible_dataset_ids=registration["dataset_ids"] if registration else None,
+                           frozen_at=registration["frozen_at"] if registration else None)
 
     @router.get("/api/studies/{protocol_hash}/pilot")
     def pilot(protocol_hash: str):

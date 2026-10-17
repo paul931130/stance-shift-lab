@@ -17,6 +17,7 @@ from ..readiness import coverage
 from ..reporting import export_job, study_report
 from ..splits import classify_analysis_date
 from ..storage import now
+from ..shared_reports import bind_report, check_registered_reports
 from .context import BatchInput, JobInput
 from .ollama import CachedProbe, parameter_billions, probe_models
 
@@ -26,6 +27,7 @@ def reject_registered_duplicates(store, configs):
     for protocol_hash in {config["protocol_hash"] for config in configs}:
         if not store.preregistration(protocol_hash):
             continue
+        check_registered_reports(store, protocol_hash, [c for c in configs if c["protocol_hash"] == protocol_hash])
         existing = {row["dataset_id"] for row in store.study_rows(protocol_hash) if row["status"] != "cancelled"}
         taken = [c for c in configs if c["protocol_hash"] == protocol_hash and c["dataset_id"] in existing]
         if taken:
@@ -83,6 +85,7 @@ def prepare(ctx, payload, model_probe=None, route_probe=None):
         except (TypeError, ValueError) as error:
             raise PreflightError("invalid_domain_debate", str(error)) from None
     protocol = build_protocol(model=effective_model, voting_samples=payload.voting_samples, study=payload.study,
+        inference_seed=payload.inference_seed,
         anonymize_ticker=payload.anonymize_ticker, dataset_kind=data["kind"],
         missing_data_policy=payload.missing_data_policy,
         allow_point_fundamental=payload.allow_point_fundamental,
@@ -156,7 +159,9 @@ def prepare(ctx, payload, model_probe=None, route_probe=None):
             rq3_fields = domain_debate.rq3_job_fields(protocol, domain_settings)
         except ValueError as error:
             raise PreflightError("invalid_domain_debate", str(error)) from None
+    shared_report = bind_report(ctx.store, payload, protocol, model_identity, routed_identities)
     return {"ticker": data["ticker"], "analysis_date": payload.analysis_date,
+        **({"shared_neutral_report": shared_report} if shared_report else {}),
         "evaluation_split": classify_analysis_date(payload.analysis_date), "dataset_id": payload.dataset_id,
         "dataset_hash": payload.dataset_id, "protocol": asdict(protocol), "protocol_hash": protocol.fingerprint,
         "formal_readiness": {

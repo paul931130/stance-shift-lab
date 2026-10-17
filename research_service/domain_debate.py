@@ -46,10 +46,10 @@ from .storage import now
 
 logger = get_logger(__name__)
 
-RQ3_VERSION = "rq3-1008.2"
+RQ3_VERSION = "rq3-1015.1"
 DOMAIN_ARM_RULES = {"C_domain": "fixed", "D_domain": "switch"}
 GENERALIST_ARM_FOR = {"C_domain": "C", "D_domain": "D"}
-RQ3_SOURCE_MODULES = ("domain_debate", "aggregator")
+RQ3_SOURCE_MODULES = ("domain_debate", "aggregator", "rq3_controls")
 PROMPT_VERSIONS = {"domain_prompt_version": ("domain-debate-v2",), "view_prompt_version": ("domain-view-v2",),
                    "aggregator_prompt_version": ("aggregator-v2",)}
 
@@ -129,6 +129,7 @@ class DomainDebateSettings:
     share_base_rates: bool = True
     compute_matching: Literal["unspecified", "nominal_calls", "total_tokens", "wall_time",
                               "report_frontier"] = "unspecified"
+    include_controls: bool = False
 
     def __post_init__(self):
         object.__setattr__(self, "domains", tuple(self.domains))
@@ -136,6 +137,8 @@ class DomainDebateSettings:
             raise ValueError("Unsupported RQ3 version")
         if self.rule not in ("fixed", "switch", "both"):
             raise ValueError("RQ3 domain rule must be fixed, switch or both")
+        if not isinstance(self.include_controls, bool) or (self.include_controls and self.rule != "fixed"):
+            raise ValueError("RQ3 v7 controls require the fixed rule")
         if self.domains != DOMAIN_NAMES:
             raise ValueError("RQ3 fixes the four research domains")
         if self.view_generation != "domain_judge":
@@ -289,12 +292,17 @@ def nominal_calls(protocol, settings):
     debate = 2 * protocol.max_rounds
     result = {"A": 1, "B": protocol.voting_samples, "C": debate + 1, "D": debate + 1}
     result.update({arm: len(DOMAIN_NAMES) * (debate + 1) + 1 for arm in settings.domain_arms})
+    if settings.include_controls:
+        from .rq3_controls import CONTROL_CALLS
+        result.update(CONTROL_CALLS)
     return result
 
 
 def pending(settings, state):
     done = {record["key"] for record in state.get("domain_records", [])}
-    return any(aggregator_key(arm) not in done for arm in settings.domain_arms)
+    from . import rq3_controls
+    return (any(aggregator_key(arm) not in done for arm in settings.domain_arms)
+            or (settings.include_controls and rq3_controls.pending(state)))
 
 
 # --- prompts ---------------------------------------------------------------------------------------
@@ -447,7 +455,12 @@ class DomainDebateEngine(Engine):
         protocol = protocol_from(config["protocol"])
         if ("report" in state and "decisions" not in state
                 and len(state["records"]) >= len(decision_plan(protocol)) and pending(settings, state)):
-            label, workers = self.domain_wave(protocol, settings, config, state)
+            done = {record["key"] for record in state.get("domain_records", [])}
+            if any(aggregator_key(arm) not in done for arm in settings.domain_arms):
+                label, workers = self.domain_wave(protocol, settings, config, state)
+            else:
+                from . import rq3_controls
+                label, workers = rq3_controls.wave(self, protocol, config, state)
             state["trace"].append({"node": label, "at": now(), "protocol_hash": config["protocol_hash"],
                                    "report_hash": state.get("report_hash"), "parallel_workers": self.parallel_workers,
                                    "effective_workers": workers})
@@ -457,8 +470,14 @@ class DomainDebateEngine(Engine):
         state = result["state"]
         if not had_inputs and "memory" in state:
             state["memory"].update({arm: self.store.memory(config, arm) for arm in settings.domain_arms})
+            if settings.include_controls:
+                from .rq3_controls import CONTROL_CALLS
+                state["memory"].update({arm: self.store.memory(config, arm) for arm in CONTROL_CALLS})
         if not had_decisions and "decisions" in state:
             state["decisions"].update(domain_decisions(protocol, settings, state))
+            if settings.include_controls:
+                from . import rq3_controls
+                state["decisions"].update(rq3_controls.decisions(protocol, state))
             state["rq3_diagnostics"] = case_diagnostics(protocol, settings, state)
         return result
 
@@ -739,6 +758,12 @@ def case_diagnostics(protocol, settings, state):
                                   decision.get("candidate_action")),
                       "candidate_action": decision.get("candidate_action"), "gated_action": decision.get("action"),
                       "aggregator": next((record["audit"].get("aggregator") for record in aggregate), None)}
+    if settings.include_controls:
+        from .rq3_controls import CONTROL_CALLS
+        for arm, nominal in CONTROL_CALLS.items():
+            records = [r for r in state.get("control_records", []) if r["arm"] == arm]
+            arms[arm] = resources(records, [r for r in failed if r.get("group") == arm], nominal,
+                                  _path([[record] for record in records]))
     for summary in arms.values():
         first, second = research["critical_path_seconds"], summary["critical_path_seconds"]
         summary["end_to_end_critical_path_seconds"] = None if first is None or second is None else first + second
@@ -752,6 +777,10 @@ def case_diagnostics(protocol, settings, state):
             ratios[metric] = numerator / denominator if _number(numerator) and _number(denominator) and denominator else None
         pairs.append({"rule": DOMAIN_ARM_RULES[arm], "generalist": generalist, "domain": arm,
                       "domain_over_generalist": ratios})
+    if settings.include_controls:
+        for control in ("C_budget", "C_partition"):
+            pairs.append({"rule": "fixed", "generalist": control, "domain": "C_domain",
+                          "domain_over_generalist": {}})
     return {"rq3_version": settings.rq3_version, "settings": asdict(settings), "nominal_calls": planned,
             "shared_research": research, "resources": arms, "agreement": views, "rule_matched_pairs": pairs,
             "view_directions": dict(Counter(record["output"]["direction"] for record in domain_records

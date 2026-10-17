@@ -323,8 +323,23 @@ class Store:
             # memory only contains earlier matured cases of the same protocol,
             # so processing earlier dates first makes that memory independent
             # of the order in which a batch happened to be queued.
-            row = db.execute("""SELECT * FROM jobs WHERE status='queued' AND wants_run=1 AND owner=''
-                ORDER BY json_extract(config, '$.analysis_date'), created_at LIMIT 1""").fetchone()
+            row = db.execute("""SELECT * FROM jobs AS candidate
+                WHERE candidate.status='queued' AND candidate.wants_run=1 AND candidate.owner=''
+                  AND (json_extract(candidate.config, '$.execution_purpose') IN ('qualification', 'report_bank')
+                       OR NOT EXISTS (
+                           SELECT 1 FROM preregistrations AS registration
+                           JOIN jobs AS stopped
+                             ON json_extract(stopped.config, '$.protocol_hash')=registration.protocol_hash
+                           WHERE registration.protocol_hash=json_extract(candidate.config, '$.protocol_hash')
+                             AND stopped.created_at >= registration.frozen_at
+                             AND stopped.status IN ('paused', 'cancelled')
+                             AND COALESCE(json_extract(stopped.config, '$.execution_purpose'), '')
+                                 NOT IN ('qualification', 'report_bank')
+                             AND EXISTS (
+                                 SELECT 1 FROM json_each(registration.dataset_ids) AS frozen
+                                 WHERE frozen.value=json_extract(stopped.config, '$.dataset_id'))))
+                ORDER BY json_extract(candidate.config, '$.analysis_date'), candidate.created_at
+                LIMIT 1""").fetchone()
             if not row:
                 return None
             db.execute("""UPDATE jobs SET status='running',owner=?,updated_at=?,
@@ -368,7 +383,10 @@ class Store:
     def _upsert_case_results(db, job_id, config, state, created_at):
         db.execute("DELETE FROM case_results WHERE job_id=?", (job_id,))
         degraded = int(bool(state.get("report", {}).get("degraded_research_domains")))
-        for row in state.get("cases", []):
+        rows = list(state.get("cases", []))
+        if config.get("protocol", {}).get("version") == "v3-1015.1":
+            rows.extend(state.get("routed_cases", []))
+        for row in rows:
             db.execute("""INSERT OR REPLACE INTO case_results
                 (job_id,protocol_hash,ticker,analysis_date,"group",horizon,cost_model,decision_layer,
                  maturity_date,action,correct,net_return,degraded,created_at)
@@ -409,6 +427,11 @@ class Store:
                 continue
             if stable_model_identity(source) != stable_model_identity(config):
                 continue
+            if protocol.get("version") == "v3-1015.1":
+                def route_weights(value):
+                    return {key: item.get("digest") for key, item in value.get("routed_model_identities", {}).items()}
+                if route_weights(source) != route_weights(config):
+                    continue
             value["correct"] = None if value["correct"] is None else bool(value["correct"])
             unique.setdefault(value["analysis_date"], value)
         return list(unique.values())[:20]

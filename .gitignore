@@ -51,3 +51,7 @@ build/
 /tmp/
 /*.zip
 /research-inputs/*.before-backfill-*
+/report/*.lof
+/report/*.lot
+/report/*.toc
+/tmp*/

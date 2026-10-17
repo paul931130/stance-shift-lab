@@ -87,6 +87,9 @@ class JobInput(BaseModel):
     analysis_date: str
     model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
     voting_samples: int = 7
+    inference_seed: int = Field(default=905, ge=0)
+    neutral_report_job_id: str | None = None
+    neutral_report_hash: str | None = Field(default=None, min_length=64, max_length=64)
     study: str = "study1"
     anonymize_ticker: bool | None = None
     missing_data_policy: str = "allow_decision"
@@ -118,6 +121,7 @@ class PlanInput(BaseModel):
     dates: list[str] = Field(min_length=1, max_length=120)
     model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
     voting_samples: int = 7
+    inference_seed: int = Field(default=905, ge=0)
     study: str = "study1"
     anonymize_ticker: bool | None = None
     missing_data_policy: str = "allow_decision"

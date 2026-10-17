@@ -646,7 +646,21 @@ class Engine:
             # Prompt-only short IDs, kept with the job so any "E7" in a stored rationale can be resolved.
             state["evidence_aliases"] = evidence_aliases(state["inputs"]["evidence"])
             state["memory"] = {group: self.store.memory(config, group) for group in "ABCD"}
+            if protocol.version == "v3-1015.1":
+                state["memory"].update({model_router.arm_label(group, assignment): self.store.memory(
+                    config, model_router.arm_label(group, assignment))
+                    for assignment in protocol.debate_assignments if assignment != "AA" for group in "CD"})
             state["memory_audit"] = self.store.memory_audit(config)
+            shared = config.get("shared_neutral_report")
+            if shared:
+                if digest(shared["report"]) != shared["report_hash"]:
+                    raise ValueError("Frozen shared report hash does not match its content")
+                state["research"] = deepcopy(shared["research"])
+                for item in state["research"].values():
+                    item["audit"] = {"fallback": "shared_locked_report", "source_job_id": shared["source_job_id"]}
+                state["shared_report_provenance"] = {"source_job_id": shared["source_job_id"],
+                                                      "report_hash": shared["report_hash"],
+                                                      "research_cost_charged_to": "source_report_bank"}
             label = "coordinator"
         elif len(state["research"]) < 4:
             pending = [domain for domain in DOMAIN_NAMES if domain not in state["research"]]
@@ -759,6 +773,8 @@ class Engine:
             if protocol.anonymize_ticker:
                 # Ticker, company names and executives; see research_service.anonymize.
                 report = anonymize(report, config["ticker"])
+            if config.get("shared_neutral_report"):
+                report = deepcopy(config["shared_neutral_report"]["report"])
             state["report"], state["report_hash"] = report, digest(report)
             label = "neutral_report_locked"
         elif len(state["records"]) < len(decision_plan(protocol)):
@@ -775,7 +791,10 @@ class Engine:
             if self.uses_builtin_provider and model_router.uses_ollama(protocol):
                 calls = calls[:protocol.ollama_parallel or self.ollama_parallel]
             snapshot = list(state["records"])
-            prepared = {call.key: (call, model_router.messages_for(call, state["report"], snapshot, state["memory"][call.group],
+            prepared = {call.key: (call, model_router.messages_for(call, state["report"], snapshot, state["memory"][
+                model_router.arm_label(call.group, getattr(call, "assignment", "AA"))
+                if protocol.version == "v3-1015.1" and call.group in "CD" and getattr(call, "assignment", "AA") != "AA"
+                else call.group],
                                                                    protocol, state["report_hash"])) for call in calls}
             completed, failures, provider_failures = {}, [], []
 
@@ -850,12 +869,13 @@ class Engine:
             state["decisions"] = {group: gate(candidate, state["inputs"], state["memory"][group], protocol)
                                   for group, candidate in prepared_candidates.items()}
             if model_router.is_routed(protocol):
-                # Heterogeneous (and BB) arms: same Gatekeeper and the same group memory as AA; kept apart
-                # from state["decisions"] so RQ1 outputs, memory writes and case results are unchanged.
+                # v3-1015.1: heterogeneous and BB conditions use their own matured history;
+                # legacy router records retain their original shared-AA-memory semantics.
                 state["routed_decisions"] = {
                     model_router.arm_label(group, assignment): gate(
                         prepare_candidate(model_router.arm_records(state["records"], group, assignment)[-1]["output"]),
-                        state["inputs"], state["memory"][group], protocol)
+                        state["inputs"], state["memory"][model_router.arm_label(group, assignment)
+                            if protocol.version == "v3-1015.1" else group], protocol)
                     for assignment in protocol.debate_assignments if assignment != "AA" for group in ("C", "D")}
             state["completeness_diagnostic"] = completeness_diagnostic(state["records"], protocol)
             label = "gatekeeper_decisions_locked"
