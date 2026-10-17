@@ -45,3 +45,29 @@
 ## 2026-10-17 正式前本機整備
 
 目前入口 docs/rq-prep/preformal-runbook-20261017.md；狀態 docs/review/preformal-readiness-2026-10-17.md。本次補 launch_package、RQ2 report-bank binder、明確RQ2三seed/RQ3單seed、RQ3 runtime、環境版本檢查；逐seed Sharpe描述與正式協議停止保護已驗收。465 tests：464 pass、1 POSIX skip、0 failure/error，包含三個 Chrome E2E；Ruff/JS語法通過。實際180案封裝及兩種三案離線pilot準備成功，合成180案bank綁定540筆成功但不得當正式輸入。證據 work/preformal-20261017/release-manifest.json。GPUtw上次Qwen HTTP524、資格未通過；使用者確認已關機，既有憑證401，本輪未租機/未呼叫模型/未建立新正式登記或job。剩真實runtime/canary/probe/pilot、真實報告庫及封存登記。Codex子代理不是Claude獨立複核，尚無Claude回覆。
+
+
+## 2026-10-17 Claude 獨立複核（第一回合）
+
+範圍：`rq_study.py`、`rq_repeats.py`、`shared_reports.py`、`rq3_controls.py`、`rq3_inference.py`，以及 `web/studies.py` 的正式登記 guard。以 commit `d8700d9` 的程式為準；全套 465 tests 在本機重跑通過（1 skip）。只讀程式與兩項小型執行檢查，未改任何程式。
+
+**確認正確（未發現問題）**
+- RQ2 完整配對：`rq2_study_report` 要求每案 C/D × AA/AB/BA 都有 Boolean 結果才納入；BB 只在協議要求時加進同一個共同子集；同案同 arm 重複列會報錯。分母一致。
+- 多 seed：`rq_repeats` 先在案例內平均 seed 與 AB/BA，再以日期區塊重抽；AA、BB 兩個基準、四個端點共用同一組日期抽樣；seed 與 AB/BA 不增加獨立案例數。Sharpe 交互作用權重 (1,−1,−1,1) 方向正確。
+- 四端點 Holm 在端點相依（AA、BB 共用 hetero 項）下仍有效，只是偏保守。
+- `shared_reports.bind_report`：要求來源停在 `neutral_report_locked`、尚無任何決策或回測、除 seed 外設定相同、同 dataset/date、fingerprint 為目前程式、研究與路由權重一致、四域未降級，並以內容 hash 核對。結果依賴選擇（看過決策才挑報告）的路徑已封住。
+- `rq3_inference`：共同完整案例面板、案例內日報酬缺漏即拒絕、記憶的組別／協議／成熟日邊界檢查、日報酬權重 1/180 與 RQ1 一致。
+
+**需要處理或在報告中揭露**
+1. （中）C_budget 的 28 份提案用 C 組溫度 0.2（實測 `temperature_for` 回傳 0.2；B 組投票為 0.8），seed 雖各不相同，提案可能高度相同，使「呼叫量對照」實際上接近單次判斷加裁決。這是設計選擇：維持 0.2（與辯論者同溫度）或改用投票溫度 0.8（提高多樣性）。正式登記前須決定並寫入登記文件；pilot 時應報告 28 份提案的方向一致率。
+2. （中）共用報告庫使多 seed 只重抽決策層，研究代理人層固定，因此 `seed_accuracy_sd`／`seed_sharpe_sd` 會低估整體生成變異。報告中須寫明 seed 變異是「條件於鎖定報告」的決策層變異。
+3. （低～中）`select_cases` 與正式 guard 不要求路由到 API 模型（如 Gemini 備案）有權重 digest：`select_cases` 只比對 (model, digest, id) 是否一致，digest 為 None 也會通過。現行決定模型 B 為 gemma3:27b（Ollama），故目前不觸發；若改用 Gemini 備案，正式 guard 應明確拒絕或標示「API 模型版本未鎖定」。
+4. （低）C_partition 的提示仍包含四個研究代理人的 72 字摘要（`_compact_report` 的 `research` 欄位），並非只有四組證據。這些摘要與 Generalist、領域辯論者看到的相同，不是 Domain View，所以不影響公平性，但「partition-only」的描述應寫成「證據分組＋相同研究摘要、無辯論」。
+5. （低）`rq_repeats` 逐 seed Sharpe 描述值用 `var(ddof=0)`，其餘 Sharpe 用 ddof=1；僅影響描述值，建議統一。
+
+**Gemini 真實模型冒煙測試（10/14，HEAD 4436b47，非研究資料）帶出的待修項**
+- Gemini 不遵守 JSON schema 的 `maxLength`，`models.generate` 重試時送出相同提示、未回饋錯誤，三次都失敗會暫停整個案例（RQ3 `uncertainty` 300 字、RQ2 `rebutted_claim` 240 字各一次）。
+- 被拒絕的嘗試沒有 usage 紀錄時，`rq3_diagnostics.resources` 整組 token 與關鍵路徑變成 null。
+- `failed_model_calls` 不帶 `model_route`，無法歸因到模型 A 或 B。
+- 「未匹配來源數字」大量誤報期間長度（20、60）。
+Claude 接著修前三項，修改會另外 commit 並記錄於此。
