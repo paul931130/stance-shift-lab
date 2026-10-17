@@ -48,6 +48,31 @@
       <div><dt>已完成案例</dt><dd id="flow-metric-cases">—</dd></div>
     </dl>
   </div>
+  <div class="demo-player-toolbar">
+    <button id="play-demo" type="button" disabled aria-controls="demo-player">▶ 播放示範</button>
+    <span class="hint">三幕帶你走完研究流程，逐步顯示說明與示意輸出</span>
+  </div>
+  <section id="demo-player" class="demo-player" aria-label="三幕流程示範" hidden>
+    <div class="demo-player-heading">
+      <strong>流程示範 · 固定示意內容</strong>
+      <div class="demo-player-controls">
+        <label>播放速度 <select id="demo-speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label>
+        <button id="demo-pause" class="quiet" type="button">暫停</button>
+        <button id="demo-restart" class="quiet" type="button">重新播放</button>
+        <button id="demo-close" class="quiet" type="button">關閉示範</button>
+      </div>
+    </div>
+    <p class="hint">只播放本頁的流程示意，不建立工作、不呼叫模型；下方研究資料與實際進度維持原狀。</p>
+    <ol id="demo-acts" class="demo-acts"><li>第一幕 · 準備資料</li><li>第二幕 · 研究與決策</li><li>第三幕 · 檢核與結果</li></ol>
+    <progress id="demo-progress" value="0" max="9" aria-label="示範播放進度"></progress>
+    <div id="demo-current" role="status" aria-live="polite" aria-atomic="true">
+      <p id="demo-step-count" class="section-label"></p>
+      <h2 id="demo-step-title"></h2>
+      <p id="demo-step-description"></p>
+      <p id="demo-step-output" class="demo-output"></p>
+    </div>
+    <details><summary>已播放的步驟說明</summary><ol id="demo-history"></ol></details>
+  </section>
   <div id="flow-canvas" class="flow-canvas"></div>
   <div class="flow-foot">
     <ul class="flow-legend" aria-label="圖例">

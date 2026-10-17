@@ -7,7 +7,7 @@
 //   RQ3  four domain Bull/Bear debates -> Domain Views -> Final Aggregator.
 import { $ } from './ui.js';
 
-export const ROUTER_VERSION = 'v3-1006.1';
+export const ROUTER_VERSION = 'v3-1015.1';
 export const DEFAULT_MODEL_A = 'ollama/qwen3:32b';
 export const DEFAULT_MODEL_B = 'ollama/gemma3:27b';
 const DESIGNS = [
@@ -26,10 +26,10 @@ export function designOf(config = {}) {
   return protocol.version === ROUTER_VERSION || protocol.debate_model_b ? 'rq2' : 'rq1';
 }
 
-export function nominalCalls(design, voting, {assignments = ['AA', 'AB', 'BA'], rule = 'both'} = {}) {
+export function nominalCalls(design, voting, {assignments = ['AA', 'AB', 'BA'], rule = 'both', includeControls = false} = {}) {
   const base = BASE_CALLS(voting);
   if (design === 'rq2') return base + 14 * Math.max(0, assignments.length - 1);
-  if (design === 'rq3') return base + DOMAIN_ARM_CALLS * (rule === 'both' ? 2 : 1);
+  if (design === 'rq3') return base + DOMAIN_ARM_CALLS * (rule === 'both' ? 2 : 1) + (includeControls ? 30 : 0);
   return base;
 }
 
@@ -54,6 +54,8 @@ function html(prefix) {
     `<button type="button" role="tab" data-rq-pick="${d.id}" aria-selected="${i === 0}" tabindex="${i === 0 ? 0 : -1}">${d.label}</button>`).join('')}</div>
   <p class="hint" id="${prefix}-design-hint">${DESIGNS[0].hint}</p>
   <div class="design-block" id="${prefix}-rq2" hidden>
+    <label>本批推理種子<input id="${prefix}-seed" type="number" min="0" step="1" value="905"></label>
+    <p class="hint">v7 至少三個種子（例如 905、906、907），各批分別鎖定協議；跨種子分析先在同一案例內合併，不增加獨立市場案例數。</p>
     <div class="pair">
       <label>模型 A（Bull 預設）<input id="${prefix}-model-a" maxlength="200" value="${DEFAULT_MODEL_A}" autocomplete="off" spellcheck="false"></label>
       <label>模型 B（異質對照）<input id="${prefix}-model-b" maxlength="200" value="${DEFAULT_MODEL_B}" autocomplete="off" spellcheck="false"></label>
@@ -61,7 +63,7 @@ function html(prefix) {
     <fieldset class="rq-assign"><legend>辯論者模型指派（Bull／Bear）</legend>
       <label class="check"><input type="checkbox" checked disabled>AA　同質：Bull＝A、Bear＝A（必選，同案基準）</label>
       <label class="check"><input type="checkbox" checked disabled>AB ＋ BA　異質：Bull＝A、Bear＝B 與反向（兩者必須一併執行，平衡模型與初始立場）</label>
-      <label class="check"><input id="${prefix}-bb" type="checkbox">BB　選填對照：Bull＝B、Bear＝B（同質 B）</label>
+      <label class="check"><input id="${prefix}-bb" type="checkbox" checked>BB　v7 必要對照：Bull＝B、Bear＝B（同質 B；探索設定可取消）</label>
     </fieldset>
     <p class="hint">裁決者、四個研究代理人與 A、B 組仍使用上方「模型」。每位辯論者三輪都用同一個模型，D 組只在第 2 輪交換立場；裁決者只看到「辯論者 1／2」，看不到模型名稱。模型不可用時該步驟失敗並暫停，不會改用別的模型。</p>
     <details class="rq-endpoints"><summary>各模型的 Ollama 位址與逾時（進階）</summary>
@@ -70,9 +72,10 @@ function html(prefix) {
     </details>
   </div>
   <div class="design-block" id="${prefix}-rq3" hidden>
+    <label class="check"><input id="${prefix}-controls" type="checkbox" checked>v7 必要對照（固定立場）：29 次通才取樣整合＋1 次四領域證據直接裁決</label>
     <div class="pair">
-      <label>領域辯論規則<select id="${prefix}-rule"><option value="both">兩者：固定與交換</option><option value="fixed">固定立場（對照 C）</option><option value="switch">立場交換（對照 D）</option></select></label>
-      <label>最終彙整者輸入<select id="${prefix}-agg-input"><option value="views">僅領域觀點（Domain Views）</option><option value="views_and_transcripts">領域觀點＋辯論全文</option></select></label>
+      <label>領域辯論規則<select id="${prefix}-rule"><option value="fixed">固定立場（v7 主要設計，對照 C）</option><option value="both">兩者：固定與交換（探索）</option><option value="switch">立場交換（探索，對照 D）</option></select></label>
+      <label>最終彙整者輸入<select id="${prefix}-agg-input"><option value="views">領域觀點＋引用證據與基準率</option><option value="views_and_transcripts">觀點、引用證據、基準率＋辯論全文</option></select></label>
     </div>
     <div class="pair">
       <label>觀點呈現順序<select id="${prefix}-agg-order"><option value="randomized">隨機（每案依雜湊決定）</option><option value="fixed">固定（技術、基本面、情緒、總經）</option></select></label>
@@ -99,8 +102,11 @@ function describe(prefix, voting) {
     const list = assignments(prefix), total = nominalCalls('rq2', voting, {assignments: list});
     text = `每案名義呼叫 ${total} 次：通才四組 ${base} 次＋${list.length - 1} 組額外指派 × 14 次（${list.join('、')}）。`;
   } else if (design === 'rq3') {
-    const rule = field(prefix, 'rule').value, total = nominalCalls('rq3', voting, {rule});
-    text = `每案名義呼叫 ${total} 次：通才四組 ${base} 次＋${rule === 'both' ? '2' : '1'} 組領域辯論 × ${DOMAIN_ARM_CALLS} 次（4 領域 × 7 次＋彙整者 1 次）。無證據的領域會略過辯論，實際呼叫可能較少。`;
+    const rule = field(prefix, 'rule').value;
+    const includeControls = rule === 'fixed' && field(prefix, 'controls').checked;
+    field(prefix, 'controls').disabled = rule !== 'fixed';
+    const total = nominalCalls('rq3', voting, {rule, includeControls});
+    text = `每案名義呼叫 ${total} 次：通才四組 ${base} 次＋${rule === 'both' ? '2' : '1'} 組領域辯論 × ${DOMAIN_ARM_CALLS} 次（4 領域 × 7 次＋彙整者 1 次）${includeControls ? '＋必要對照 30 次' : ''}。無證據的領域會略過辯論，實際呼叫可能較少。`;
   } else {
     text = `每案決策呼叫 ${base} 次（A 1＋B ${Number(voting)}＋C 7＋D 7）。`;
   }
@@ -168,12 +174,15 @@ export function designPayload(prefix) {
       }
       if (Object.keys(spec).length) endpoints[model] = spec;
     }
-    return {debate_model_a: a, debate_model_b: b, debate_assignments: assignments(prefix),
+    const seed = Number(field(prefix, 'seed').value);
+    if (!Number.isInteger(seed) || seed < 0) throw new Error('推理種子必須是非負整數');
+    return {debate_model_a: a, debate_model_b: b, debate_assignments: assignments(prefix), inference_seed: seed,
       ...(Object.keys(endpoints).length ? {model_endpoints: endpoints} : {})};
   }
   if (design === 'rq3') {
     return {domain_debate: {rule: field(prefix, 'rule').value, aggregator_input: field(prefix, 'agg-input').value,
-      aggregator_order: field(prefix, 'agg-order').value, compute_matching: field(prefix, 'matching').value}};
+      aggregator_order: field(prefix, 'agg-order').value, compute_matching: field(prefix, 'matching').value,
+      include_controls: field(prefix, 'rule').value === 'fixed' && field(prefix, 'controls').checked}};
   }
   return {};
 }

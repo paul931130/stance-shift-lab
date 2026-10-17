@@ -77,7 +77,7 @@ export function rq3RunPanel(job, s) {
   const records = s.domain_records || [];
   const arms = ['C_domain', 'D_domain'].filter(arm => settings.rule === 'both' || (settings.rule === 'fixed') === (arm === 'C_domain'));
   const MATCH = {unspecified: '未指定', nominal_calls: '名義呼叫次數', total_tokens: '總 token 數', wall_time: '牆鐘時間', report_frontier: '報告成本–績效前緣'};
-  const summary = `規則 ${{fixed: '固定', switch: '交換', both: '固定＋交換'}[settings.rule] || settings.rule} · 彙整者輸入 ${settings.aggregator_input === 'views' ? '僅領域觀點' : '觀點＋辯論全文'} · 順序 ${settings.aggregator_order === 'fixed' ? '固定' : '隨機'} · 運算量標記 ${MATCH[settings.compute_matching] || settings.compute_matching}`;
+  const summary = `規則 ${{fixed: '固定', switch: '交換', both: '固定＋交換'}[settings.rule] || settings.rule} · 彙整者輸入 ${settings.aggregator_input === 'views' ? '觀點＋引用證據與基準率' : '觀點、引用證據、基準率＋辯論全文'} · 順序 ${settings.aggregator_order === 'fixed' ? '固定' : '隨機'} · 運算量標記 ${MATCH[settings.compute_matching] || settings.compute_matching}`;
   const cards = arms.map(arm => {
     const views = Object.fromEntries(records.filter(r => r.arm === arm && r.kind === 'view').map(r => [r.domain, r]));
     const final = s.decisions?.[arm], agreement = diagnostics.agreement?.[arm];
@@ -96,6 +96,7 @@ export function rq3RunPanel(job, s) {
   const transcript = records.filter(r => r.kind === 'debate').map(r => `<article class="trace" data-group="${escape(r.group)}"><strong>${escape(r.arm)} · ${escape(DOMAIN_LABEL[r.domain] || r.domain)} · 第 ${r.round} 輪 · ${escape(r.stance)}</strong><p>${escape(r.output?.rationale || '')}</p><small>引用：${escape((r.output?.evidence_ids || []).join(', '))}</small></article>`).join('');
   return `<section class="execution-block rq-block"><div class="subheading"><h3>RQ3 · 領域專業辯論</h3><small>${escape(summary)}</small></div>
     ${cards || '<p class="hint">尚無領域辯論結果。</p>'}
+    ${settings.include_controls ? `<h4>v7 必要對照</h4>${table(['對照', '預定呼叫', '候選決策', '守門後決策'], ['C_budget', 'C_partition'].map(arm => `<tr><th>${arm === 'C_budget' ? '通才 28 次獨立提案＋1 次裁決' : '四領域證據直接裁決（不辯論）'}</th><td>${arm === 'C_budget' ? 29 : 1}</td><td>${escape(s.decisions?.[arm]?.candidate_action || '等待中')}</td><td>${escape(s.decisions?.[arm]?.action || '等待中')}</td></tr>`), '相同資料、期間與後處理；名義呼叫對齊不等於 token 對齊')}` : ''}
     <p class="hint">通才組 A、B、C、D 照常執行；領域組與同規則的通才組配對比較。領域觀點是同一案例的中間輸出，不是四個獨立樣本。已記錄領域辯論與觀點 ${records.length} 筆。</p>
     <details><summary>領域辯論逐步論證（${records.filter(r => r.kind === 'debate').length}）</summary>${transcript || '<p class="hint">尚無紀錄。</p>'}</details></section>`;
 }

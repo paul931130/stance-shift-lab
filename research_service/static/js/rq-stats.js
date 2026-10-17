@@ -29,12 +29,12 @@ function rq2Block(report, protocol) {
     ${table(`C／D × 模型指派之方向準確率（${columns.join('、')}）`, ['組別', ...columns.map(a => `${a}`), '異質平均（AB、BA 同案平均）'], [row('C'), row('D'), diffRow], 'rq-table')}
     <div class="verdict pending rq-interaction"><b>Δ<sub>interaction</sub> ＝ (D − C)<sub>異質</sub> − (D − C)<sub>同質</sub> ＝ ${pp(interaction)}</b>
       <p>${escape(verdict)}異質值為同案 AB、BA 準確率的平均。這是描述統計：AB 與 BA 共用同一批案例，不是獨立觀察，也沒有 p 值或信賴區間；正式推論由事前登記的分析計畫（配對／日期群聚重抽樣）進行。</p></div>
-    <p class="hint">${escape(report.note || '')}</p></section>`;
+    <p class="hint">同質基準分別比較：${Object.entries(report.interactions_by_baseline || {}).map(([baseline, value]) => `${escape(baseline)}：${pp(value)}`).join('；') || '—'}。上述比較使用共同完整配對案例；排除重跑 ${report.excluded?.duplicates || 0} 案、正式資格不符 ${report.excluded?.nonformal || 0} 案、不完整配對 ${report.excluded_incomplete_pairs?.length || 0} 案。${escape(report.note || '')}</p></section>`;
 }
 
 const RESOURCE_COLUMNS = [['nominal_calls', '名義呼叫'], ['logical_calls', '實際呼叫'], ['provider_attempts', '提供者嘗試'],
   ['validation_retry_calls', '驗證重試'], ['total_tokens', 'token 總量'], ['sum_call_seconds', '呼叫秒數'], ['critical_path_seconds', '關鍵路徑秒']];
-const ARM_NAME = {A: 'A 單次判斷', B: 'B 獨立投票', C: 'C 通才固定', D: 'D 通才交換', C_domain: 'C_domain 領域固定', D_domain: 'D_domain 領域交換'};
+const ARM_NAME = {A: 'A 單次判斷', B: 'B 獨立投票', C: 'C 通才固定', D: 'D 通才交換', C_domain: 'C_domain 領域固定', D_domain: 'D_domain 領域交換', C_budget: 'C_budget 29 次通才取樣整合', C_partition: 'C_partition 分域直接裁決'};
 
 function rq3Block(report) {
   if (report.status !== 'complete') {
@@ -55,7 +55,7 @@ function rq3Block(report) {
     const means = report.resources[arm].means || {}, missing = report.resources[arm].cases_missing_metric || {};
     return `<tr><th scope="row">${escape(ARM_NAME[arm] || arm)}</th><td>${percentage(accuracyOf[arm])}</td>${RESOURCE_COLUMNS.map(([key]) => `<td>${means[key] == null ? '—' : fixed(means[key], key.includes('seconds') ? 1 : 1)}${missing[key] ? `<small>${missing[key]} 案缺值</small>` : ''}</td>`).join('')}</tr>`;
   });
-  const ratioRows = pairs.map(pair => `<tr><th scope="row">${pair.domain} ÷ ${pair.generalist}</th>${['nominal_calls', 'provider_attempts', 'total_tokens', 'sum_call_seconds', 'critical_path_seconds'].map(key => `<td>${ratio(pair.domain_over_generalist_cost?.[key])}</td>`).join('')}</tr>`);
+  const ratioRows = pairs.map(pair => `<tr><th scope="row">${pair.domain} ÷ ${pair.generalist}</th>${['nominal_calls', 'provider_attempts', 'total_tokens', 'sum_call_seconds', 'critical_path_seconds'].map(key => `<td>${ratio(pair.domain_over_generalist_cost?.[key])}${pair.paired_cost_coverage?.[key] ? `<small>共同完整 ${pair.paired_cost_coverage[key].paired_cases} 案</small>` : ''}</td>`).join('')}</tr>`);
   const agreementBlocks = Object.entries(report.agreement || {}).map(([arm, a]) => {
     const patterns = a.patterns || {};
     const complete = ['4:0', '3:1', '2:2'].reduce((sum, key) => sum + (patterns[key] || 0), 0);

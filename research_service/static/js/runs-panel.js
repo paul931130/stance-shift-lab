@@ -31,7 +31,7 @@ function announceTransitions(jobs) {
   }
   const running = jobs.filter(job => job.status === 'running');
   document.title = running.length
-    ? `(${running.map(job => `${job.steps}/${generalistTotal(job.config.protocol)}`).join(', ')}) ${BASE_TITLE}`
+    ? `(${running.map(job => `${job.steps}/${generalistTotal(job.config.protocol)}${job.config.domain_debate ? ' 通才；領域／對照執行中' : ''}`).join(', ')}) ${BASE_TITLE}`
     : BASE_TITLE;
 }
 
@@ -41,10 +41,11 @@ const groupTotals = protocol => ({A: 1, B: protocol.voting_samples, C: 7 * assig
 const generalistTotal = protocol => 15 + protocol.voting_samples + 14 * (assignmentCount(protocol) - 1);
 // RQ3 adds 29 nominal calls per domain arm (4 domains x (6 turns + 1 view) + 1 aggregator).
 const domainArms = config => config.domain_debate ? (config.domain_debate.rule === 'both' ? 2 : 1) : 0;
-const jobTotal = config => generalistTotal(config.protocol) + 29 * domainArms(config);
+const jobTotal = config => generalistTotal(config.protocol) + 29 * domainArms(config)
+  + (config.domain_debate?.include_controls ? 30 : 0);
 // Domains without usable evidence get a recorded InsufficientInfo view and skip their calls.
 const domainCalls = s => (s.domain_records || []).filter(record => !record.audit?.deterministic).length;
-const outputsDone = s => (s.records || []).length + domainCalls(s);
+const outputsDone = s => (s.records || []).length + domainCalls(s) + (s.control_records || []).length;
 function outputText(job, s, total) {
   const done = outputsDone(s), skipped = job.status === 'complete' ? total - done : 0;
   return skipped > 0 ? `${done} 次模型輸出（名義 ${total} 次，資訊不足的領域略過 ${skipped} 次）` : `${done}/${total} 模型輸出`;

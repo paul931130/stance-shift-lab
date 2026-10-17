@@ -191,7 +191,7 @@ function build() {
   const nodeLayer = el('g', {class: 'flow-nodes'}, svg);
   for (const n of nodes) {
     const w = nodeW(n), h = nodeH(n);
-    const g = el('g', {transform: `translate(${x(n) - w / 2},${n.y - h / 2})`, tabindex: '0', role: 'button'}, nodeLayer);
+    const g = el('g', {transform: `translate(${x(n) - w / 2},${n.y - h / 2})`, tabindex: '0', role: 'button', 'data-flow-node': n.id}, nodeLayer);
     el('rect', {class: 'flow-node-ring', width: w, height: h, rx: 10}, g);
     el('rect', {class: 'flow-node-box', width: w, height: h, rx: 10}, g);
     el('rect', {class: 'flow-node-stripe', width: 3, height: h - 16, x: 0, y: 8, rx: 1.5}, g);
