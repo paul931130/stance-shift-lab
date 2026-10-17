@@ -1,0 +1,84 @@
+{
+  "schema": "stance-shift-experiment-plan/v1",
+  "plan_id": "rq2-rq3-20261015.1",
+  "status": "prepared_pending_runtime_review_and_registration",
+  "scope": "retrospective_extension_of_previously_seen_180_cases",
+  "model_a": "ollama/qwen3:32b",
+  "model_b": "ollama/gemma3:27b",
+  "formal_seeds": [
+    905,
+    906,
+    907
+  ],
+  "report_bank_seed": 904,
+  "pilot_cases": 3,
+  "model_context_length": 8192,
+  "ollama_parallel": 1,
+  "analysis": {
+    "alpha": 0.05,
+    "date_block_length": 2,
+    "daily_block_length": 20,
+    "replicates": 1999,
+    "bootstrap_seed": 905,
+    "rq2_family": [
+      "AA:accuracy",
+      "AA:sharpe",
+      "BB:accuracy",
+      "BB:sharpe"
+    ],
+    "rq3_family": [
+      "C:accuracy",
+      "C:sharpe",
+      "C_budget:accuracy",
+      "C_budget:sharpe",
+      "C_partition:accuracy",
+      "C_partition:sharpe"
+    ],
+    "date_block_sensitivity": [
+      1,
+      2,
+      4
+    ],
+    "daily_block_sensitivity": [
+      10,
+      20,
+      40
+    ],
+    "decision_layer": "candidate",
+    "horizon": 60,
+    "cost_model": "corwin_schultz",
+    "family_rule": "joint_holm_two_sided_alpha_0.05",
+    "superiority_rule": "Both primary endpoint estimates must be positive and all corresponding Holm p-values < alpha; report each named baseline without selecting the better one."
+  },
+  "failure_policy": {
+    "stop_entire_registered_protocol_on_paused_or_cancelled": true,
+    "resume_same_job_only": true,
+    "exclude_by_performance": false,
+    "complete_case_requirement": 180,
+    "missing_cost": "unknown_not_zero",
+    "unestimable_endpoint": "report_not_estimable_no_family_reduction"
+  },
+  "memory_policy": {
+    "order": "analysis_date_then_ticker",
+    "same_seed_protocol_ticker_arm": true,
+    "maturity": "strictly_before_analysis_date",
+    "layer": "gated",
+    "horizon": 60,
+    "cost_model": "corwin_schultz",
+    "abort_on_pending_earlier_cases": true
+  },
+  "runtime_requirements": [
+    "record_model_digests_and_ollama_version",
+    "matching_source_fingerprint",
+    "all_required_design_arms_pass_pilot",
+    "record_tokens_retries_and_latency",
+    "no_truncated_control_judge_context",
+    "freeze_environment_before_registration"
+  ],
+  "change_rule": "Pilot may prompt a new version for format, context or failure handling; never select settings from accuracy/Sharpe. Any change invalidates affected qualification and requires a new plan hash.",
+  "rq3_inference_seed": 905,
+  "seed_scope": {
+    "formal_seeds": "RQ2 only; average within case before inference",
+    "rq3_inference_seed": "RQ3 single protocol; no multi-seed pooling"
+  }
+}

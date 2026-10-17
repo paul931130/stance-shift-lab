@@ -1,5 +1,7 @@
 # gemma3:27b 資格檢驗操作手冊（RQ2 模型 B）
 
+> 2026-10-15：請先讀 [新版實驗推進手冊](experiment-launch-20261015.md)。下方保留舊 Bash／模型資格脈絡；使用者的 PowerShell 指令、獨立唯讀探針副本、新版 RQ2／RQ3 pilot 及 report-bank seed 規則以新手冊為準。不要直接對原 RQ1 快照初始化 Store；舊 canary 不能代表新設計已合格。
+
 正式登記 RQ2 之前，模型 B 要先通過與 qwen3:32b、gemini-2.5-flash 相同的三項檢驗。本手冊只列操作步驟；為何需要這些檢驗見 `model-b-candidates.md`。
 
 | 檢驗 | 目的 | 呼叫量 | 比較對象 |
@@ -48,7 +50,7 @@ env -u GPUTW_OLLAMA_BASE_URL OLLAMA_BASE_URL=http://localhost:11435 .venv/Script
 env -u GPUTW_OLLAMA_BASE_URL OLLAMA_BASE_URL=http://localhost:11435 .venv/Scripts/python.exe scripts/run_model_canary.py --model ollama/gemma3:27b
 ```
 
-結束代碼 0 為通過。注意：canary 是同質設定（四組都用 gemma）；RQ2 的異質辯論（A/B 分屬兩台主機）要等模型路由合併後，另以合成資料試跑一案。
+結束代碼 0 為通過。注意：canary 是同質設定（四組都用 gemma）；RQ2 的異質辯論（A/B 分屬兩台主機）路由已合併，但仍需用新版完整設計另做資格／pilot。
 
 ## 4. 登記前要留下的紀錄
 
