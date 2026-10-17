@@ -9,7 +9,7 @@
 | 資料 | 已見的 9 股票 × 20 日期，共 180 案；屬回溯延伸 |
 | 模型 | A＝qwen3:32b，B＝gemma3:27b；研究／裁決用 A |
 | RQ2 | AA／AB／BA／BB；正式 seeds 905／906／907；報告庫 seed 904 |
-| RQ3 | fixed，C／C_domain／C_budget／C_partition；單一 seed 905，單 protocol 分析 |
+| RQ3 | fixed，C／C_domain／C_budget／C_partition；單一 seed 905，單 protocol 分析；C_budget 28 份提案維持 C 組溫度 0.2（使用者 2026-10-17 決定，pilot 須報告提案方向一致率） |
 | 主端點 | candidate、60 日、Corwin–Schultz 成本；RQ2 四端點、RQ3 六端點各自共同 Holm |
 | Bootstrap | 日期區塊 2、日報酬區塊 20、1999 次、seed 905；預定敏感性見完整 JSON |
 | 記憶與失敗 | 同 seed／ticker／arm、嚴格成熟、按日期順序；正式協議任一案 paused/cancelled 即停止認領該協議後續案 |

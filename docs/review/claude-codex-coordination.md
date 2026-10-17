@@ -76,3 +76,8 @@ Claude 接著修前三項，修改會另外 commit 並記錄於此。
 
 - commit `08f7d67`：`models.generate` 在 JSON schema 失敗後，下一次嘗試附上「哪個欄位違反哪個限制」的修正提示；失敗的路由呼叫帶 `model_route`；路由的 validation_retries 與 compute_usage 規則一致；RQ3 view 在 generate 內放棄時保留 usage。469 tests 通過（1 skip）。這些檔案屬於雜湊來源，協議／RQ3 指紋已改變；`work/preformal-20261017/` 的封裝若記錄來源指紋，須重新產生。
 - Gemini 再測（HEAD `08f7d67`，AAPL 2024-12-31，探索性、非研究資料，`work/gemini-smoke-2/`）：RQ3（rule both）88 次 HTTP／名義 80，2 次 schema 失敗由修正提示救回；RQ2（v3-1015.1，AA/AB/BA/BB）71 次／名義 64，4 次 schema 失敗全部救回。兩案皆不需手動續跑，`rq3_diagnostics.resources` 各組 token 皆非空，`failed_model_calls` 為空。決策全為 Buy。未驗證到「失敗呼叫帶 model_route」的真實案例（無失敗呼叫），由單元測試覆蓋。
+
+## 2026-10-17 使用者決定
+
+- C_budget 的 28 份提案維持溫度 0.2（與辯論者相同），先跑看看；pilot 須報告 28 份提案的方向一致率，若幾乎全同再重新討論。
+- 使用者要求用 GPUtw RTX 3090 測試 Ollama 是否可用（實驗室環境類似）；這是連線與模型可用性測試，不是資格檢驗或正式研究。
