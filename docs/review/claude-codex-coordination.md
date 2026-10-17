@@ -71,3 +71,8 @@
 - `failed_model_calls` 不帶 `model_route`，無法歸因到模型 A 或 B。
 - 「未匹配來源數字」大量誤報期間長度（20、60）。
 Claude 接著修前三項，修改會另外 commit 並記錄於此。
+
+## 2026-10-17 Claude 修正與 Gemini 再測
+
+- commit `08f7d67`：`models.generate` 在 JSON schema 失敗後，下一次嘗試附上「哪個欄位違反哪個限制」的修正提示；失敗的路由呼叫帶 `model_route`；路由的 validation_retries 與 compute_usage 規則一致；RQ3 view 在 generate 內放棄時保留 usage。469 tests 通過（1 skip）。這些檔案屬於雜湊來源，協議／RQ3 指紋已改變；`work/preformal-20261017/` 的封裝若記錄來源指紋，須重新產生。
+- Gemini 再測（HEAD `08f7d67`，AAPL 2024-12-31，探索性、非研究資料，`work/gemini-smoke-2/`）：RQ3（rule both）88 次 HTTP／名義 80，2 次 schema 失敗由修正提示救回；RQ2（v3-1015.1，AA/AB/BA/BB）71 次／名義 64，4 次 schema 失敗全部救回。兩案皆不需手動續跑，`rq3_diagnostics.resources` 各組 token 皆非空，`failed_model_calls` 為空。決策全為 Buy。未驗證到「失敗呼叫帶 model_route」的真實案例（無失敗呼叫），由單元測試覆蓋。
