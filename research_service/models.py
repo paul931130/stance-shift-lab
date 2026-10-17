@@ -921,7 +921,21 @@ def model_endpoint(protocol):
     return dict((getattr(protocol, "model_endpoints", None) or {}).get(protocol.model) or {})
 
 
+def schema_feedback(error):
+    """A short correction for a JSON-schema failure; None for any other error."""
+    from jsonschema import ValidationError
+    if not isinstance(error, ValidationError):
+        return None
+    field = "/".join(str(part) for part in error.absolute_path) or "(root)"
+    limit = error.validator_value if isinstance(error.validator_value, (int, float, str)) else None
+    rule = f"{error.validator} {limit}" if limit is not None else str(error.validator)
+    return ("Your previous JSON did not match the required schema: field "
+            f"`{field}` failed `{rule}`. Return the complete JSON object again with the same content, "
+            "shortening or correcting that field so every text field stays within its maxLength.")
+
+
 def generate(protocol, messages, seed=None, temperature=None):
+    original_messages = messages
     output_schema = output_schema_for(messages)
     effective_temperature = protocol.temperature if temperature is None else temperature
     endpoint = model_endpoint(protocol)
@@ -929,9 +943,11 @@ def generate(protocol, messages, seed=None, temperature=None):
     # A frozen protocol (v3-1001.x) carries its own context length; older ones read the environment.
     context_length = getattr(protocol, "model_context_length", None) or model_context_length()
     failures, attempt_audits = [], []
+    request_messages = messages
     for attempt in range(1, protocol.provider_retry_attempts + 1):
         usage, content = {}, ""
         attempt_started = time.monotonic()
+        messages = request_messages
         try:
             if protocol.model.startswith("ollama/"):
                 model = protocol.model.removeprefix("ollama/")
@@ -1019,7 +1035,8 @@ def generate(protocol, messages, seed=None, temperature=None):
             from jsonschema import validate
             validate(parsed, output_schema)
             usage["client_elapsed_seconds"] = round(time.monotonic() - attempt_started, 6)
-            return parsed, {"usage": usage, "prompt_hash": digest(messages), "raw_response": content,
+            # prompt_hash identifies the logical request; schema feedback turns are listed in attempts.
+            return parsed, {"usage": usage, "prompt_hash": digest(original_messages), "raw_response": content,
                 "seed": seed, "provider_attempts": attempt, "prior_failures": failures,
                 "temperature": effective_temperature, "model_timeout_seconds": timeout_seconds,
                 "model_context_length": context_length,
@@ -1027,7 +1044,14 @@ def generate(protocol, messages, seed=None, temperature=None):
         except Exception as error:
             usage.setdefault("client_elapsed_seconds", round(time.monotonic() - attempt_started, 6))
             failures.append(type(error).__name__)
-            attempt_audits.append({"attempt": attempt, "status": "failed", "error_type": type(error).__name__, "usage": usage})
+            attempt_audit = {"attempt": attempt, "status": "failed", "error_type": type(error).__name__, "usage": usage}
+            feedback = schema_feedback(error)
+            if feedback:
+                # Providers such as Gemini do not enforce maxLength; resending the identical
+                # prompt repeats the same overlong field, so say which constraint failed.
+                attempt_audit["schema_feedback"] = feedback
+                request_messages = [*original_messages, {"role": "user", "content": feedback}]
+            attempt_audits.append(attempt_audit)
             if attempt >= protocol.provider_retry_attempts:
                 try:
                     error.model_attempt_audit = {"provider_attempts": attempt,

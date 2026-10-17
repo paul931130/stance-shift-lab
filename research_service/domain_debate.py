@@ -606,6 +606,13 @@ class DomainDebateEngine(Engine):
             except (ValueError, JsonSchemaValidationError, TypeError) as error:
                 failure = {"attempt": attempt, "error_type": type(error).__name__, "message": str(error)[:200],
                            "call_key": retry_key}
+                if audit is None and isinstance(getattr(error, "model_attempt_audit", None), dict):
+                    # The provider gave up inside models.generate (e.g. schema failures); its
+                    # attempts carry usage, so costs stay observable instead of becoming null.
+                    failed = error.model_attempt_audit
+                    failure.update({"usage": failed.get("usage") or (failed.get("attempts") or [{}])[-1].get("usage", {}),
+                                    "provider_attempts": failed.get("provider_attempts", 1),
+                                    "attempts": failed.get("attempts", [])})
                 if audit:
                     failure.update({name: audit[name] for name in ("seed", "prompt_hash") if name in audit})
                     failure["raw_response_hash"] = digest(audit.get("raw_response", ""))
@@ -614,7 +621,7 @@ class DomainDebateEngine(Engine):
                     failure["attempts"] = audit.get("attempts", [])
                 failures.append(failure)
                 if attempt >= protocol.provider_retry_attempts:
-                    if audit:
+                    if audit or "attempts" in failure:
                         error.model_attempt_audit = {"provider_attempts": failure["provider_attempts"],
                                                      "attempts": failure["attempts"], "usage": failure["usage"],
                                                      "validation_retries": failures[:-1]}

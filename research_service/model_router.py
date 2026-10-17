@@ -270,9 +270,16 @@ def call_with_route(model_call, protocol, call, call_key, messages, seed, kwargs
     model, slot = model_for(protocol, call)
     try:
         result, audit = model_call(target, messages, **kwargs)
-    except (ValueError, ModelRouteError):
-        raise  # Answer-format problems keep their existing validation-retry semantics.
     except Exception as error:
+        # A failed call must still be attributable to its model slot in failed_model_calls.
+        failed_audit = getattr(error, "model_attempt_audit", None)
+        if isinstance(failed_audit, dict):
+            failed_audit["model_route"] = {
+                "call_key": call_key, "assignment": getattr(call, "assignment", None), "model_slot": slot,
+                "model": model, "provider": provider_of(model), "endpoint": endpoint_label(protocol, model),
+                "seed_requested": seed, "seed_key": seed_key(call_key), "status": "failed"}
+        if isinstance(error, (ValueError, ModelRouteError)):
+            raise  # Answer-format problems keep their existing validation-retry semantics.
         if isinstance(error, ModelIdentityError) or not is_provider_failure(error):
             raise  # Only transport/provider trouble means "unavailable"; a bug stays a bug.
         wrapped = ModelRouteUnavailable(f"{slot} 模型 {model}（{endpoint_label(protocol, model)}）呼叫失敗："
@@ -310,7 +317,11 @@ def finalize_route(audit: dict) -> dict:
     """Add the validation-retry count once the final answer of a logical call is known."""
     route = audit.get("model_route")
     if isinstance(route, dict):
-        route["validation_retries"] = len(audit.get("validation_retries") or [])
+        retries = audit.get("validation_retries") or []
+        # Same rule as engine.compute_usage: an output accepted after a record-only
+        # check is not a rejected retry.
+        route["validation_retries"] = sum(not item.get("accepted_as_output") for item in retries)
+        route["accepted_after_check"] = sum(bool(item.get("accepted_as_output")) for item in retries)
     return audit
 
 
