@@ -15,6 +15,18 @@
 
 ---
 
+公開入口：[專題網站](https://paul931130.github.io/stance-shift-lab/) · [唯讀合成展示](https://paul931130.github.io/stance-shift-lab/app/) · [研究報告 PDF](report/stance-shift-report.pdf)
+
+專題網站整理研究內容；`app/` 是唯讀合成資料展示，不呼叫模型，也不建立正式實驗。
+
+| 研究 | 目前狀態 | 證據界線 |
+|---|---|---|
+| RQ1 | 已完成 180 案回溯比較 | 未取得 D 優於 C 的顯著證據；不是獨立樣本外驗證 |
+| RQ2 | 模型路由已實作，正式研究待完成 | 真實模型資格、完整設計 pilot、正式登記與執行仍未完成 |
+| RQ3 | 領域辯論、整合與必要對照已實作，正式研究待完成 | 合成測試不代表模型資格通過或已有正式研究結果 |
+
+版本內證據與後續條件見 [研究狀態](docs/research-status.md)。
+
 ## 最新消息
 
 - [2026-10] **正式實驗總覽與 GPU 自動關機**：網頁最上方直接看每個事前登記研究的進度、錯誤與剩餘時間；佇列閒置 15 分鐘自動關閉 GPUtw 機器，不再空燒算力。
@@ -54,7 +66,7 @@ flowchart LR
 - **RQ2**：多空辯論者分別使用 qwen3:32b／gemma3:27b 時，D−C 是否隨模型組成改變；比較 AA、AB、BA、BB，v7 規劃至少三個種子。尚無正式結果。
 - **RQ3**：固定立場下，四領域各自多空辯論後由 Final Aggregator 整合，與通才架構相比的績效／成本取捨。核心流程及兩個必要對照已實作；真實模型資格、正式登記與實驗仍未完成。
 
-目前只完成 RQ1 的 180 案回溯比較，未取得 D 優於 C 的顯著證據。月度與整套系統換模型屬穩健性／探索延伸，不是新版 RQ2／RQ3。當前設計、實作與驗證狀態見 [研究修正進度](docs/review/remediation-status-2026-10-15.md)。
+目前只完成 RQ1 的 180 案回溯比較，未取得 D 優於 C 的顯著證據。月度與整套系統換模型屬穩健性／探索延伸，不是新版 RQ2／RQ3。當前設計、實作與驗證狀態見 [研究狀態](docs/research-status.md)。
 
 每個數字都必須能追溯到來源；資料集在建立時一次取得並鎖定雜湊，之後的實驗都讀同一份。正式樣本在執行前事前登記，登記後不能更改。
 
@@ -134,14 +146,18 @@ FNSPID 對部分股票與年份沒有新聞（例如 JPM、MCD 在 2020 年後�
 | 研究方法 | [統計方法](docs/statistical-methods.md)、[時間切分](docs/temporal-split.md)、[知識截止日與記憶污染](docs/knowledge-cutoff.md) |
 | 本專題的實驗 | [實驗架構](docs/experiment-architecture.md)、[E2′ 事前登記](docs/e2prime-preregistration.md) |
 
-舊的審查與交接紀錄在 `docs/archive/`。
+目前研究進度與證據界線見 [研究狀態](docs/research-status.md)；RQ2／RQ3 操作入口見 [正式實驗前操作單](docs/rq-prep/preformal-runbook-20261017.md)。
 
 ## 驗證
 
 ```bash
 ruff check research_service scripts
 python -m unittest discover -s research_service/tests -p "test_*.py"
+python scripts/check_public_site.py
+node scripts/test_api_timeout.mjs
 ```
+
+修改正式介面後，執行 `python scripts/check_public_site.py --sync` 更新公開展示資產並一起提交；此操作保留既有合成錄製資料。CI 與 Pages 發布前都會檢查文件連結和展示同步，避免失效連結或過期介面上線。
 
 CI 在 Linux／Windows 跑單元測試、以 ES module 檢查前端、跑瀏覽器端到端測試，並在 x86-64 與 ARM64 實際啟動 Docker 服務。
 
