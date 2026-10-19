@@ -1,6 +1,5 @@
 """Registered study batches stop when a frozen case is paused or cancelled."""
 
-from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
 from unittest.mock import patch
@@ -10,7 +9,7 @@ from research_service.storage import Store
 
 class StudyStopGuardTests(unittest.TestCase):
     def setUp(self):
-        self.directory = TemporaryDirectory(dir=Path(__file__).resolve().parents[2])
+        self.directory = TemporaryDirectory()
         self.addCleanup(self.directory.cleanup)
         self.store = Store(self.directory.name)
 

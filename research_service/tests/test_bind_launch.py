@@ -18,7 +18,7 @@ from research_service.run_manifest import source_fingerprint
 
 class BindLaunchTests(unittest.TestCase):
     def setUp(self):
-        self.tmp = tempfile.TemporaryDirectory(dir=Path.cwd())
+        self.tmp = tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.root = Path(self.tmp.name)
         self.ticker_patch = patch("research_service.bind_launch.STUDY_TICKERS", ("NVDA",))

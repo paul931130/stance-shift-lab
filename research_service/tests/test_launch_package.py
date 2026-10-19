@@ -70,7 +70,7 @@ class LaunchPackageTests(unittest.TestCase):
 
     @patch("research_service.launch_package.coverage", return_value={"formal_experiment_ready": True})
     def test_complete_frame_is_offline_and_source_unchanged(self, _coverage):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source, plan = self.fixture(root)
             before = file_hash(source)
@@ -109,7 +109,7 @@ class LaunchPackageTests(unittest.TestCase):
 
     @patch("research_service.launch_package.coverage", return_value={"formal_experiment_ready": True})
     def test_rq3_seed_is_independent_of_rq2_seeds(self, _coverage):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source, plan_path = self.fixture(root)
             plan = deepcopy(DEFAULT_PLAN)
@@ -130,7 +130,7 @@ class LaunchPackageTests(unittest.TestCase):
     @patch("research_service.launch_package.coverage", return_value={"formal_experiment_ready": True})
     def test_bad_digest_or_grid_is_rejected(self, _coverage):
         for broken in ("digest", "grid"):
-            with self.subTest(broken=broken), tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+            with self.subTest(broken=broken), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 source, plan = self.fixture(root, broken=broken)
                 with self.assertRaises(ValueError):
@@ -139,7 +139,7 @@ class LaunchPackageTests(unittest.TestCase):
 
     @patch("research_service.launch_package.coverage", return_value={"formal_experiment_ready": True})
     def test_existing_output_is_rejected(self, _coverage):
-        with tempfile.TemporaryDirectory(dir=Path.cwd()) as directory:
+        with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             source, plan = self.fixture(root)
             output = root / "output"
