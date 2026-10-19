@@ -55,3 +55,14 @@ build/
 /report/*.lot
 /report/*.toc
 /tmp*/
+
+# Internal drafts kept on the author's machine only (not published)
+/report/*
+!/report/stance-shift-report.pdf
+/docs/archive/
+/docs/review/
+/HANDOFF_*.md
+/docs/codex-prompt.md
+/docs/e2prime-run-prompt.md
+/docs/presentation-prep.md
+/.claude/
