@@ -4,7 +4,7 @@
 
 ## 回報問題
 
-先查一下 [Issues](../../issues) 有沒有重複回報。開新 issue 時盡量附上：
+先查一下 [Issues](https://github.com/paul931130/stance-shift-lab/issues) 有沒有重複回報。開新 issue 時盡量附上：
 
 - 重現步驟（哪個指令、哪個 API、輸入了什麼）
 - 預期行為 vs. 實際行為
@@ -41,5 +41,5 @@ python -m unittest research_service.tests.test_e2e_demo -v
 ## 提交 PR
 
 - 一個 PR 專注一件事，避免把 lint 修正、功能改動、文件更新混在一起。
-- 若改動會影響決策提示詞、協議欄位或資料口徑，請同時更新 [CHANGELOG.md](CHANGELOG.md) 並考慮是否需要新的 protocol 版本（見 [design-notes](docs/archive/design-notes-v3-0908.md) 的版本規則）。
+- 若改動會影響決策提示詞、協議欄位或資料口徑，請同時更新 [CHANGELOG.md](CHANGELOG.md) 並考慮是否需要新的 protocol 版本；核對現行 [協議實作](research_service/protocol.py)、[CHANGELOG](CHANGELOG.md) 與 [正式實驗前操作單](docs/rq-prep/preformal-runbook-20261017.md)，重新凍結受影響設定與來源指紋。
 - 不要提交任何 API 金鑰、`.env.research`、SQLite 資料庫或未授權的第三方資料（新聞 CSV 等）。

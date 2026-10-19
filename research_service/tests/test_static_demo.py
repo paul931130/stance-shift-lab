@@ -23,10 +23,20 @@ class StaticDemoBuildTests(unittest.TestCase):
             responses.write_text(json.dumps({"/api/config": {"demo_mode": True}}), encoding="utf-8")
             out = tmp_path / "app"
             static_demo.build(responses, out)
+            legacy = (out / "demo-data.js").read_text(encoding="utf-8")
+            self.assertIn('"timeline": []', legacy)
+
+            timeline = [{"t": 1.5, "method": "POST", "key": "/api/jobs", "response": {"id": "job-</x>"}}]
+            responses.write_text(json.dumps({"responses": {"/api/config": {"demo_mode": True}},
+                                             "timeline": timeline}), encoding="utf-8")
+            static_demo.build(responses, out)
 
             data = (out / "demo-data.js").read_text(encoding="utf-8")
             self.assertTrue(data.startswith("globalThis.STATIC_DEMO ="))
             self.assertIn('"/api/config"', data)
+            self.assertIn('"method": "POST"', data)
+            self.assertIn('"key": "/api/jobs"', data)
+            self.assertIn("job-<\\/x>", data)
             html = (out / "index.html").read_text(encoding="utf-8")
             self.assertLess(html.index('<script src="demo-data.js"></script>'), html.index('type="module"'))
             self.assertNotIn("/static/", html)
@@ -34,6 +44,8 @@ class StaticDemoBuildTests(unittest.TestCase):
             self.assertIn('src="js/app.js"', html)
             self.assertTrue((out / "js" / "app.js").exists())
             self.assertIn("static-demo-banner", html)
+            self.assertNotIn('href="/api/', html)
+            self.assertNotIn("padding-top:38px", html)
 
 
 if __name__ == "__main__":

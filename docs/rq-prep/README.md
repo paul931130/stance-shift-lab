@@ -2,7 +2,7 @@
 
 **目前操作入口：[2026-10-17 正式實驗前操作單](preformal-runbook-20261017.md)。** 舊表格與預算只保留歷史脈絡。
 
-> 2026-10-15 更新：以下決策表保留 10 月 8 日的規劃脈絡，不代表目前仍未實作。Model Router、Domain Debate、Final Aggregator 與 web 接線均已存在；v7 將 RQ2 的 BB、至少三 seed 與 RQ3 的兩個對照列為必要。現況以 [修正進度](../review/remediation-status-2026-10-15.md) 為準。草稿內舊預算與建議不可直接用作正式登記。
+> 2026-10-15 更新：以下決策表保留 10 月 8 日的規劃脈絡，不代表目前仍未實作。Model Router、Domain Debate、Final Aggregator 與 web 接線均已存在；v7 將 RQ2 的 BB、至少三 seed 與 RQ3 的兩個對照列為必要。現況以 [研究狀態](../research-status.md) 為準。草稿內舊預算與建議不可直接用作正式登記。
 
 依據 10/06 會議版書面報告 的新版 RQ1／RQ2／RQ3，以及 10/06 研究方法審閱紀錄（未公開）。這裡的文件都是草稿或稽核紀錄，不是正式登記。
 

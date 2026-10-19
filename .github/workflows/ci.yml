@@ -9,6 +9,22 @@ on:
     branches: [main]
 
 jobs:
+  public-site:
+    name: Public links and demo sync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check public links and generated demo assets
+        run: python scripts/check_public_site.py
+      - name: Frontend response timeout regressions
+        run: node scripts/test_api_timeout.mjs
+
   lint:
     name: Ruff lint
     runs-on: ubuntu-latest
