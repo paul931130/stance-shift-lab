@@ -34,6 +34,8 @@ class StaticDemoBuildTests(unittest.TestCase):
             self.assertIn('src="js/app.js"', html)
             self.assertTrue((out / "js" / "app.js").exists())
             self.assertIn("static-demo-banner", html)
+            self.assertNotIn('href="/api/', html)
+            self.assertNotIn("padding-top:38px", html)
 
 
 if __name__ == "__main__":

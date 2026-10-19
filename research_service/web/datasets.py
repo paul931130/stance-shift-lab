@@ -5,6 +5,7 @@ import threading
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, Request
+from starlette.concurrency import run_in_threadpool
 
 from ..collect import collect_dataset as collect_snapshot
 from ..data import check_sentiment_sources, score_sentiment_finbert, validate_dataset
@@ -59,15 +60,13 @@ def build_router(ctx):
                 "source": "https://來源網址", "available_at": "2024-12-30"}],
             "instructions": "這是格式範本，不能直接執行；請填入至少 61 日正數 OHLC 與可驗證證據。四個面向的名稱為 technical／fundamental／sentiment／macro；macro 證據必須另有 vintage_date。"}
 
-    @router.post("/api/datasets/import")
-    async def import_dataset(request: Request, use_finbert: bool = False):
-        body = await request.body()
-        if len(body) > 6_000_000:
-            raise HTTPException(413, "Upload exceeds 6 MB")
+    def process_import(body, use_finbert):
         try:
             data = json.loads(body)
-        except json.JSONDecodeError as error:
+        except (json.JSONDecodeError, UnicodeDecodeError) as error:
             raise ValueError("上傳內容不是有效 JSON") from error
+        if not isinstance(data, dict):
+            raise ValueError("上傳內容必須為 JSON 物件")
         data.pop("_collection", None)  # Collection status is server-generated audit metadata.
         if data.get("ticker") not in TICKERS:
             raise ValueError("股票不在研究名單")
@@ -78,6 +77,15 @@ def build_router(ctx):
         if use_finbert:
             data = validate_dataset(score_sentiment_finbert(data))
         return {"id": store.add_dataset(data), "finbert_applied": use_finbert}
+
+    @router.post("/api/datasets/import")
+    async def import_dataset(request: Request, use_finbert: bool = False):
+        body = bytearray()
+        async for chunk in request.stream():
+            if len(body) + len(chunk) > 6_000_000:
+                raise HTTPException(413, "Upload exceeds 6 MB")
+            body.extend(chunk)
+        return await run_in_threadpool(process_import, body, use_finbert)
 
     # ---------- FinBERT scoring (creates a new, content-addressed version) ----------
     def perform_finbert(key):

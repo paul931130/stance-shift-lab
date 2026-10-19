@@ -29,10 +29,18 @@ export async function api(path, body, method, {timeoutMs = API_TIMEOUT_MS} = {})
         body: body === undefined ? undefined : JSON.stringify(body),
         signal: controller.signal,
       });
-      clearTimeout(timeout);
       let data;
       try { data = await response.json(); }
-      catch { data = {detail: `服務回傳了無法讀取的內容（HTTP ${response.status}）`}; }
+      catch (error) {
+        if (error?.name === 'AbortError' || controller.signal.aborted) throw error;
+        const detail = `服務回傳了無法讀取的內容（HTTP ${response.status}）`;
+        if (response.ok) {
+          const invalid = new Error(detail);
+          invalid.noRetry = true;
+          throw invalid;
+        }
+        data = {detail};
+      }
       if (!response.ok) {
         if (response.status === 401) { $('login').hidden = false; $('workspace').hidden = true; }
         // FastAPI validation errors are a list of {loc, msg}; show them as "field: reason".
@@ -49,11 +57,12 @@ export async function api(path, body, method, {timeoutMs = API_TIMEOUT_MS} = {})
         lastError = error;
       } else return data;
     } catch (error) {
-      clearTimeout(timeout);
-      lastError = error?.name === 'AbortError'
+      lastError = error?.name === 'AbortError' || controller.signal.aborted
         ? new Error(`服務回應逾時（${timeoutMs / 1000} 秒）；請確認 Docker Desktop 與研究服務仍在執行。`)
         : error;
       if (error?.noRetry || !(retryable && attempt < API_GET_RETRY_LIMIT)) throw lastError;
+    } finally {
+      clearTimeout(timeout);
     }
     await new Promise(resolve => setTimeout(resolve, 400 * (attempt + 1)));
   }

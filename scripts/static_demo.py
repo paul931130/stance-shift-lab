@@ -19,7 +19,7 @@ ROOT = Path(__file__).resolve().parent.parent
 REPO_URL = "https://github.com/paul931130/stance-shift-lab"
 BANNER_TEXT = "線上展示版：介面與資料為本機展示模式事先錄製（合成資料、固定回應，非研究結果）；無法新增工作。完整系統請見 GitHub。"
 BANNER_STYLE = (
-    "position:fixed;top:0;left:0;right:0;z-index:99999;margin:0;padding:6px 12px;"
+    "margin:0;padding:6px 12px;"
     "background:#fff3cd;color:#664d03;border-bottom:1px solid #e0c36a;"
     "font:13px/1.4 system-ui,sans-serif;text-align:center"
 )
@@ -77,14 +77,15 @@ def rewrite_index(html):
     html = re.sub(r'<a\b[^>]*href="/taiwan"[^>]*>.*?</a>\s*', "", html, flags=re.S)
     html = html.replace('"/assets/js/', '"js/').replace('"/assets/', '"')
     html = html.replace('href="/"', 'href="./"')
+    # Pages has no API server; do not leave a download pointing at a 404.
+    html = re.sub(r'<a\b[^>]*href="/api/template"[^>]*>.*?</a>',
+                  '<span>格式範本下載請使用完整研究台。</span>', html, flags=re.S)
     html = re.sub(r'(<script\b[^>]*type="module")', '<script src="demo-data.js"></script>\n\\1', html, count=1)
     banner = (
         f'<div id="static-demo-banner" style="{BANNER_STYLE}">{BANNER_TEXT} '
         f'<a href="{REPO_URL}" style="color:inherit;font-weight:600">GitHub</a></div>'
     )
-    html, count = re.subn(r"(<body\b[^>]*>)", lambda m: m.group(1) + "\n" + banner, html, count=1)
-    if count:
-        html = html.replace("</head>", "<style>body{padding-top:38px !important}</style>\n</head>", 1)
+    html = re.sub(r"(<body\b[^>]*>)", lambda m: m.group(1) + "\n" + banner, html, count=1)
     return html
 
 
