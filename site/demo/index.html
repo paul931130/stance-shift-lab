@@ -1,0 +1,415 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>立場交換辯論 · 系統展示</title>
+<meta name="description" content="用兩個真實案例，看多代理人辯論如何在固定立場與立場交換下得出不同的投資判斷。真實模型輸出（RQ1 正式實驗）。">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700&display=swap" rel="stylesheet">
+<style>
+:root{--navy:#1F3A5F;--ink:#1A2233;--muted:#5B6472;--faint:#8A919C;--rule:#D9DCE1;--bg:#FAFAF7;--card:#FFFFFF;--teal:#0F766E;--teal-l:#E7F1EF;--gray:#C5CAD1;--orange:#B45309;--orange-l:#FDF1E3}
+*{box-sizing:border-box;margin:0}
+html{scroll-behavior:smooth}
+body{background:var(--bg);color:var(--ink);font-family:'Noto Sans TC',system-ui,sans-serif;font-size:16px;line-height:1.7}
+a{color:var(--teal)}
+.serif{font-family:'Noto Serif TC',Georgia,serif}
+.wrap{max-width:900px;margin:0 auto;padding:0 16px}
+.topbar{background:var(--navy);color:#F4F5F2}
+.topbar .wrap{display:flex;justify-content:space-between;align-items:center;gap:8px 20px;flex-wrap:wrap;padding-top:14px;padding-bottom:14px}
+.topbar h1{font-family:'Noto Serif TC',Georgia,serif;font-size:19px;line-height:1.4}
+.topbar .links{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;font-size:14px}
+.topbar a{color:#C9D3E0;text-decoration:none}
+.topbar a:hover{color:#fff}
+.topbar a.sub{font-size:12px;color:#9FB0C6}
+main{padding-bottom:110px}
+.step{padding:34px 0 8px;scroll-margin-top:8px}
+.step[hidden]{display:none}
+.step h2{font-family:'Noto Serif TC',Georgia,serif;font-size:24px;color:var(--navy);line-height:1.3;display:flex;align-items:center;gap:12px;margin-bottom:6px}
+.step h2 .n{display:inline-flex;width:32px;height:32px;border-radius:50%;background:var(--navy);color:#fff;font-size:16px;align-items:center;justify-content:center;flex:none}
+.step .lead{color:var(--muted);font-size:15px;margin-bottom:16px}
+.tag{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--teal);background:var(--teal-l);border-radius:3px;padding:1px 8px}
+.cases{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.case{all:unset;box-sizing:border-box;cursor:pointer;background:var(--card);border:2px solid var(--rule);border-radius:6px;padding:18px 18px 16px;display:block}
+.case:hover{border-color:var(--gray)}
+.case:focus-visible,.btn:focus-visible,.lnk:focus-visible,.chip:focus-visible,summary:focus-visible{outline:3px solid #5FB3A6;outline-offset:2px}
+.case.sel{border-color:var(--teal);background:#F6FAF9;box-shadow:0 0 0 1px var(--teal)}
+.case .tk{font-family:'Noto Serif TC',Georgia,serif;font-size:38px;font-weight:700;color:var(--navy);line-height:1.1}
+.case .dt{color:var(--muted);font-size:14px;margin:2px 0 10px}
+.case .ln{font-weight:700;font-size:15px;margin-bottom:10px}
+.case[aria-disabled=true]{cursor:default;opacity:.7}
+.flow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;list-style:none;padding:0}
+.stage{position:relative;background:#EEF0F3;border:1px solid var(--rule);border-radius:6px;padding:12px 10px;color:var(--faint);transition:background .4s,color .4s,border-color .4s}
+.stage .sn{font-size:12px;font-weight:700;letter-spacing:1px}
+.stage .sh{font-weight:700;font-size:15px;line-height:1.35;margin:2px 0 4px}
+.stage .sr{font-size:13px;line-height:1.5;opacity:0;transition:opacity .5s}
+.stage.on{background:var(--card);border-color:var(--teal);color:var(--ink);box-shadow:0 0 0 1px var(--teal)}
+.stage.on .sn{color:var(--teal)}
+.stage.on .sr{opacity:1;color:var(--muted)}
+.rs{margin-top:16px;display:grid;gap:8px}
+details{background:var(--card);border:1px solid var(--rule);border-radius:6px}
+summary{cursor:pointer;padding:10px 14px;font-weight:700;font-size:15px;color:var(--navy)}
+details .bd{padding:0 14px 12px;font-size:15px}
+details .en{margin-top:8px;padding:8px 10px;background:#F3F4F6;border-radius:4px;color:var(--muted);font-size:13.5px;line-height:1.6}
+.lnk{all:unset;cursor:pointer;color:var(--teal);font-size:13px;text-decoration:underline}
+.legend{font-size:14px;color:var(--muted);margin-bottom:14px}
+.legend b{color:var(--ink)}
+.dh,.row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.dh>div{font-family:'Noto Serif TC',Georgia,serif;font-weight:700;font-size:18px;padding:8px 12px;border-radius:6px;color:#fff}
+.dh .c{background:var(--navy)}.dh .d{background:var(--teal)}
+.dh small{display:block;font-family:'Noto Sans TC',system-ui,sans-serif;font-weight:400;font-size:12.5px;opacity:.9;line-height:1.5}
+.row{margin-top:14px}
+.rl{grid-column:1/-1;font-size:13px;font-weight:700;letter-spacing:2px;color:var(--teal);border-bottom:1px solid var(--rule);padding-bottom:2px}
+.cell{display:flex;flex-direction:column;gap:8px;min-height:20px;border-radius:6px}
+.cell .ah{display:none;font-size:12px;font-weight:700;color:var(--muted)}
+.cell.hl{background:var(--orange-l);border:1px dashed var(--orange);padding:8px}
+.banner{background:var(--orange);color:#fff;font-size:13.5px;font-weight:700;padding:6px 10px;border-radius:4px;line-height:1.5}
+.msg{background:var(--card);border:1px solid var(--rule);border-left:4px solid var(--gray);border-radius:6px;padding:10px 12px;font-size:14.5px;line-height:1.65}
+.msg.bull{border-left-color:var(--teal)}.msg.bear{border-left-color:var(--orange)}.msg.adj{border-left-color:var(--navy);background:#F3F6FA}
+.msg.pop{animation:pop .35s ease-out}
+@keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.mh{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:6px}
+.who{font-size:12.5px;font-weight:700;background:#EEF0F3;color:var(--navy);border-radius:10px;padding:0 9px}
+.st{font-size:12.5px;font-weight:700;border-radius:10px;padding:0 9px}
+.st.bull{background:var(--teal-l);color:var(--teal)}.st.bear{background:#FBE7D0;color:var(--orange)}
+.act{font-size:13px;font-weight:700;color:var(--ink)}
+.chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
+.chip{all:unset;cursor:pointer;font-size:12px;font-weight:700;color:var(--navy);background:#EAF0F7;border:1px solid #C9D6E6;border-radius:3px;padding:0 6px;line-height:1.6}
+.chip[aria-expanded=true]{background:var(--navy);color:#fff}
+.note{margin-top:6px;font-size:12.5px;line-height:1.55;color:var(--muted);background:#F3F4F6;border-radius:4px;padding:6px 8px;word-break:break-word}
+.msg .en{margin-top:6px;font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);padding-top:6px;line-height:1.55}
+.msg .lnk{display:inline-block;margin-top:6px}
+.arms{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.arm{background:var(--card);border:1px solid var(--rule);border-top:4px solid var(--gray);border-radius:6px;padding:12px}
+.arm.c{border-top-color:var(--navy)}.arm.d{border-top-color:var(--teal)}
+.arm .al{font-family:'Noto Serif TC',Georgia,serif;font-size:30px;font-weight:700;line-height:1;color:var(--navy)}
+.arm .an{font-size:13px;color:var(--muted);margin:2px 0 8px;line-height:1.4}
+.arm .aa{font-size:20px;font-weight:700}
+.arm .ae{font-size:14px;color:var(--muted)}
+.votes{margin-top:8px;font-size:12.5px;color:var(--muted)}
+.vbar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:4px;background:var(--rule)}
+.vbar i{display:block}
+.big{margin-top:18px;background:var(--navy);color:#C9D3E0;border-radius:6px;padding:20px;text-align:center}
+.big .bl{font-size:14px;letter-spacing:1px}
+.big .bn{font-family:'Noto Serif TC',Georgia,serif;font-size:64px;font-weight:700;line-height:1.15}
+.big .bn.up{color:#7FD1C1}.big .bn.dn{color:#F5B97A}
+.big .bs{font-size:13px;color:#9FB0C6}
+.verd{margin-top:12px;display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.verd div{background:var(--card);border:1px solid var(--rule);border-radius:6px;padding:8px 10px;font-size:14px;line-height:1.5}
+.verd b{font-size:15px}
+.ok b{color:var(--teal)}.no b{color:var(--orange)}.hold b{color:var(--muted)}
+.take{margin-top:16px;border-left:4px solid var(--teal);background:var(--teal-l);padding:12px 16px;font-size:17px;font-weight:700;color:var(--navy);border-radius:0 6px 6px 0}
+.bar{position:fixed;left:0;right:0;bottom:0;background:rgba(250,250,247,.96);border-top:1px solid var(--rule);z-index:5}
+.bar .wrap{display:flex;align-items:center;gap:14px 18px;flex-wrap:wrap;padding-top:12px;padding-bottom:12px}
+.btn{all:unset;box-sizing:border-box;cursor:pointer;background:var(--teal);color:#fff;font-weight:700;font-size:17px;padding:10px 28px;border-radius:4px;text-align:center}
+.btn:hover{background:#0B5F58}
+.btn[disabled]{background:var(--gray);color:#fff;cursor:default}
+.bar .lnk{font-size:14px}
+[hidden]{display:none!important}
+footer{border-top:1px solid var(--rule);padding:22px 0 30px;font-size:13.5px;color:var(--muted);line-height:1.7}
+footer p+p{margin-top:8px}
+@media (max-width:680px){
+ .cases{grid-template-columns:1fr}
+ .flow{grid-template-columns:1fr}
+ .dh{display:none}
+ .row{grid-template-columns:1fr}
+ .cell .ah{display:block}
+ .arms{grid-template-columns:1fr 1fr}
+ .verd{grid-template-columns:1fr 1fr}
+ .big .bn{font-size:52px}
+ .topbar h1{font-size:17px}
+ .btn{flex:1 1 100%}
+}
+@media (prefers-reduced-motion:reduce){
+ html{scroll-behavior:auto}
+ *{animation:none!important;transition:none!important}
+}
+</style>
+</head>
+<body>
+<div class="topbar"><div class="wrap">
+<h1>立場交換辯論 · 系統展示</h1>
+<div class="links"><a href="../">← 專題首頁</a><a class="sub" href="../app/">完整研究台（進階）</a></div>
+</div></div>
+
+<main class="wrap">
+<section class="step" id="s1">
+<h2><span class="n">1</span>選擇案例</h2>
+<p class="lead">同一份資料、四種判斷方式：A 單次判斷、B 獨立投票、C 固定立場辯論、D 立場交換辯論。選一個案例，看它們各自怎麼判斷。</p>
+<div class="cases" id="cases" role="radiogroup" aria-label="選擇案例"></div>
+</section>
+
+<section class="step" id="s2" hidden>
+<h2><span class="n">2</span>流程</h2>
+<p class="lead">從資料快照到 60 日回測，每個案例都走同一條流程。</p>
+<ol class="flow" id="flow"></ol>
+<div class="rs" id="rs"></div>
+</section>
+
+<section class="step" id="s3" hidden>
+<h2><span class="n">3</span>辯論對照</h2>
+<p class="legend"><b>C 固定立場</b>：代理人甲全程看多、代理人乙全程看空，辯 3 輪後由裁決者定案。<b>D 立場交換</b>：第 2 輪雙方換邊，各自只看得到自己第 1 輪的論點並反駁它；第 3 輪換回，再由裁決者定案。點證據標籤可看對應數據。</p>
+<div class="dh"><div class="c">C 固定立場<small>甲永遠看多 · 乙永遠看空</small></div><div class="d">D 立場交換<small>第 2 輪換邊 · 第 3 輪換回</small></div></div>
+<div id="debate"></div>
+</section>
+
+<section class="step" id="s4" hidden>
+<h2><span class="n">4</span>結果</h2>
+<div class="arms" id="arms"></div>
+<div class="big"><div class="bl">60 日後實際</div><div class="bn" id="bn"></div><div class="bs" id="bs"></div></div>
+<div class="verd" id="verd"></div>
+<p class="take" id="take"></p>
+</section>
+</main>
+
+<div class="bar"><div class="wrap">
+<button class="btn" id="primary" type="button">開始分析</button>
+<button class="lnk" id="skip" type="button" hidden>略過動畫</button>
+<button class="lnk" id="other" type="button" hidden>換另一個案例</button>
+</div></div>
+
+<footer><div class="wrap">
+<p>真實模型輸出（RQ1 正式實驗），案例為事後挑選、僅供描述；整體結果：180 案中沒有找到 D 優於 C 的證據，詳見書面報告。不構成投資建議。</p>
+<p><a href="../">← 專題首頁</a> · <a href="https://github.com/paul931130/stance-shift-lab/blob/main/report/stance-shift-report.pdf">書面報告（PDF）</a></p>
+</div></footer>
+
+<script src="cases.js"></script>
+<script>
+(function(){
+'use strict';
+var CASES=window.SHOWCASE_CASES||[];
+var RM=false;try{RM=window.matchMedia('(prefers-reduced-motion: reduce)').matches}catch(e){}
+var ACT={Buy:'買進',Sell:'賣出',Hold:'持有'},DIR={Buy:'看多',Sell:'看空',Hold:'中立'};
+var STANCE={BULL:['bull','看多'],BEAR:['bear','看空']};
+var DOM={fundamental:'基本面',technical:'技術面',sentiment:'情緒面',macro:'總體經濟'};
+var ARMN={A:'單次判斷',B:'獨立投票',C:'固定立場辯論',D:'立場交換辯論'};
+var $=function(id){return document.getElementById(id)};
+function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
+function pct(n){var v=Number(n);return (v>0?'+':v<0?'−':'')+Math.abs(v).toFixed(1)+'%'}
+function hasCJK(s){return /[一-鿿]/.test(s||'')}
+
+var cur=0,runId=0,running=false,done=false,skip=false,timers=[];
+var s1=$('s1'),s2=$('s2'),s3=$('s3'),s4=$('s4'),primary=$('primary'),skipBtn=$('skip'),otherBtn=$('other');
+
+function sleep(ms){
+ if(RM||skip)return Promise.resolve();
+ return new Promise(function(res){var t={res:res};t.id=setTimeout(function(){timers.splice(timers.indexOf(t),1);res()},ms);timers.push(t)});
+}
+function flush(){skip=true;timers.splice(0).forEach(function(t){clearTimeout(t.id);t.res()})}
+function scrollTo(e){try{e.scrollIntoView({behavior:RM?'auto':'smooth',block:'start'})}catch(x){e.scrollIntoView()}}
+
+function dirLine(c){
+ var a=c.decisions.C.action,b=c.decisions.D.action;
+ if(a===b)return 'C 與 D 判斷相同：都是'+ACT[a];
+ if((a==='Buy'&&b==='Sell')||(a==='Sell'&&b==='Buy'))return 'C 與 D 判斷相反：D '+DIR[b];
+ return 'C 與 D 判斷不同：C '+ACT[a]+'、D '+ACT[b];
+}
+
+function renderCases(){
+ var box=$('cases');box.textContent='';
+ CASES.forEach(function(c,i){
+  var b=el('button','case');b.type='button';b.setAttribute('role','radio');
+  b.setAttribute('aria-checked',i===cur?'true':'false');if(i===cur)b.classList.add('sel');
+  if(running)b.setAttribute('aria-disabled','true');
+  b.appendChild(el('div','tk',c.ticker));
+  b.appendChild(el('div','dt','分析基準日 '+c.analysis_date));
+  b.appendChild(el('div','ln',dirLine(c)));
+  b.appendChild(el('span','tag','RQ1 正式實驗 · qwen3:32b 真實輸出'));
+  b.addEventListener('click',function(){if(running||i===cur)return;pick(i)});
+  box.appendChild(b);
+ });
+}
+function pick(i){cur=i;resetViews();renderCases()}
+
+function resetViews(){
+ runId++;flush();skip=false;running=false;done=false;
+ [s2,s3,s4].forEach(function(s){s.hidden=true});
+ $('flow').textContent='';$('rs').textContent='';$('debate').textContent='';
+ setPrimary('開始分析',false);skipBtn.hidden=true;otherBtn.hidden=true;
+}
+function setPrimary(t,dis){primary.textContent=t;primary.disabled=!!dis}
+
+/* ---------- evidence ---------- */
+function eids(text){
+ var set={},re=/\bE(\d+)(?:\s*[-–]\s*E(\d+))?/g,m;
+ while((m=re.exec(text||''))){var a=+m[1],b=m[2]?+m[2]:a;for(var k=a;k<=b&&k-a<30;k++)set[k]=1}
+ return Object.keys(set).map(Number).sort(function(x,y){return x-y}).map(function(n){return 'E'+n});
+}
+function evMap(c){var m={};c.evidence.forEach(function(e){m[e.id]=e});return m}
+
+/* ---------- stages ---------- */
+function stagesFor(c){
+ var done4=Object.keys(c.research).filter(function(k){return c.research[k].status==='complete'}).length;
+ var n=c.evidence.length,o=c.outcome.D;
+ return [
+  ['資料快照','截至 '+c.analysis_date+'，共 '+n+' 則證據（E1–E'+n+'）'],
+  ['四位研究代理人',done4+' 個領域完成：基本面、技術面、情緒面、總經'],
+  ['中立報告','整合成一份中立報告，保留證據編號'],
+  ['四組決策','A、B、C、D 各自產出買進／持有／賣出判斷'],
+  ['60 日回測','進場 '+o.entry_date+'，到期 '+o.maturity_date]
+ ];
+}
+function renderResearch(c){
+ var box=$('rs');box.textContent='';
+ Object.keys(DOM).forEach(function(k){
+  var r=c.research[k];if(!r)return;
+  var d=el('details');d.appendChild(el('summary',null,DOM[k]+'研究代理人摘要'));
+  var bd=el('div','bd');
+  var zh=r.zh||r.summary;bd.appendChild(el('p',null,zh));
+  if(r.zh&&r.summary){
+   var en=el('div','en',r.summary);en.hidden=true;
+   var t=el('button','lnk','英文原文');t.type='button';
+   t.addEventListener('click',function(){en.hidden=!en.hidden;t.textContent=en.hidden?'英文原文':'收合英文原文'});
+   bd.appendChild(t);bd.appendChild(en);
+  }
+  d.appendChild(bd);box.appendChild(d);
+ });
+}
+
+/* ---------- debate ---------- */
+function bubble(rec,c,em){
+ var adj=rec.kind==='adjudication';
+ var sc=adj?['adj','']:(STANCE[rec.stance]||['','']);
+ var m=el('div','msg '+sc[0]);m.hidden=true;
+ var h=el('div','mh');
+ h.appendChild(el('span','who',adj?'裁決者':(rec.agent==='agent-a'?'代理人甲':'代理人乙')));
+ if(!adj)h.appendChild(el('span','st '+sc[0],sc[1]));
+ h.appendChild(el('span','act',(adj?'最終判斷　':'')+ACT[rec.action]+' · 預期 '+pct(rec.expected_return_pct)));
+ m.appendChild(h);
+ m.appendChild(el('div','zh',rec.zh||rec.rationale));
+ var ids=eids(rec.rationale);
+ if(ids.length){
+  var cw=el('div','chips'),note=el('div','note');note.hidden=true;
+  ids.forEach(function(id){
+   var e=em[id];if(!e)return;
+   var b=el('button','chip',id);b.type='button';b.setAttribute('aria-expanded','false');
+   b.title=id+' '+e.label_zh+'｜'+e.claim;
+   b.addEventListener('click',function(){
+    var open=b.getAttribute('aria-expanded')==='true';
+    cw.querySelectorAll('.chip').forEach(function(x){x.setAttribute('aria-expanded','false')});
+    if(open){note.hidden=true}else{b.setAttribute('aria-expanded','true');note.textContent=id+' '+e.label_zh+'｜'+e.claim;note.hidden=false}
+   });
+   cw.appendChild(b);
+  });
+  m.appendChild(cw);m.appendChild(note);
+ }
+ if(rec.zh){
+  var en=el('div','en',rec.rationale);en.hidden=true;
+  var t=el('button','lnk','英文原文');t.type='button';
+  t.addEventListener('click',function(){en.hidden=!en.hidden;t.textContent=en.hidden?'英文原文':'收合英文原文'});
+  m.appendChild(t);m.appendChild(en);
+ }
+ return m;
+}
+function buildDebate(c){
+ var em=evMap(c),box=$('debate');box.textContent='';var seq=[];
+ function pick(arm,kind,round,agent){
+  return c.records.filter(function(r){return r.group===arm&&r.kind===kind&&(round==null||r.round===round)&&(!agent||r.agent===agent)})[0];
+ }
+ var defs=[['第 1 輪',1],['第 2 輪',2],['第 3 輪',3],['裁決',0]];
+ defs.forEach(function(df){
+  var row=el('div','row');row.appendChild(el('div','rl',df[0]));
+  var cells={};
+  ['C','D'].forEach(function(arm){
+   var cell=el('div','cell');cell.appendChild(el('div','ah',arm==='C'?'C 固定立場':'D 立場交換'));
+   if(arm==='D'&&df[1]===2){cell.classList.add('hl');cell.appendChild(el('div','banner','換邊：甲改看空、乙改看多，只看得到自己第一輪並反駁之'))}
+   cells[arm]=cell;row.appendChild(cell);
+  });
+  if(df[1]){
+   ['agent-a','agent-b'].forEach(function(ag){
+    ['C','D'].forEach(function(arm){
+     var r=pick(arm,'debate',df[1],ag);if(!r)return;
+     var b=bubble(r,c,em);cells[arm].appendChild(b);seq.push(b);
+    });
+   });
+  }else{
+   ['C','D'].forEach(function(arm){
+    var r=pick(arm,'adjudication');if(!r)return;
+    var b=bubble(r,c,em);cells[arm].appendChild(b);seq.push(b);
+   });
+  }
+  box.appendChild(row);
+ });
+ return seq;
+}
+
+/* ---------- results ---------- */
+function renderResults(c){
+ var arms=$('arms');arms.textContent='';
+ ['A','B','C','D'].forEach(function(k){
+  var d=c.decisions[k],card=el('div','arm '+k.toLowerCase());
+  card.appendChild(el('div','al',k));card.appendChild(el('div','an',ARMN[k]));
+  card.appendChild(el('div','aa',ACT[d.action]));card.appendChild(el('div','ae','預期 '+pct(d.expected_return_pct)));
+  if(d.vote_distribution){
+   var v=el('div','votes'),bar=el('div','vbar'),tot=0,txt=[];
+   var col={Buy:'#0F766E',Hold:'#8A919C',Sell:'#B45309'};
+   Object.keys(d.vote_distribution).forEach(function(a){tot+=d.vote_distribution[a]});
+   ['Buy','Hold','Sell'].forEach(function(a){
+    var n=d.vote_distribution[a];if(!n)return;
+    var s=el('i');s.style.width=(100*n/tot)+'%';s.style.background=col[a];bar.appendChild(s);txt.push(ACT[a]+' '+n);
+   });
+   v.appendChild(bar);v.appendChild(document.createTextNode(tot+' 次投票：'+txt.join(' · ')));card.appendChild(v);
+  }
+  arms.appendChild(card);
+ });
+ var o=c.outcome,mv=o.D.move_pct,bn=$('bn');
+ bn.textContent=pct(mv);bn.className='bn '+(mv>=0?'up':'dn');
+ $('bs').textContent=c.ticker+'：'+o.D.entry_date+' 進場 → '+o.D.maturity_date+' 到期（股價實際漲跌幅）';
+ var vb=$('verd');vb.textContent='';
+ ['A','B','C','D'].forEach(function(k){
+  var x=o[k],cls,txt;
+  if(x.correct===true){cls='ok';txt='✓ 方向正確'}else if(x.correct===false){cls='no';txt='✗ 方向錯誤'}else{cls='hold';txt='持有（不計方向）'}
+  var d=el('div',cls);d.appendChild(el('b',null,txt));d.appendChild(el('div',null,k+' · '+ACT[x.action]));vb.appendChild(d);
+ });
+ $('take').textContent=takeaway(c);
+}
+function takeaway(c){
+ var o=c.outcome,C=c.decisions.C.action,D=c.decisions.D.action,mv=o.D.move_pct;
+ var mt='60 日後'+(mv>=0?'上漲 ':'下跌 ')+Math.abs(mv).toFixed(1)+'%';
+ var cc=o.C.correct,dc=o.D.correct;
+ if(C!==D&&dc===true&&cc===false)return '這個案例 D 換邊後改判'+ACT[D]+'，'+mt+'，D 正確、C 錯誤。';
+ if(C!==D&&cc===true&&dc===false)return '這個案例 C 維持判'+ACT[C]+'，D 換邊後改判'+ACT[D]+'，'+mt+'，C 正確、D 錯誤——單一案例不代表整體。';
+ var f=function(x){return x===true?'正確':x===false?'錯誤':'不計方向'};
+ return '這個案例 C 判'+ACT[C]+'（'+f(cc)+'）、D 判'+ACT[D]+'（'+f(dc)+'），'+mt+'。';
+}
+
+/* ---------- run ---------- */
+async function run(){
+ var c=CASES[cur];if(!c||running)return;
+ resetViews();var id=runId;running=true;skip=false;renderCases();
+ setPrimary('分析中…',true);skipBtn.hidden=false;
+ var st=stagesFor(c),flow=$('flow'),nodes=[];
+ st.forEach(function(s,i){
+  var li=el('li','stage');li.appendChild(el('div','sn','STEP '+(i+1)));li.appendChild(el('div','sh',s[0]));li.appendChild(el('div','sr',s[1]));
+  flow.appendChild(li);nodes.push(li);
+ });
+ renderResearch(c);
+ s2.hidden=false;scrollTo(s2);
+ for(var i=0;i<nodes.length;i++){
+  nodes[i].classList.add('on');await sleep(1200);if(id!==runId)return;
+ }
+ var seq=buildDebate(c);
+ s3.hidden=false;scrollTo(s3);await sleep(500);if(id!==runId)return;
+ for(var j=0;j<seq.length;j++){
+  seq[j].hidden=false;if(!skip&&!RM)seq[j].classList.add('pop');
+  await sleep(700);if(id!==runId)return;
+ }
+ renderResults(c);s4.hidden=false;scrollTo(s4);
+ running=false;done=true;renderCases();
+ setPrimary('重播',false);skipBtn.hidden=true;otherBtn.hidden=CASES.length<2;
+}
+
+primary.addEventListener('click',function(){if(!running)run()});
+skipBtn.addEventListener('click',flush);
+otherBtn.addEventListener('click',function(){
+ if(CASES.length<2)return;pick((cur+1)%CASES.length);scrollTo(s1);
+});
+
+if(!CASES.length){
+ $('cases').appendChild(el('p','lead','案例資料載入失敗。'));primary.disabled=true;
+}else{renderCases()}
+})();
+</script>
+</body>
+</html>
