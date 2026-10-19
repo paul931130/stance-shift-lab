@@ -28,9 +28,12 @@ BANNER_STYLE = (
 def record(port, data_dir, out):
     os.environ["RESEARCH_DEMO_MODE"] = "true"
     os.environ["RESEARCH_DATA_DIR"] = str(data_dir)
+    import sys
+
     import uvicorn
     from starlette.responses import Response
 
+    sys.path.insert(0, str(ROOT))
     from research_service.app import create_app
 
     app = create_app()
