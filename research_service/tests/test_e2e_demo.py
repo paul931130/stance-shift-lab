@@ -15,7 +15,7 @@ import unittest
 from unittest.mock import patch
 
 try:
-    from playwright.sync_api import Error as PlaywrightError, sync_playwright
+    from playwright.sync_api import Error as PlaywrightError, expect, sync_playwright
 except ImportError:  # optional dev dependency
     sync_playwright = None
 
@@ -108,6 +108,57 @@ class DemoExperimentE2E(unittest.TestCase):
         self.assertEqual(done.strip(), total.strip())
         self.assertGreater(page.locator(".flow-node.is-done").count(), 0)
 
+        self.assertEqual(errors, [])
+        page.close()
+
+    def test_rq3_controls_and_output_count_through_the_ui(self):
+        page = self.browser.new_page()
+        errors = []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(self.base + "/")
+        page.wait_for_selector(".flow-svg .flow-node")
+        page.click('.tabs [data-tab-button="experiment"]')
+        page.click('#job-design [data-rq-pick="rq3"]')
+        self.assertEqual(page.input_value("#job-rule"), "fixed")
+        self.assertTrue(page.is_checked("#job-controls"))
+        self.assertIn("81", page.inner_text("#job-nominal"))
+        page.wait_for_selector("#experiment-guard.ready")
+        page.click("#run-button")
+        page.wait_for_selector('[data-panel="stats"]:not([hidden])', timeout=120_000)
+        expect(page.locator("#statistics")).to_contain_text("C_budget", timeout=20_000)
+        page.click('.tabs [data-tab-button="runs"]')
+        self.assertIn("/81", page.inner_text("#run-detail .run-progress strong").replace(" ", ""))
+        self.assertIn("v7 必要對照", page.inner_text("#run-detail"))
+        self.assertEqual(errors, [])
+        page.close()
+
+    def test_narrated_demo_player(self):
+        page = self.browser.new_page(viewport={"width": 390, "height": 844})
+        errors, writes = [], []
+        page.on("pageerror", lambda error: errors.append(str(error)))
+        page.goto(self.base + "/")
+        expect(page.locator("#play-demo")).to_be_enabled()
+        page.wait_for_selector("#experiment-guard.ready")
+        page.on("request", lambda request: writes.append(request.url) if request.method != "GET" else None)
+        original_url = page.url
+        page.click("#play-demo")
+        expect(page.locator("#demo-step-title")).to_have_text("選定案例與分析日")
+        self.assertGreater(page.locator("[data-demo-active]").count(), 0)
+        page.click("#demo-pause")
+        page.wait_for_timeout(1600)
+        expect(page.locator("#demo-step-title")).to_have_text("選定案例與分析日")
+        page.select_option("#demo-speed", "4")
+        page.click("#demo-pause")
+        expect(page.locator("#demo-step-count")).to_have_text("播放完成 · 9 / 9 步", timeout=25_000)
+        expect(page.locator("#demo-step-title")).to_have_text("彙整統計與研究限制")
+        self.assertEqual(page.locator("#demo-history > li").count(), 9)
+        self.assertEqual(page.url, original_url)
+        self.assertEqual(writes, [])
+        page.click("#demo-restart")
+        expect(page.locator("#demo-step-title")).to_have_text("選定案例與分析日")
+        page.click("#demo-close")
+        expect(page.locator("#demo-player")).to_be_hidden()
+        self.assertEqual(page.locator("[data-demo-active]").count(), 0)
         self.assertEqual(errors, [])
         page.close()
 

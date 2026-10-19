@@ -1,6 +1,6 @@
 # RQ3 事前登記草稿：領域分工辯論（Domain-Specialized Debate）
 
-> **草稿，尚未登記，尚未執行任何案例，程式也還沒有實作。** 目前程式沒有 Domain Debate Module，也沒有 Final Aggregator。標示【待鎖定】的項目要由研究者決定，決定後才能凍結協議並正式登記。正式登記後，本文件只能追加「偏離說明」。格式比照 `docs/e2prime-preregistration.md`。
+> **草稿，尚未作為新版正式登記或產出正式結果。** 2026-10-15 更新：Domain Debate Module 與 Final Aggregator 已實作且有合成測試；下方保留舊方案選項與預算。v7 主要比較限定固定立場、每領域另有 View judge（29 呼叫），並要求資源對齊通才、資訊切分不辯論兩項對照；舊 V=0 與 optional control 建議不能直接作正式方案。`views` 實際仍提供 View 引用的 evidence 與基準率，全無引用時會退回全證據，須納入新版規則。見 [修正進度](../review/remediation-status-2026-10-15.md)。正式登記後只追加偏離說明。
 
 ## 研究問題
 

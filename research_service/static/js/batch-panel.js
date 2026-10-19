@@ -3,13 +3,18 @@
 import { $, escape, notify, formatStamp } from './ui.js';
 import { api, task, BATCH_TIMEOUT } from './api.js';
 import { mountCasePicker } from './case-picker.js';
+import { mountDesign, designPayload, designSummary, refreshNominal } from './design-panel.js';
 
 let collectPicker, planPicker, lastPlan = null, collectTimer = null;
+const planChanged = () => { lastPlan = null; $('plan-result').innerHTML = ''; };
 
 const REASONS = {
   no_dataset: '沒有完整資料集', sentiment_quality: '新聞品質未通過', fundamental_quality: '基本面只有點時資料',
   date_mismatch: '分析日不符', model_not_installed: '模型不可用', news_capped: '舊版截斷新聞', design_mismatch: '設計不符',
+  invalid_domain_debate: 'RQ3 設定不正確', model_too_small: '辯論模型參數量不足', invalid: '設定不正確',
 };
+// Reasons that depend on the chosen design: show the server's message instead of only the label.
+const SHOW_MESSAGE = new Set(['invalid_domain_debate', 'design_mismatch', 'model_too_small', 'invalid']);
 
 function switchMode(attr, panelAttr, mode) {
   for (const b of document.querySelectorAll(`[${attr}]`)) {
@@ -26,19 +31,20 @@ function planSettings() {
     model: ($('plan-cloud-model').value || '').trim() || $('plan-model').value,
     voting_samples: Number($('plan-voting').value), missing_data_policy: $('plan-missing').value,
     anonymize_ticker: $('plan-anonymize').checked, design: 'quarterly', study: 'study1',
+    ...designPayload('plan'),
   };
 }
 
-function renderPlan(plan) {
+function renderPlan(plan, planDesign) {
   const box = $('plan-result');
   const blocked = plan.cases.filter(c => !c.ready);
   const byReason = {};
   for (const c of blocked) (byReason[c.reason] ||= []).push(c);
   const blockedList = Object.entries(byReason).map(([reason, rows]) =>
-    `<li><b>${escape(REASONS[reason] || reason)}</b>（${rows.length} 案）：${rows.slice(0, 12).map(r => `${escape(r.ticker)} ${escape(r.analysis_date)}`).join('、')}${rows.length > 12 ? ' …' : ''}</li>`).join('');
+    `<li><b>${escape(REASONS[reason] || reason)}</b>（${rows.length} 案）：${rows.slice(0, 12).map(r => `${escape(r.ticker)} ${escape(r.analysis_date)}`).join('、')}${rows.length > 12 ? ' …' : ''}${SHOW_MESSAGE.has(reason) && rows[0].message ? `<br><small>${escape(rows[0].message)}</small>` : ''}</li>`).join('');
   const registered = plan.already_preregistered;
   box.innerHTML = `<div class="plan-summary ${plan.ready ? '' : 'blocked'}">
-      <p><b>${plan.ready}</b> / ${plan.total} 案可以執行${plan.protocol_hash ? ` · 協議 ${escape(plan.protocol_hash.slice(0, 8))}` : ''}</p>
+      <p><b>${plan.ready}</b> / ${plan.total} 案可以執行 · ${escape(planDesign)}${plan.protocol_hash ? ` · 協議 ${escape(plan.protocol_hash.slice(0, 8))}` : ''}</p>
       ${registered ? `<p class="hint">這個設定已於 ${escape(formatStamp(plan.frozen_at))} 事前登記。排入時只會加入登記樣本內、尚未建立的案例。</p>` : ''}
       ${blocked.length ? `<details><summary>${blocked.length} 案不能執行</summary><ul>${blockedList}</ul><p class="hint">缺資料集的案例可到「資料準備 → 多筆」補齊後再預覽。</p></details>` : ''}
       <div class="study-actions">
@@ -110,7 +116,9 @@ export function initBatchPanel(config, onDatasetsChanged, onQueued) {
     const action = e.target.closest('[data-plan-action]');
     if (action && lastPlan) task(action, async () => { await planAction(action.dataset.planAction); await onQueued(); });
   });
-  $('plan-picker').addEventListener('picker:change', () => { lastPlan = null; $('plan-result').innerHTML = ''; });
+  $('plan-picker').addEventListener('picker:change', planChanged);
+  mountDesign($('plan-design'), 'plan', {voting: () => $('plan-voting').value, onChange: planChanged});
+  $('plan-voting').addEventListener('change', () => { refreshNominal('plan', $('plan-voting').value); planChanged(); });
   $('plan-form').addEventListener('submit', e => {
     e.preventDefault();
     task(e.submitter, async () => {
@@ -120,7 +128,7 @@ export function initBatchPanel(config, onDatasetsChanged, onQueued) {
       $('plan-result').innerHTML = `<p class="hint">正在檢查 ${settings.tickers.length * settings.dates.length} 個案例的資料集…（180 案約 5–30 秒）</p>`;
       try { lastPlan = await api('/api/studies/plan', settings, 'POST', BATCH_TIMEOUT); }
       catch (error) { $('plan-result').innerHTML = ''; throw error; }
-      renderPlan(lastPlan);
+      renderPlan(lastPlan, designSummary('plan'));
     });
   });
   $('batch-collect-form').addEventListener('submit', e => {

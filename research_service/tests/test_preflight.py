@@ -174,6 +174,24 @@ class StudyPlanTests(unittest.TestCase):
         self.assertEqual(plan["ready"], 1, plan["cases"])
         self.assertTrue(plan["protocol_hash"])
 
+    def test_plan_preserves_nondefault_seed_through_registration_and_enqueue(self):
+        coverage_result = {"sentiment_quality": GOOD_SENTIMENT, "fundamental_quality": GOOD_FUNDAMENTAL}
+        with patch("research_service.web.jobs.coverage", return_value=coverage_result), \
+             patch("research_service.web.studies.reusable_snapshot", return_value={"id": self.dataset_id}), \
+             TestClient(create_app(self.store, fake_model, start_worker=False)) as client:
+            plans = [client.post("/api/studies/plan", json={"tickers": ["NVDA"], "dates": ["2024-12-31"],
+                     "model": "ollama/qwen3:32b", "inference_seed": seed}).json() for seed in (905, 906, 907)]
+            self.assertEqual(len({p["protocol_hash"] for p in plans}), 3)
+            for seed, plan in zip((905, 906, 907), plans):
+                self.assertEqual(plan["ready_cases"][0]["inference_seed"], seed)
+                registered = client.post("/api/studies/preregister", json={"cases": plan["ready_cases"]})
+                self.assertEqual(registered.status_code, 200, registered.text)
+                self.assertEqual(registered.json()["protocol_hash"], plan["protocol_hash"])
+                queued = client.post(f"/api/studies/{plan['protocol_hash']}/enqueue")
+                self.assertEqual(queued.status_code, 200, queued.text)
+                job = self.store.get(self.store.study_rows(plan["protocol_hash"])[0]["id"])
+                self.assertEqual(job["config"]["protocol"]["inference_seed"], seed)
+
     def test_a_registration_of_an_older_protocol_is_read_only_before_any_job_exists(self):
         self.store.freeze("oldhash", [self.dataset_id])
         self.store.save_registration_meta("oldhash", "v3-0930.3", "ollama/qwen3:32b", "quarterly")

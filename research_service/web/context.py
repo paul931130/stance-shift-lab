@@ -87,6 +87,9 @@ class JobInput(BaseModel):
     analysis_date: str
     model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
     voting_samples: int = 7
+    inference_seed: int = Field(default=905, ge=0)
+    neutral_report_job_id: str | None = None
+    neutral_report_hash: str | None = Field(default=None, min_length=64, max_length=64)
     study: str = "study1"
     anonymize_ticker: bool | None = None
     missing_data_policy: str = "allow_decision"
@@ -104,6 +107,8 @@ class JobInput(BaseModel):
     debate_assignments: list[str] | None = None
     # {model id: {"api_base", "timeout_seconds", "api_key_env"}}; never a password or token.
     model_endpoints: dict | None = None
+    # RQ3 domain-specialized debate settings (domain_debate.DomainDebateSettings); not combinable with RQ2.
+    domain_debate: dict | None = None
 
 
 class BatchInput(BaseModel):
@@ -116,6 +121,7 @@ class PlanInput(BaseModel):
     dates: list[str] = Field(min_length=1, max_length=120)
     model: str = Field(default=DEFAULT_RESEARCH_MODEL, min_length=1, max_length=200)
     voting_samples: int = 7
+    inference_seed: int = Field(default=905, ge=0)
     study: str = "study1"
     anonymize_ticker: bool | None = None
     missing_data_policy: str = "allow_decision"
@@ -126,3 +132,4 @@ class PlanInput(BaseModel):
     debate_model_b: str | None = Field(default=None, max_length=200)
     debate_assignments: list[str] | None = None
     model_endpoints: dict | None = None
+    domain_debate: dict | None = None

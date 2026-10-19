@@ -7,6 +7,8 @@ import { flow } from './flow.js';
 import { setTab, syncUrl } from './nav.js';
 import { showStatistics } from './stats-panel.js';
 import { refreshStudies } from './study-panel.js';
+import { designOf, designLabel, stripOllama, setResearchQuestion } from './design-panel.js';
+import { rq2RunPanel, rq3RunPanel } from './rq-run.js';
 
 const ACTIVE_POLL_MS = 3000, IDLE_POLL_MS = 30000, MAX_POLL_MS = 60000;
 const GROUP_LABELS = {A: '單次判斷', B: '獨立投票', C: '固定立場辯論', D: '立場交換辯論'};
@@ -29,12 +31,33 @@ function announceTransitions(jobs) {
   }
   const running = jobs.filter(job => job.status === 'running');
   document.title = running.length
-    ? `(${running.map(job => `${job.steps}/${jobTotal(job.config.protocol)}`).join(', ')}) ${BASE_TITLE}`
+    ? `(${running.map(job => `${job.steps}/${generalistTotal(job.config.protocol)}${job.config.domain_debate ? ' 通才；領域／對照執行中' : ''}`).join(', ')}) ${BASE_TITLE}`
     : BASE_TITLE;
 }
 
-const groupTotals = protocol => ({A: 1, B: protocol.voting_samples, C: 7, D: 7});
-const jobTotal = protocol => 15 + protocol.voting_samples;
+// RQ2 runs C and D once per model assignment; RQ3 keeps the four generalist arms (domain arms are counted apart).
+const assignmentCount = protocol => (protocol.debate_assignments || ['AA']).length;
+const groupTotals = protocol => ({A: 1, B: protocol.voting_samples, C: 7 * assignmentCount(protocol), D: 7 * assignmentCount(protocol)});
+const generalistTotal = protocol => 15 + protocol.voting_samples + 14 * (assignmentCount(protocol) - 1);
+// RQ3 adds 29 nominal calls per domain arm (4 domains x (6 turns + 1 view) + 1 aggregator).
+const domainArms = config => config.domain_debate ? (config.domain_debate.rule === 'both' ? 2 : 1) : 0;
+const jobTotal = config => generalistTotal(config.protocol) + 29 * domainArms(config)
+  + (config.domain_debate?.include_controls ? 30 : 0);
+// Domains without usable evidence get a recorded InsufficientInfo view and skip their calls.
+const domainCalls = s => (s.domain_records || []).filter(record => !record.audit?.deterministic).length;
+const outputsDone = s => (s.records || []).length + domainCalls(s) + (s.control_records || []).length;
+function outputText(job, s, total) {
+  const done = outputsDone(s), skipped = job.status === 'complete' ? total - done : 0;
+  return skipped > 0 ? `${done} 次模型輸出（名義 ${total} 次，資訊不足的領域略過 ${skipped} 次）` : `${done}/${total} 模型輸出`;
+}
+
+// What the pipeline map needs to know about a job's research design.
+function mapDesign(config) {
+  const kind = designOf(config), protocol = config.protocol;
+  if (kind === 'rq2') return {kind, assignments: protocol.debate_assignments || [], models: {A: stripOllama(protocol.debate_model_a), B: stripOllama(protocol.debate_model_b)}};
+  if (kind === 'rq3') return {kind, rule: config.domain_debate.rule};
+  return {kind};
+}
 
 export async function refreshJobs() {
   let dashboard;
@@ -75,11 +98,11 @@ function renderJobList() {
   if (!state.allJobs.length) { list.textContent = '尚無實驗。先準備資料，再建立第一筆研究。'; return; }
   if (!jobs.length) { list.textContent = `沒有符合條件的實驗（共 ${state.allJobs.length} 筆）。`; return; }
   list.innerHTML = jobs.map(j => {
-    const total = jobTotal(j.config.protocol), ratio = Math.min(100, Math.round((j.steps / total) * 100));
+    const total = generalistTotal(j.config.protocol), ratio = Math.min(100, Math.round((j.steps / total) * 100));
     return `<button type="button" class="job${j.id === state.selectedJob ? ' selected' : ''}" data-open="${escape(j.id)}" aria-pressed="${j.id === state.selectedJob}">
       <span class="job-head"><strong>${escape(j.config.ticker)} · ${escape(j.config.analysis_date)}</strong><span class="status ${escape(j.status)}">${escape(statuses[j.status])}</span></span>
       <small>${escape(j.config.protocol.model)} · ${j.steps}/${total} 模型輸出${j.wants_run === 0 && j.status === 'running' ? ' · 將在本波次後暫停' : ''}</small>
-      <small>${escape(protocolLabel(j.config.protocol))} · ${escape(missingPolicyLabel(j.config.protocol))} · ${escape(j.config.protocol.study)} · ${j.id.slice(0, 8)}</small>
+      <small>${designOf(j.config) === 'rq1' ? '' : `<b class="design-tag">${escape(designLabel(j.config))}</b> · `}${escape(protocolLabel(j.config.protocol))} · ${escape(missingPolicyLabel(j.config.protocol))} · ${escape(j.config.protocol.study)} · ${j.id.slice(0, 8)}</small>
       <span class="job-meter ${escape(j.status)}"><i data-ratio="${ratio}"></i></span>
     </button>`;
   }).join('');
@@ -120,6 +143,7 @@ function traceTerminal(job, s) {
 
 function groupPhase(group, count, total) {
   if (count >= total) return '已完成';
+  if (total > 7 && (group === 'C' || group === 'D')) return `各指派辯論中 ${count}/${total}`;
   if (group === 'A') return '單次決策';
   if (group === 'B') return `獨立投票 ${count}/${total}`;
   if (count < 2) return '第 1 輪';
@@ -155,7 +179,7 @@ function backtestComparison(s) {
 
 function estimateRemaining(s, total, jobStatus) {
   if (['complete', 'cancelled'].includes(jobStatus)) return null;
-  const done = (s.records || []).length, remaining = total - done;
+  const done = outputsDone(s), remaining = total - done;
   if (remaining <= 0) return null;
   const elapsed = (s.records || []).map(r => r.audit?.usage?.client_elapsed_seconds).filter(v => typeof v === 'number' && Number.isFinite(v) && v > 0);
   if (elapsed.length < 2) return null;
@@ -173,6 +197,9 @@ function decisionCards(s) {
 // Downstream half of the map: research agents → report → A/B/C/D →
 // Gatekeeper → backtest, all derived from the persisted job state.
 function renderJobFlow(job, s, total) {
+  const kind = designOf(job.config);
+  flow.setDesign(mapDesign(job.config));
+  setResearchQuestion(kind);
   const live = ['running', 'queued'].includes(job.status), paused = job.status === 'paused';
   const moving = live ? 'active' : paused ? 'warn' : 'idle';
   const update = {snapshot: {status: 'done'}};
@@ -193,22 +220,47 @@ function renderJobFlow(job, s, total) {
     const status = count >= groupTotal ? 'done' : s.report && live ? 'active' : paused && count ? 'warn' : 'idle';
     update[`g-${group}`] = {status, count, total: groupTotal, sub: decision ? `${count}/${groupTotal} · ${decision.action}` : `${count}/${groupTotal}`};
   }
-  update.gate = s.decisions ? {status: 'done', sub: '決策已鎖定'} : {status: groupsDone === 4 ? moving : 'idle', sub: '引用與門檻'};
+  let aggregated = true;
+  if (kind === 'rq3') {
+    const rule = job.config.domain_debate.rule;
+    const arms = ['C_domain', 'D_domain'].filter(arm => rule === 'both' || (rule === 'fixed') === (arm === 'C_domain'));
+    const records = s.domain_records || [];
+    let domainsDone = 0;
+    for (const domain of COLLECTION_DOMAINS) {
+      const mine = records.filter(record => record.domain === domain), views = mine.filter(record => record.kind === 'view');
+      const done = views.length >= arms.length, domainTotal = 7 * arms.length;
+      if (done) domainsDone++;
+      update[`dd-${domain}`] = {status: done ? 'done' : s.report && live ? 'active' : paused && mine.length ? 'warn' : 'idle',
+        count: done ? domainTotal : mine.length, total: domainTotal,
+        sub: done ? [...new Set(views.map(view => view.output.direction))].join('／') : `${mine.length}/${domainTotal}`};
+    }
+    aggregated = arms.every(arm => s.decisions?.[arm]);
+    update.agg = aggregated ? {status: 'done', sub: arms.map(arm => `${arm[0]} ${s.decisions[arm].action}`).join('・')}
+      : {status: domainsDone === 4 ? moving : 'idle', sub: domainsDone === 4 ? '整合領域觀點' : 'Final Aggregator'};
+  }
+  update.gate = s.decisions && aggregated ? {status: 'done', sub: '決策已鎖定'}
+    : {status: groupsDone === 4 && aggregated ? moving : 'idle', sub: '引用與門檻'};
   const cases = s.cases || [], matured = cases.some(row => row.status === 'complete');
   update.backtest = cases.length ? {status: matured ? 'done' : 'warn', sub: matured ? '已計算報酬' : '待成熟'} : {status: s.decisions ? moving : 'idle', sub: '30／60／90 日'};
   if (flow.get('stats') !== 'done') update.stats = {status: job.status === 'complete' ? 'ready' : 'idle'};
   if (job.error) for (const value of Object.values(update)) if (value.status === 'active') value.status = 'error';
   flow.setMany(update);
-  flow.metric('outputs', (s.records || []).length);
+  flow.metric('outputs', outputsDone(s));
   const last = s.trace?.at(-1)?.node;
+  const tag = kind === 'rq1' ? '' : `${designLabel(job.config)} · `;
   flow.caption(job.error ? `${job.config.ticker} · 執行中斷：${friendlyJobError(job.error)}`
-    : `${job.config.ticker} · ${job.config.analysis_date} · ${statuses[job.status]} — ${last ? traceMessage(last) : '等待協調者領取工作'}（${(s.records || []).length}/${total} 模型輸出）`);
+    : `${tag}${job.config.ticker} · ${job.config.analysis_date} · ${statuses[job.status]} — ${last ? traceMessage(last) : '等待協調者領取工作'} · ${outputText(job, s, total)}`);
+}
+
+function designBlocks(job, s) {
+  const kind = designOf(job.config);
+  return kind === 'rq2' ? rq2RunPanel(job, s) : kind === 'rq3' ? rq3RunPanel(job, s) : '';
 }
 
 export async function showJob(id, loadedJob = null) {
   state.selectedJob = id;
   syncUrl();
-  const job = loadedJob || await api(`/api/jobs/${id}?detail=true`), s = job.state, total = jobTotal(job.config.protocol);
+  const job = loadedJob || await api(`/api/jobs/${id}?detail=true`), s = job.state, total = jobTotal(job.config);
   state.selectedProtocol = job.config.protocol_hash;
   const isFinal = ['complete', 'cancelled'].includes(job.status);
   const trace = s.trace.at(-1)?.node || '等待協調者';
@@ -227,15 +279,15 @@ export async function showJob(id, loadedJob = null) {
   output.hidden = false;
   // Keep the open/closed state of the audit <details> across poll refreshes.
   const openDetails = [...output.querySelectorAll('details')].map(d => d.open);
-  output.innerHTML = `<div class="run-head"><div><div class="section-label">CASE / ${escape(id.slice(0, 8))}</div><h2>${escape(job.config.ticker)} · ${escape(job.config.analysis_date)} <span class="status ${escape(job.status)}">${escape(statuses[job.status])}</span></h2></div><div class="run-progress"><strong>${s.records.length}<small>/${total}</small></strong><span>決策輸出</span></div></div>
+  output.innerHTML = `<div class="run-head"><div><div class="section-label">CASE / ${escape(id.slice(0, 8))}</div><h2>${escape(job.config.ticker)} · ${escape(job.config.analysis_date)} <span class="status ${escape(job.status)}">${escape(statuses[job.status])}</span></h2></div><div class="run-progress"><strong>${outputsDone(s)}<small>/${total}</small></strong><span>${job.config.domain_debate ? '模型輸出（含領域辯論）' : '決策輸出'}</span></div></div>
     <p class="${oldProtocol ? 'protocol-warning' : 'hint'}">${escape(protocolNotice)}</p>${memoryNotice}
     <p class="hint">目前：${escape(trace)} · 已存檔 ${s.attempts.length} 次${eta ? ` · 依目前平均耗時預估剩餘 ${escape(eta)}` : ''}</p>
     <progress class="progress" max="${total}" value="${s.records.length}" aria-label="決策推論進度"></progress>
     ${job.error ? `<p class="error-text">${escape(friendlyJobError(job.error))}</p>` : ''}
     <div class="actions">${oldProtocol ? `<button class="quiet" type="button" data-clone="${escape(id)}">複製至新版重新執行</button>` : ''}${!isFinal && !oldProtocol ? `<button class="quiet" type="button" data-control="${job.wants_run ? 'pause' : 'resume'}">${job.wants_run ? '暫停' : '繼續執行'}</button><button class="quiet" type="button" data-control="cancel">取消實驗</button>` : ''}<a href="/api/jobs/${id}/export">下載研究產物 ZIP</a>${job.status === 'complete' ? '<button type="button" data-statistics="true">檢視同協議統計 →</button>' : ''}</div>
-    ${groupProgressPanel(s, job.config.protocol, job.status)}${decisionCards(s)}${backtestComparison(s)}${researchAgentPanel(s, job.status)}${traceTerminal(job, s)}
+    ${groupProgressPanel(s, job.config.protocol, job.status)}${decisionCards(s)}${designBlocks(job, s)}${backtestComparison(s)}${researchAgentPanel(s, job.status)}${traceTerminal(job, s)}
     <details><summary>中立研究報告與來源</summary>${copyablePre(JSON.stringify(s.report || s.research, null, 2))}</details>
-    <details><summary>逐步論證與三輪立場交換（${s.records.length}）</summary><div class="record-filter" role="group" aria-label="依組別篩選">${['', ...Object.keys(GROUP_LABELS)].map(g => `<button type="button" class="quiet" data-record-filter="${g}" aria-pressed="${recordFilter === g}">${g ? `${g} · ${GROUP_LABELS[g]}` : '全部'}</button>`).join('')}</div>${s.records.map(r => `<article class="trace" data-group="${escape(r.group)}"${recordFilter && r.group !== recordFilter ? ' hidden' : ''}><strong>${escape(r.group)} · ${escape(r.key)} · ${escape(r.stance)}</strong><p>${escape(r.output.rationale)}</p><small>引用：${escape(r.output.evidence_ids.join(', '))}<br>提示雜湊：${escape(r.audit.prompt_hash)}</small></article>`).join('')}</details>
+    <details><summary>逐步論證與三輪立場交換（${s.records.length}）</summary><div class="record-filter" role="group" aria-label="依組別篩選">${['', ...Object.keys(GROUP_LABELS)].map(g => `<button type="button" class="quiet" data-record-filter="${g}" aria-pressed="${recordFilter === g}">${g ? `${g} · ${GROUP_LABELS[g]}` : '全部'}</button>`).join('')}</div>${s.records.map(r => `<article class="trace" data-group="${escape(r.group)}"${recordFilter && r.group !== recordFilter ? ' hidden' : ''}><strong>${escape(r.group)}${r.assignment ? `@${escape(r.assignment)}` : ''} · ${escape(r.key)} · ${escape(r.stance)}</strong><p>${escape(r.output.rationale)}</p><small>引用：${escape(r.output.evidence_ids.join(', '))}<br>提示雜湊：${escape(r.audit.prompt_hash)}</small></article>`).join('')}</details>
     <details><summary>回測、門檻與流程紀錄</summary>${copyablePre(JSON.stringify({decisions: s.decisions, cases: s.cases, compute_usage: s.compute_usage, completeness_diagnostic: s.completeness_diagnostic, trace: s.trace}, null, 2))}</details>`;
   output.querySelectorAll('details').forEach((d, i) => { if (openDetails[i]) d.open = true; });
   renderJobList();

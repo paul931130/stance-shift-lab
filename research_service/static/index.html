@@ -9,6 +9,7 @@
 <link rel="stylesheet" href="/assets/app.css">
 <link rel="stylesheet" href="/assets/dataset.css">
 <link rel="stylesheet" href="/assets/flow.css">
+<link rel="stylesheet" href="/assets/rq.css">
 <script type="module" src="/assets/js/app.js"></script>
 </head>
 <body>
@@ -47,6 +48,31 @@
       <div><dt>已完成案例</dt><dd id="flow-metric-cases">—</dd></div>
     </dl>
   </div>
+  <div class="demo-player-toolbar">
+    <button id="play-demo" type="button" disabled aria-controls="demo-player">▶ 播放示範</button>
+    <span class="hint">三幕帶你走完研究流程，逐步顯示說明與示意輸出</span>
+  </div>
+  <section id="demo-player" class="demo-player" aria-label="三幕流程示範" hidden>
+    <div class="demo-player-heading">
+      <strong>流程示範 · 固定示意內容</strong>
+      <div class="demo-player-controls">
+        <label>播放速度 <select id="demo-speed"><option value="1">1×</option><option value="2">2×</option><option value="4">4×</option></select></label>
+        <button id="demo-pause" class="quiet" type="button">暫停</button>
+        <button id="demo-restart" class="quiet" type="button">重新播放</button>
+        <button id="demo-close" class="quiet" type="button">關閉示範</button>
+      </div>
+    </div>
+    <p class="hint">只播放本頁的流程示意，不建立工作、不呼叫模型；下方研究資料與實際進度維持原狀。</p>
+    <ol id="demo-acts" class="demo-acts"><li>第一幕 · 準備資料</li><li>第二幕 · 研究與決策</li><li>第三幕 · 檢核與結果</li></ol>
+    <progress id="demo-progress" value="0" max="9" aria-label="示範播放進度"></progress>
+    <div id="demo-current" role="status" aria-live="polite" aria-atomic="true">
+      <p id="demo-step-count" class="section-label"></p>
+      <h2 id="demo-step-title"></h2>
+      <p id="demo-step-description"></p>
+      <p id="demo-step-output" class="demo-output"></p>
+    </div>
+    <details><summary>已播放的步驟說明</summary><ol id="demo-history"></ol></details>
+  </section>
   <div id="flow-canvas" class="flow-canvas"></div>
   <div class="flow-foot">
     <ul class="flow-legend" aria-label="圖例">
@@ -174,7 +200,9 @@
     <form id="plan-form" data-mode-panel="batch">
       <h3 class="substep">2.1　選擇案例</h3>
       <div id="plan-picker"></div>
-      <h3 class="substep">2.2　模型與設定</h3>
+      <h3 class="substep">2.2　研究問題</h3>
+      <div id="plan-design"></div>
+      <h3 class="substep">2.3　模型與設定</h3>
       <div class="pair">
         <label>模型<select id="plan-model"></select></label>
         <label>或輸入其他模型（選填）<input id="plan-cloud-model" maxlength="200" placeholder="例如 gemini/gemini-2.5-flash"></label>
@@ -187,7 +215,7 @@
         </div>
         <label class="check"><input id="plan-anonymize" type="checkbox" checked>匿名化股票代號與公司名稱（降低模型憑記憶辨識標的）</label>
       </details>
-      <h3 class="substep">2.3　預覽並排入</h3>
+      <h3 class="substep">2.4　預覽並排入</h3>
       <p class="hint">預覽會為每個案例挑選最新的完整資料集並檢查就緒度，不會呼叫模型，GPU 關機時也能預覽。</p>
       <button id="plan-button" type="submit">預覽案例 <span aria-hidden="true">→</span></button>
       <div id="plan-result" aria-live="polite"></div>
@@ -204,7 +232,10 @@
       <div id="finbert-progress" class="hint" role="status" aria-live="polite"></div>
       <details id="news-detail"><summary>新聞標題與情緒分數</summary><button id="news-view" type="button" class="quiet">查看選定版本</button><div id="news-scores"></div></details>
 
-      <h3 class="substep">2.2　確認模型與研究條件</h3>
+      <h3 class="substep">2.2　研究問題</h3>
+      <div id="job-design"></div>
+
+      <h3 class="substep">2.3　確認模型與研究條件</h3>
       <label>研究分析日（季末或今天）<select id="analysis-date"></select></label>
       <p id="analysis-date-help" class="hint">分析日可用 2021–2025 的季末切點（正式研究），或今天（當下單次分析，不計入正式回測統計）；資料集的行情終點只供分析日後回測。</p>
       <div class="pair">
@@ -233,9 +264,9 @@
         <div id="override-fundamental" class="check-wrap"><label class="check"><input id="allow-point-fundamental" type="checkbox">覆寫舊版 SEC 點時基本面檢查（僅用於資料品質敏感性測試）</label></div>
       </details>
 
-      <h3 class="substep">2.3　啟動實驗</h3>
+      <h3 class="substep">2.4　啟動實驗</h3>
       <p id="experiment-guard" class="readiness guard">尚未選擇資料集，因此不能啟動實驗。</p>
-      <p class="hint">一個案例的決策呼叫共 22 次（A 1 次＋B、C、D 各 7 次；B 組 5 次時為 20 次），另有四個研究代理人的呼叫；本機模型每次呼叫可能需要數十秒到數分鐘。開始後，詳情頁會依平均耗時預估剩餘時間。</p>
+      <p class="hint">RQ1 一個案例的決策呼叫共 22 次（A 1 次＋B、C、D 各 7 次；B 組 5 次時為 20 次），RQ2、RQ3 的名義呼叫次數見上方「研究問題」；另有四個研究代理人的呼叫；本機模型每次呼叫可能需要數十秒到數分鐘。開始後，詳情頁會依平均耗時預估剩餘時間。</p>
       <button id="run-button" disabled>開始研究實驗 <span aria-hidden="true">→</span></button>
     </form>
     <details><summary>進階：匯入批次 JSON</summary><p class="hint">給腳本產生的案例清單（<code>{"cases": [...]}</code>）。一般請用上方「多筆」。</p><label class="check"><input id="batch-preregister" type="checkbox" checked>先鎖定這批研究樣本（事前登記）再排入佇列</label><input id="batch-file" type="file" accept=".json,application/json" aria-label="匯入批次設定"></details>

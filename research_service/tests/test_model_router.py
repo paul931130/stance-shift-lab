@@ -29,7 +29,8 @@ MODEL_A, MODEL_B = DEFAULT_DEBATE_MODEL_A, DEFAULT_DEBATE_MODEL_B
 
 
 def router_protocol(**overrides):
-    return StudyProtocol.router(dataset_kind="synthetic", bootstrap_replicates=199, **overrides)
+    return StudyProtocol.router(dataset_kind="synthetic", bootstrap_replicates=199,
+                                **{"debate_assignments": ("AA", "AB", "BA"), **overrides})
 
 
 class RecordingModel:
@@ -220,6 +221,21 @@ class RouterEngineTests(unittest.TestCase):
         self.assertEqual(summary["cases"], 1)
         self.assertIn("D@BA", summary["accuracy"])
 
+    def test_new_router_indexes_and_reads_each_assignments_own_matured_memory(self):
+        protocol = router_protocol(debate_assignments=("AA", "AB", "BA", "BB"))
+        job = self.run_job(protocol, RecordingModel())
+        later = {**job["config"], "analysis_date": "2025-12-31"}
+        for arm in ("C", "D", "C@AB", "D@AB", "C@BA", "D@BA", "C@BB", "D@BB"):
+            memory = self.store.memory(later, arm)
+            self.assertEqual(len(memory), 1, arm)
+            self.assertEqual(memory[0]["group"], arm)
+        # A coordinator freezes independent lists before any new research call.
+        next_job = self.store.create({**job["config"], "analysis_date": "2025-12-31"})
+        state = Engine(self.store, RecordingModel()).advance(next_job)
+        self.assertEqual(state["memory"]["C@AB"][0]["group"], "C@AB")
+        self.assertEqual(state["memory"]["C"][0]["group"], "C")
+        self.assertEqual(self.store.memory({**later, "routed_model_identities": {MODEL_B: {"digest": "changed"}}}, "C@AB"), [])
+
     def test_unreachable_model_b_fails_the_step_without_fallback(self):
         model = RecordingModel(fail_model=MODEL_B)
         protocol = router_protocol(model_endpoints={MODEL_B: {"api_base": "http://lab.example:11434"}})
@@ -342,10 +358,12 @@ class DemoModeRouterTests(unittest.TestCase):
                     dataset = client.get("/api/datasets").json()[0]
                     response = client.post("/api/jobs", json={
                         "dataset_id": dataset["id"], "analysis_date": "2024-12-31",
-                        "debate_model_b": "ollama/demo-synthetic-b", "debate_assignments": ["AA", "AB", "BA"]})
+                        "debate_model_b": "ollama/demo-synthetic-b", "debate_assignments": ["AA", "AB", "BA"],
+                        "inference_seed": 907})
                     self.assertEqual(response.status_code, 200, response.text)
                     job = response.json()
             config = job["config"]
+            self.assertEqual(config["protocol"]["inference_seed"], 907)
             self.assertEqual(config["protocol"]["version"], ROUTER_VERSION)
             self.assertEqual(set(config["routed_model_identities"]), {"ollama/demo-synthetic", "ollama/demo-synthetic-b"})
             job = store.get(job["id"])
@@ -357,6 +375,15 @@ class DemoModeRouterTests(unittest.TestCase):
                     break
             self.assertEqual(job["status"], "complete")
             self.assertEqual(set(job["state"]["routed_decisions"]), {"C@AB", "D@AB", "C@BA", "D@BA"})
+            with patch.dict(os.environ, {"RESEARCH_DEMO_MODE": "true"}, clear=False):
+                with TestClient(create_app(store, start_worker=False)) as client:
+                    summary = client.get(f"/api/studies/{config['protocol_hash']}/rq2")
+                    self.assertEqual(summary.status_code, 200, summary.text)
+                    body = summary.json()
+                    self.assertEqual(body["cases"], 1 if body["accuracy"] else 0)
+                    self.assertIn("interaction", body)
+                    self.assertIn("note", body)
+                    self.assertEqual(client.get("/api/studies/nope/rq2").json()["cases"], 0)
 
 
 if __name__ == "__main__":

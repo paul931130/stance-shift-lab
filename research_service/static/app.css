@@ -1,5 +1,23 @@
 /* Stance Shift workspace — theme tokens, dashboard layout and shared components.
  * Layout: top bar · live pipeline map · [ step inspector | live side column ]. */
+.demo-player-toolbar, .demo-player-heading, .demo-player-controls {
+  display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+}
+.demo-player-toolbar { margin: 18px 0; }
+.demo-player { padding: 20px; margin: 16px 0; border: 2px solid var(--accent); border-radius: var(--radius); background: var(--surface); }
+.demo-player-heading { justify-content: space-between; }
+.demo-player-controls label { display: flex; align-items: center; gap: 8px; }
+.demo-player-controls select { width: auto; }
+.demo-acts { display: flex; flex-wrap: wrap; list-style: none; gap: 8px; padding: 0; }
+.demo-acts li { padding: 8px 12px; border-radius: 6px; background: var(--surface-sunk); color: var(--muted); }
+.demo-acts [aria-current="step"] { background: var(--accent-soft); color: var(--ink); font-weight: 700; }
+.demo-player progress { width: 100%; height: 8px; accent-color: var(--accent); }
+.demo-output { padding: 12px; background: var(--surface-alt); border-left: 3px solid var(--accent); }
+.demo-player details { margin-top: 16px; }
+.demo-player summary { cursor: pointer; }
+.demo-player li p { margin: 6px 0 12px; }
+[data-flow-node][data-demo-active] .flow-node-box { stroke: var(--focus); stroke-width: 3; }
+[data-flow-node][data-demo-active] .flow-node-ring { stroke: var(--focus); opacity: 1; }
 :root {
   color-scheme: light;
   --bg: #eef1ef;

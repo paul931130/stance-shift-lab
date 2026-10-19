@@ -96,6 +96,9 @@ def demo_model(protocol, messages, seed=None, temperature=None):
     else:
         payload = json.loads(messages[1]["content"])
         evidence = payload.get("report", {}).get("evidence", [])
+        if not evidence:
+            evidence = [item for items in payload.get("report", {}).get("domain_partitions", {}).values()
+                        for item in items]
         evidence_ids = [item["evidence_id"] for item in evidence[:1]] or ["demo-technical-1"]
         if "action MUST be Sell" in system:
             action, expected = "Sell", -4.0

@@ -20,7 +20,7 @@ from .ollama import probe_models
 logger = get_logger(__name__)
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-STATIC_ASSETS = ("app.css", "dataset.css", "flow.css")
+STATIC_ASSETS = ("app.css", "dataset.css", "flow.css", "rq.css")
 JS_MODULE_NAME = re.compile(r"[a-z][a-z0-9-]*\.js")
 # Paths the login screen needs before a session exists; they hold no research data.
 PUBLIC_PATHS = {"/", "/health", "/api/login", *(f"/assets/{name}" for name in STATIC_ASSETS)}

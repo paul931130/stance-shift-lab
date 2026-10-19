@@ -10,6 +10,14 @@ export const BATCH_TIMEOUT = {timeoutMs: 180000};
 export async function api(path, body, method, {timeoutMs = API_TIMEOUT_MS} = {}) {
   const verb = (method || (body === undefined ? 'GET' : 'POST')).toUpperCase();
   const retryable = verb === 'GET';
+  // GitHub Pages demo: answer GETs from responses recorded in demo mode; nothing can be changed.
+  if (globalThis.STATIC_DEMO) {
+    if (verb !== 'GET') throw new Error('這是線上展示版，無法新增或修改；完整功能請在本機執行系統。');
+    const recorded = globalThis.STATIC_DEMO.responses || {};
+    const key = path in recorded ? path : path.split('?')[0];
+    if (!(key in recorded)) throw new Error('線上展示版沒有這項資料');
+    return structuredClone(recorded[key]);
+  }
   let lastError;
   for (let attempt = 0; attempt <= (retryable ? API_GET_RETRY_LIMIT : 0); attempt += 1) {
     const controller = new AbortController();

@@ -14,14 +14,43 @@ Run inside the research container, e.g.
 import argparse
 import json
 import os
+from pathlib import Path
+import sqlite3
+import sys
 import time
 import urllib.request
 from collections import defaultdict
+from contextlib import closing
 from urllib.error import HTTPError
 from urllib.request import Request
 
+if __package__ in (None, ""):
+    sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
 from research_service.models import gputw_urlopen
-from research_service.storage import Store
+
+
+class SnapshotReader:
+    """Read a standalone backup without Store migrations or index backfills."""
+
+    def __init__(self, data_dir):
+        self.path = (Path(data_dir) / "research.sqlite3").resolve(strict=True)
+        if Path(str(self.path) + "-wal").exists():
+            raise ValueError("請先用 SQLite backup 建立無 WAL 的獨立副本，再執行探針")
+
+    def connect(self):
+        return sqlite3.connect(self.path.as_uri() + "?mode=ro&immutable=1", uri=True)
+
+    def job_summaries(self):
+        with closing(self.connect()) as db:
+            return [{"config": json.loads(row[0])} for row in db.execute("SELECT config FROM jobs ORDER BY created_at")]
+
+    def dataset(self, dataset_id):
+        with closing(self.connect()) as db:
+            row = db.execute("SELECT content FROM datasets WHERE id=?", (dataset_id,)).fetchone()
+        if row is None:
+            raise ValueError("快照缺少探針案例的資料集")
+        return json.loads(row[0])
 
 DEFAULT_DATES = ("2022-06-30", "2023-06-30", "2024-06-30",
                  "2025-03-31", "2025-06-30", "2025-09-30", "2025-12-31")
@@ -159,7 +188,7 @@ def main():
 
     base = (os.getenv("GPUTW_OLLAMA_BASE_URL", "").strip()
             or os.getenv("OLLAMA_BASE_URL", "http://127.0.0.1:11434")).rstrip("/")
-    store = Store(args.data_dir)
+    store = SnapshotReader(args.data_dir)
     cases = {}
     for job in store.job_summaries():
         config = job["config"]

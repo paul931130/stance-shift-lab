@@ -1,6 +1,10 @@
 # RQ 準備文件索引（2026-10-08）
 
-依據 `report/application-meeting-20261006.tex` 的新版 RQ1／RQ2／RQ3，以及 `report/revisions/2026-10-06-agent-diversity/Part-C-研究方法Review.md`。這裡的文件都是草稿或稽核紀錄，不是正式登記。
+**目前操作入口：[2026-10-17 正式實驗前操作單](preformal-runbook-20261017.md)。** 舊表格與預算只保留歷史脈絡。
+
+> 2026-10-15 更新：以下決策表保留 10 月 8 日的規劃脈絡，不代表目前仍未實作。Model Router、Domain Debate、Final Aggregator 與 web 接線均已存在；v7 將 RQ2 的 BB、至少三 seed 與 RQ3 的兩個對照列為必要。現況以 [修正進度](../review/remediation-status-2026-10-15.md) 為準。草稿內舊預算與建議不可直接用作正式登記。
+
+依據 10/06 會議版書面報告 的新版 RQ1／RQ2／RQ3，以及 10/06 研究方法審閱紀錄（未公開）。這裡的文件都是草稿或稽核紀錄，不是正式登記。
 
 | 文件 | 內容 |
 |---|---|
@@ -26,7 +30,7 @@
 6. 三題的多重檢定 family、失敗與缺失處理規則、記憶規則（建議沿用 RQ1）。
 7. 實驗室 Ollama 的存取條件（見 `model-b-candidates.md` 第六節）。若硬體不足，改用備案 Gemini 2.5 Flash。
 
-## 需要開發（尚未實作）
+## 10 月 8 日開發清單（核心程式現已實作；正式研究完整度另核對）
 
 - Model Router：一個協議內支援兩個模型、各自的端點與 digest 鎖定，並記錄 agent identity、原始立場、各輪立場。
 - Domain Debate Module 與 Final Aggregator：依領域切分證據、驗證引用範圍、產生 View、整合。

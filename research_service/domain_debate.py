@@ -40,16 +40,16 @@ from .engine import Engine, compute_usage, derive_action, gate, validation_hint
 from .logging_config import get_logger
 from .models import (_compact_history, _compact_report, _decision_evidence, alias_messages, evidence_aliases,
                      messages_for, prompt_text, validate_financial_interpretation, validate_financial_numbers)
-from .protocol import (DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, SWITCH_ROUND, DecisionCall, decision_plan,
-                       protocol_from)
+from .protocol import (DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, QUARTERLY_VERSION, SWITCH_ROUND, DecisionCall,
+                       decision_plan, protocol_from, protocol_matches_fingerprint)
 from .storage import now
 
 logger = get_logger(__name__)
 
-RQ3_VERSION = "rq3-1008.2"
+RQ3_VERSION = "rq3-1015.1"
 DOMAIN_ARM_RULES = {"C_domain": "fixed", "D_domain": "switch"}
 GENERALIST_ARM_FOR = {"C_domain": "C", "D_domain": "D"}
-RQ3_SOURCE_MODULES = ("domain_debate", "aggregator")
+RQ3_SOURCE_MODULES = ("domain_debate", "aggregator", "rq3_controls")
 PROMPT_VERSIONS = {"domain_prompt_version": ("domain-debate-v2",), "view_prompt_version": ("domain-view-v2",),
                    "aggregator_prompt_version": ("aggregator-v2",)}
 
@@ -129,6 +129,7 @@ class DomainDebateSettings:
     share_base_rates: bool = True
     compute_matching: Literal["unspecified", "nominal_calls", "total_tokens", "wall_time",
                               "report_frontier"] = "unspecified"
+    include_controls: bool = False
 
     def __post_init__(self):
         object.__setattr__(self, "domains", tuple(self.domains))
@@ -136,6 +137,8 @@ class DomainDebateSettings:
             raise ValueError("Unsupported RQ3 version")
         if self.rule not in ("fixed", "switch", "both"):
             raise ValueError("RQ3 domain rule must be fixed, switch or both")
+        if not isinstance(self.include_controls, bool) or (self.include_controls and self.rule != "fixed"):
+            raise ValueError("RQ3 v7 controls require the fixed rule")
         if self.domains != DOMAIN_NAMES:
             raise ValueError("RQ3 fixes the four research domains")
         if self.view_generation != "domain_judge":
@@ -182,6 +185,33 @@ def rq3_fingerprint(protocol, settings):
     payload = {"base_protocol_hash": protocol.fingerprint, "domain_debate": asdict(settings),
                "rq3_source": rq3_source_digest()}
     return hashlib.sha256(json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+
+
+def config_matches_fingerprint(config):
+    """Whether a stored job hash still matches this checkout, for RQ1/RQ2 and RQ3 jobs alike."""
+    settings = settings_from_config(config)
+    if settings is None:
+        return protocol_matches_fingerprint(config.get("protocol", {}), config.get("protocol_hash"))
+    try:
+        return config.get("protocol_hash") == rq3_fingerprint(protocol_from(config["protocol"]), settings)
+    except (KeyError, TypeError, ValueError):
+        return False
+
+
+def settings_from_request(value):
+    """Validate RQ3 settings sent by a client; unknown keys are an error, not silently dropped."""
+    unknown = sorted(set(value) - {item.name for item in fields(DomainDebateSettings)})
+    if unknown:
+        raise ValueError(f"未知的 RQ3 設定欄位：{', '.join(unknown)}")
+    return DomainDebateSettings.from_dict(value)
+
+
+def rq3_job_fields(protocol, settings):
+    """The config fields that turn a prepared v3-1002.3 job into an RQ3 job."""
+    if protocol.version != QUARTERLY_VERSION:
+        raise ValueError(f"RQ3 只定義在季度 {QUARTERLY_VERSION} 協議上")
+    return {"domain_debate": asdict(settings), "base_protocol_hash": protocol.fingerprint,
+            "protocol_hash": rq3_fingerprint(protocol, settings)}
 
 
 def rq3_job_config(protocol, settings, **config):
@@ -262,12 +292,17 @@ def nominal_calls(protocol, settings):
     debate = 2 * protocol.max_rounds
     result = {"A": 1, "B": protocol.voting_samples, "C": debate + 1, "D": debate + 1}
     result.update({arm: len(DOMAIN_NAMES) * (debate + 1) + 1 for arm in settings.domain_arms})
+    if settings.include_controls:
+        from .rq3_controls import CONTROL_CALLS
+        result.update(CONTROL_CALLS)
     return result
 
 
 def pending(settings, state):
     done = {record["key"] for record in state.get("domain_records", [])}
-    return any(aggregator_key(arm) not in done for arm in settings.domain_arms)
+    from . import rq3_controls
+    return (any(aggregator_key(arm) not in done for arm in settings.domain_arms)
+            or (settings.include_controls and rq3_controls.pending(state)))
 
 
 # --- prompts ---------------------------------------------------------------------------------------
@@ -420,7 +455,12 @@ class DomainDebateEngine(Engine):
         protocol = protocol_from(config["protocol"])
         if ("report" in state and "decisions" not in state
                 and len(state["records"]) >= len(decision_plan(protocol)) and pending(settings, state)):
-            label, workers = self.domain_wave(protocol, settings, config, state)
+            done = {record["key"] for record in state.get("domain_records", [])}
+            if any(aggregator_key(arm) not in done for arm in settings.domain_arms):
+                label, workers = self.domain_wave(protocol, settings, config, state)
+            else:
+                from . import rq3_controls
+                label, workers = rq3_controls.wave(self, protocol, config, state)
             state["trace"].append({"node": label, "at": now(), "protocol_hash": config["protocol_hash"],
                                    "report_hash": state.get("report_hash"), "parallel_workers": self.parallel_workers,
                                    "effective_workers": workers})
@@ -430,8 +470,14 @@ class DomainDebateEngine(Engine):
         state = result["state"]
         if not had_inputs and "memory" in state:
             state["memory"].update({arm: self.store.memory(config, arm) for arm in settings.domain_arms})
+            if settings.include_controls:
+                from .rq3_controls import CONTROL_CALLS
+                state["memory"].update({arm: self.store.memory(config, arm) for arm in CONTROL_CALLS})
         if not had_decisions and "decisions" in state:
             state["decisions"].update(domain_decisions(protocol, settings, state))
+            if settings.include_controls:
+                from . import rq3_controls
+                state["decisions"].update(rq3_controls.decisions(protocol, state))
             state["rq3_diagnostics"] = case_diagnostics(protocol, settings, state)
         return result
 
@@ -560,6 +606,13 @@ class DomainDebateEngine(Engine):
             except (ValueError, JsonSchemaValidationError, TypeError) as error:
                 failure = {"attempt": attempt, "error_type": type(error).__name__, "message": str(error)[:200],
                            "call_key": retry_key}
+                if audit is None and isinstance(getattr(error, "model_attempt_audit", None), dict):
+                    # The provider gave up inside models.generate (e.g. schema failures); its
+                    # attempts carry usage, so costs stay observable instead of becoming null.
+                    failed = error.model_attempt_audit
+                    failure.update({"usage": failed.get("usage") or (failed.get("attempts") or [{}])[-1].get("usage", {}),
+                                    "provider_attempts": failed.get("provider_attempts", 1),
+                                    "attempts": failed.get("attempts", [])})
                 if audit:
                     failure.update({name: audit[name] for name in ("seed", "prompt_hash") if name in audit})
                     failure["raw_response_hash"] = digest(audit.get("raw_response", ""))
@@ -568,7 +621,7 @@ class DomainDebateEngine(Engine):
                     failure["attempts"] = audit.get("attempts", [])
                 failures.append(failure)
                 if attempt >= protocol.provider_retry_attempts:
-                    if audit:
+                    if audit or "attempts" in failure:
                         error.model_attempt_audit = {"provider_attempts": failure["provider_attempts"],
                                                      "attempts": failure["attempts"], "usage": failure["usage"],
                                                      "validation_retries": failures[:-1]}
@@ -712,6 +765,12 @@ def case_diagnostics(protocol, settings, state):
                                   decision.get("candidate_action")),
                       "candidate_action": decision.get("candidate_action"), "gated_action": decision.get("action"),
                       "aggregator": next((record["audit"].get("aggregator") for record in aggregate), None)}
+    if settings.include_controls:
+        from .rq3_controls import CONTROL_CALLS
+        for arm, nominal in CONTROL_CALLS.items():
+            records = [r for r in state.get("control_records", []) if r["arm"] == arm]
+            arms[arm] = resources(records, [r for r in failed if r.get("group") == arm], nominal,
+                                  _path([[record] for record in records]))
     for summary in arms.values():
         first, second = research["critical_path_seconds"], summary["critical_path_seconds"]
         summary["end_to_end_critical_path_seconds"] = None if first is None or second is None else first + second
@@ -725,6 +784,10 @@ def case_diagnostics(protocol, settings, state):
             ratios[metric] = numerator / denominator if _number(numerator) and _number(denominator) and denominator else None
         pairs.append({"rule": DOMAIN_ARM_RULES[arm], "generalist": generalist, "domain": arm,
                       "domain_over_generalist": ratios})
+    if settings.include_controls:
+        for control in ("C_budget", "C_partition"):
+            pairs.append({"rule": "fixed", "generalist": control, "domain": "C_domain",
+                          "domain_over_generalist": {}})
     return {"rq3_version": settings.rq3_version, "settings": asdict(settings), "nominal_calls": planned,
             "shared_research": research, "resources": arms, "agreement": views, "rule_matched_pairs": pairs,
             "view_directions": dict(Counter(record["output"]["direction"] for record in domain_records

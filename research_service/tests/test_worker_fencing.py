@@ -143,7 +143,7 @@ class WorkerFencingTests(unittest.TestCase):
                         saved.set()
 
                 with patch.dict(os.environ, {"RESEARCH_GPUTW_AUTOSTOP_MINUTES": "0"}), \
-                        patch("research_service.app.Engine", return_value=SimpleNamespace(advance=advance)), \
+                        patch("research_service.app.DomainDebateEngine", return_value=SimpleNamespace(advance=advance)), \
                         patch.object(self.store, "save_step", side_effect=save_step):
                     app = create_app(self.store, model_call=lambda *a, **k: None)
                     with TestClient(app):

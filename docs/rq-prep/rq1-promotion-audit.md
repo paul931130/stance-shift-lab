@@ -1,6 +1,6 @@
 # RQ1 升格稽核：v3-1002.3（qwen3:32b，180/180）
 
-依 `report/revisions/2026-10-06-agent-diversity/Part-C-研究方法Review.md`「舊 RQ1 升格正式新版結果前的確認」逐項核對。
+依 10/06 研究方法審閱紀錄（未公開）「舊 RQ1 升格正式新版結果前的確認」逐項核對。
 
 - 稽核日期：2026-10-08
 - 對象：protocol v3-1002.3，plan／protocol hash `b1da80ee8dbc9c372d9eab02455734a140714a233c2d669bb0177fe9ab267cd6`

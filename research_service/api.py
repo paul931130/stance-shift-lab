@@ -19,7 +19,8 @@ from uuid import uuid4
 
 from .app import _redact
 from .collect import collect_dataset
-from .engine import Engine, protocol_from
+from .domain_debate import DomainDebateEngine
+from .engine import protocol_from
 from .protocol import DEFAULT_RESEARCH_MODEL, decision_plan, protocol_is_current
 from .settings import Settings
 from .storage import JobLeaseLost, Store, now
@@ -56,8 +57,8 @@ class StanceShiftResearch:
             from .demo import DEMO_MODEL, demo_model
             model, model_call = DEMO_MODEL, demo_model
         self.model = model or os.getenv("RESEARCH_MODEL", DEFAULT_RESEARCH_MODEL)
-        self.engine = (Engine(self.store, model_call, parallel_workers) if model_call
-                       else Engine(self.store, parallel_workers=parallel_workers))
+        self.engine = (DomainDebateEngine(self.store, model_call, parallel_workers) if model_call
+                       else DomainDebateEngine(self.store, parallel_workers=parallel_workers))
         self._ctx = SimpleNamespace(store=self.store, demo_mode=False, demo_model_id="",
                                     injected_model_call=model_call is not None)
 
