@@ -36,8 +36,14 @@ function staticDemo(path, verb) {
   const now = demoNow(timeline), base = demoBase(path);
   const latest = match => timeline.filter(e => e.t <= now && e.method === verb && match(e)).pop();
   if (verb === 'GET') {
-    const hit = latest(e => e.key === path) || latest(e => e.key === base);
-    return hit ? structuredClone(hit.response) : fallback();
+    // Prefer the exact request, unless the same endpoint was recorded more recently with another
+    // query (e.g. /api/dashboard?selected=…): then use that newer state minus the unrequested detail.
+    const exact = latest(e => e.key === path), recent = latest(e => demoBase(e.key) === base);
+    if (!exact && !recent) return fallback();
+    if (exact && exact.t >= recent.t) return structuredClone(exact.response);
+    const data = structuredClone(recent.response);
+    if (path === base && data && typeof data === 'object' && 'selected' in data) data.selected = null;
+    return data;
   }
   const same = timeline.filter(e => e.method === verb && demoBase(e.key) === base);
   if (!same.length) throw readOnly();
