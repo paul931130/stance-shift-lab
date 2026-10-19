@@ -40,7 +40,7 @@ function staticDemo(path, verb) {
     // query (e.g. /api/dashboard?selected=…): then use that newer state minus the unrequested detail.
     const exact = latest(e => e.key === path), recent = latest(e => demoBase(e.key) === base);
     if (!exact && !recent) return fallback();
-    if (exact && exact.t >= recent.t) return structuredClone(exact.response);
+    if (exact && (path !== base || exact.t >= recent.t)) return structuredClone(exact.response);
     const data = structuredClone(recent.response);
     if (path === base && data && typeof data === 'object' && 'selected' in data) data.selected = null;
     return data;
