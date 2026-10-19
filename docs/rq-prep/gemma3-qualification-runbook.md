@@ -1,5 +1,7 @@
 # gemma3:27b 資格檢驗操作手冊（RQ2 模型 B）
 
+適用版本：未標註（下次修訂時補上） · 最後更新：2026-10-19
+
 > 2026-10-15：請先讀 [新版實驗推進手冊](experiment-launch-20261015.md)。下方保留舊 Bash／模型資格脈絡；使用者的 PowerShell 指令、獨立唯讀探針副本、新版 RQ2／RQ3 pilot 及 report-bank seed 規則以新手冊為準。不要直接對原 RQ1 快照初始化 Store；舊 canary 不能代表新設計已合格。
 
 正式登記 RQ2 之前，模型 B 要先通過與 qwen3:32b、gemini-2.5-flash 相同的三項檢驗。本手冊只列操作步驟；為何需要這些檢驗見 `model-b-candidates.md`。

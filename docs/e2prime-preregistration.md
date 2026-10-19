@@ -106,3 +106,19 @@ v3-0930.3 要求文字中的數字與來源值相同（或四捨五入到 3 位�
 - source digest 與季度協議 hash 於最終程式 commit、映像建置後，以正式服務 `/health` 的 source_digest 與批次預覽重算，登記時寫入本節；在此之前不列預期值。
 - 本機日期排序與參數檢查不能代替正式資料 readiness。正式登記前仍須重新核對 180 案預覽、相同實際 Qwen digest、非秘密有效服務設定、自動關機 enabled、隔離 qualification 與建置後 image ID。服務私有設定可能覆寫 compose；只讀非秘密設定，不讀出任何 API key。
 - 依先前 2026-10-02 review 快照，尚未找到 `v3-1002.3` 正式登記；正式開跑前仍須即時查詢 `/api/studies`，保留既有失敗／暫停工作，且不可與此新 hash 混合。此追記沒有啟動 GPU、部署服務、登記或排入工作。
+
+
+## 事後登記補記（2026-10-19 補記）
+
+本節為事後補寫，於 2026-10-19 以本機研究資料庫的唯讀副本核對下列紀錄；上方原始登記內容與歷次追記均保留不改。
+
+| 核對項目 | 唯讀副本中的紀錄 |
+|---|---|
+| protocol hash | `b1da80ee8dbc9c372d9eab02455734a140714a233c2d669bb0177fe9ab267cd6` |
+| 登記凍結時間（UTC） | `2026-10-02T05:35:33.036631+00:00` |
+| 第一個工作建立時間（UTC） | `2026-10-02T05:35:39.711586+00:00` |
+| 同一 hash 的工作數 | 180 個工作 |
+
+證據來源：本機研究資料庫的唯讀副本 `work/rq1-snapshot/research.sqlite3`（不公開）。核對時先檢視 `preregistrations`、`preregistration_meta` 與 `jobs` 的 schema，再以完整 protocol hash 查詢 `preregistrations.protocol_hash`、`preregistrations.frozen_at`，以及 `jobs.config` 中相同 `protocol_hash` 的工作總數與最早 `created_at`。本節沒有公開資料庫、金鑰或原始資料，也沒有重新執行實驗或重算統計結果。
+
+本補記不改變 RQ1「已見樣本的回溯比較」定位：同批樣本曾用於試跑與規則調整，因此不是事前確認性檢驗，也不是獨立樣本外驗證。補記本身不等於完成所有升格條件；其他稽核缺口與研究者確認仍依 [RQ1 升格稽核](rq-prep/rq1-promotion-audit.md) 處理。
