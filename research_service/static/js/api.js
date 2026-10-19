@@ -6,18 +6,53 @@ import { emit } from './store.js';
 const API_TIMEOUT_MS = 15000, API_GET_RETRY_LIMIT = 1;
 export const BATCH_TIMEOUT = {timeoutMs: 180000};
 
+// GitHub Pages demo. Without a recorded timeline, GETs return the last recorded response. With one, the
+// launch call (first recorded non-GET to jobs/studies/batches) starts a live-speed replay of the timeline.
+const demoClock = {t: null, anchorWall: 0, anchorT: 0};
+const demoBase = key => key.split('?')[0];
+const demoLaunch = e => e.method !== 'GET' && /^\/api\/(jobs|studies|batches)/.test(e.key) && !e.key.endsWith('/preflight');
+function demoNow(timeline) {
+  if (demoClock.t === null) {
+    const launch = timeline.find(demoLaunch);
+    const start = launch ? launch.t : timeline[timeline.length - 1].t;
+    demoClock.t = new URLSearchParams(location.search).get('final') === '1' ? Infinity : start - 0.01;
+  }
+  if (!demoClock.anchorWall || demoClock.t === Infinity) return demoClock.t;
+  return demoClock.anchorT + (performance.now() - demoClock.anchorWall) / 1000;
+}
+function staticDemo(path, verb) {
+  const {responses = {}, timeline = []} = globalThis.STATIC_DEMO;
+  const readOnly = () => new Error('這是線上展示版，無法新增或修改；完整功能請在本機執行系統。');
+  const missing = () => new Error('線上展示版沒有這項資料');
+  const fallback = () => {
+    const key = path in responses ? path : demoBase(path);
+    if (!(key in responses)) throw missing();
+    return structuredClone(responses[key]);
+  };
+  if (!timeline.length) {
+    if (verb !== 'GET') throw readOnly();
+    return fallback();
+  }
+  const now = demoNow(timeline), base = demoBase(path);
+  const latest = match => timeline.filter(e => e.t <= now && e.method === verb && match(e)).pop();
+  if (verb === 'GET') {
+    const hit = latest(e => e.key === path) || latest(e => e.key === base);
+    return hit ? structuredClone(hit.response) : fallback();
+  }
+  const same = timeline.filter(e => e.method === verb && demoBase(e.key) === base);
+  if (!same.length) throw readOnly();
+  const launchT = timeline.find(demoLaunch)?.t;
+  const launch = same.find(e => demoLaunch(e) && e.t >= launchT);
+  if (launch) Object.assign(demoClock, {anchorWall: performance.now(), anchorT: launch.t});
+  return structuredClone((launch || same[same.length - 1]).response);
+}
+
 // Batch operations validate every case (hundreds of datasets) and pass a longer timeoutMs.
 export async function api(path, body, method, {timeoutMs = API_TIMEOUT_MS} = {}) {
   const verb = (method || (body === undefined ? 'GET' : 'POST')).toUpperCase();
   const retryable = verb === 'GET';
-  // GitHub Pages demo: answer GETs from responses recorded in demo mode; nothing can be changed.
-  if (globalThis.STATIC_DEMO) {
-    if (verb !== 'GET') throw new Error('這是線上展示版，無法新增或修改；完整功能請在本機執行系統。');
-    const recorded = globalThis.STATIC_DEMO.responses || {};
-    const key = path in recorded ? path : path.split('?')[0];
-    if (!(key in recorded)) throw new Error('線上展示版沒有這項資料');
-    return structuredClone(recorded[key]);
-  }
+  // GitHub Pages demo: answer from responses recorded in demo mode; nothing can really be changed.
+  if (globalThis.STATIC_DEMO) return staticDemo(path, verb);
   let lastError;
   for (let attempt = 0; attempt <= (retryable ? API_GET_RETRY_LIMIT : 0); attempt += 1) {
     const controller = new AbortController();
