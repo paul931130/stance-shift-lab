@@ -49,7 +49,8 @@ function staticDemo(path, verb) {
   if (!same.length) throw readOnly();
   const launchT = timeline.find(demoLaunch)?.t;
   const launch = same.find(e => demoLaunch(e) && e.t >= launchT);
-  if (launch) Object.assign(demoClock, {anchorWall: performance.now(), anchorT: launch.t});
+  // Start one second past the launch so the UI's immediate refresh already sees the queued job.
+  if (launch) Object.assign(demoClock, {anchorWall: performance.now(), anchorT: launch.t + 1});
   return structuredClone((launch || same[same.length - 1]).response);
 }
 
