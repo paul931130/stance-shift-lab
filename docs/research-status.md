@@ -19,7 +19,7 @@ RQ2 跨 seed 在案例內合併，不能把三 seed 當成三倍市場樣本；R
 ## 文件入口
 
 - [RQ 準備索引](rq-prep/README.md)：設計草稿、資格與操作文件。
-- [實驗架構](experiment-architecture.md)與 [E2′ 登記文件](e2prime-preregistration.md)：既有配置與紀錄。
+- [實驗架構（歷史規劃）](experiment-architecture.md)與 [E2′ 登記文件](e2prime-preregistration.md)：既有配置與紀錄；其中的舊版 RQ2／RQ3 定義已被本頁取代。
 - [模型資格](model-qualification.md)：資格檢查與證據要求。
 - [CHANGELOG](../CHANGELOG.md)與 [協議實作](../research_service/protocol.py)：版本變更與設定。
 

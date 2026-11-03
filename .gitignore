@@ -29,7 +29,16 @@ __pycache__/
 /research-inputs/*.jsonl
 /research-inputs/*.json
 /outputs/
+/output/
 /work/
+
+# browser test scratch
+/.playwright-cli/
+
+# private Sites checkout (its own git repo; dist is a publish copy of site/)
+/site/story/
+# report LaTeX source stays internal, like /report/*; the PDF is published
+/site/sources/*.tex
 
 # Python packaging build output
 build/

@@ -1,9 +1,13 @@
 # 從 GitHub Clone 後首次啟動
 
+只想看系統，直接 [播放線上真實案例](https://paul931130.github.io/stance-shift-lab/demo/)，不必 clone 或啟動本機服務。
+
+想輸入自己的股票、又不想安裝環境，先走 [雲端研究台](cloud-start.md)。以下步驟適用於要自行部署或開發的人。
+
 ## 取得原始碼
 
 ```bash
-git clone https://github.com/<你的帳號>/stance-shift-lab.git
+git clone https://github.com/paul931130/stance-shift-lab.git
 cd stance-shift-lab
 ```
 

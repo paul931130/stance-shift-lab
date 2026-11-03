@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>立場交換辯論 · 系統展示</title>
-<meta name="description" content="用兩個真實案例，看多代理人辯論如何在固定立場與立場交換下得出不同的投資判斷。真實模型輸出（RQ1 正式實驗）。">
+<meta name="description" content="用兩個真實案例，看多代理人辯論如何在固定立場與立場交換下得出不同的投資判斷。真實模型輸出（RQ1 回溯比較）。">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700&display=swap" rel="stylesheet">
@@ -130,13 +130,14 @@ footer p+p{margin-top:8px}
 <body>
 <div class="topbar"><div class="wrap">
 <h1>立場交換辯論 · 系統展示</h1>
-<div class="links"><a href="../">← 專題首頁</a><a class="sub" href="../app/">完整研究台（進階）</a></div>
+<div class="links"><a href="../">← 專題首頁</a><a class="sub" href="../app/">研究台介面預覽（合成資料）</a></div>
 </div></div>
 
 <main class="wrap">
 <section class="step" id="s1">
 <h2><span class="n">1</span>選擇案例</h2>
-<p class="lead">同一份資料、四種判斷方式：A 單次判斷、B 獨立投票、C 固定立場辯論、D 立場交換辯論。選一個案例，看它們各自怎麼判斷。</p>
+<p class="lead">這裡回放既有實驗的真實模型輸出，不執行新模型。選一個案例，比較同一份資料下的四種判斷方式：A 單次判斷、B 獨立投票、C 固定立場辯論、D 立場交換辯論。</p>
+<p class="lead">想分析自己的股票？<a href="https://github.com/paul931130/stance-shift-lab/blob/main/docs/cloud-start.md">在 Codespaces 建立自己的研究台</a>，設定模型金鑰後開始新分析；也可<a href="https://github.com/paul931130/stance-shift-lab/blob/main/docs/getting-started.md">自行部署</a>。此展示未提供共用分析後端。</p>
 <div class="cases" id="cases" role="radiogroup" aria-label="選擇案例"></div>
 </section>
 
@@ -164,14 +165,14 @@ footer p+p{margin-top:8px}
 </main>
 
 <div class="bar"><div class="wrap">
-<button class="btn" id="primary" type="button">開始分析</button>
+<button class="btn" id="primary" type="button">播放案例</button>
 <button class="lnk" id="skip" type="button" hidden>略過動畫</button>
 <button class="lnk" id="other" type="button" hidden>換另一個案例</button>
 </div></div>
 
 <footer><div class="wrap">
-<p>真實模型輸出（RQ1 正式實驗），案例為事後挑選、僅供描述；整體結果：180 案中沒有找到 D 優於 C 的證據，詳見書面報告。不構成投資建議。</p>
-<p><a href="../">← 專題首頁</a> · <a href="https://github.com/paul931130/stance-shift-lab/blob/main/report/stance-shift-report.pdf">書面報告（PDF）</a></p>
+<p>真實模型輸出（RQ1 回溯比較），案例為事後挑選、僅供描述；整體結果：180 案中沒有找到 D 優於 C 的證據，詳見書面報告。不構成投資建議。</p>
+<p><a href="../">← 專題首頁</a> · <a href="../sources/application-meeting-20261020_v11.pdf">書面報告（PDF）</a></p>
 </div></footer>
 
 <script src="cases.js"></script>
@@ -215,7 +216,7 @@ function renderCases(){
   b.appendChild(el('div','tk',c.ticker));
   b.appendChild(el('div','dt','分析基準日 '+c.analysis_date));
   b.appendChild(el('div','ln',dirLine(c)));
-  b.appendChild(el('span','tag','RQ1 正式實驗 · qwen3:32b 真實輸出'));
+  b.appendChild(el('span','tag','RQ1 回溯比較 · qwen3:32b 真實輸出'));
   b.addEventListener('click',function(){if(running||i===cur)return;pick(i)});
   box.appendChild(b);
  });
@@ -226,7 +227,7 @@ function resetViews(){
  runId++;flush();skip=false;running=false;done=false;
  [s2,s3,s4].forEach(function(s){s.hidden=true});
  $('flow').textContent='';$('rs').textContent='';$('debate').textContent='';
- setPrimary('開始分析',false);skipBtn.hidden=true;otherBtn.hidden=true;
+ setPrimary('播放案例',false);skipBtn.hidden=true;otherBtn.hidden=true;
 }
 function setPrimary(t,dis){primary.textContent=t;primary.disabled=!!dis}
 
@@ -378,7 +379,7 @@ function takeaway(c){
 async function run(){
  var c=CASES[cur];if(!c||running)return;
  resetViews();var id=runId;running=true;skip=false;renderCases();
- setPrimary('分析中…',true);skipBtn.hidden=false;
+ setPrimary('播放中…',true);skipBtn.hidden=false;
  var st=stagesFor(c),flow=$('flow'),nodes=[];
  st.forEach(function(s,i){
   var li=el('li','stage');li.appendChild(el('div','sn','STEP '+(i+1)));li.appendChild(el('div','sh',s[0]));li.appendChild(el('div','sr',s[1]));
