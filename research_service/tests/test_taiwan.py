@@ -7,6 +7,7 @@ import os
 import tempfile
 import unittest
 from unittest.mock import patch
+from zoneinfo import ZoneInfo
 
 from fastapi.testclient import TestClient
 
@@ -87,6 +88,26 @@ class TaiwanTests(unittest.TestCase):
         invalid['evidence_ids'] = ['invented-source']
         with self.assertRaises(ValueError):
             validate_output(invalid, 'TWQ-test')
+
+    def test_narrative_may_name_stock_code_and_idioms_but_not_numbers(self):
+        def decision(text):
+            return {'action': 'Hold', 'expected_return_pct': 0, 'confidence': .3, 'rationale': text,
+                    'evidence_ids': ['TWQ-x'], 'risks': [], 'numeric_claims': []}
+        for text in ('2330 與 2330.TW 證據不足', '走勢有一點轉弱', '並非一成不變'):
+            validate_output(decision(text), 'TWQ-x', '2330.TW')
+        for text in ('上漲十一點', '目標三成', '價格 2331 元', '漲了一點五元'):
+            with self.assertRaises(ValueError, msg=text):
+                validate_output(decision(text), 'TWQ-x', '2330.TW')
+
+    def test_quote_survives_lunar_new_year_closure(self):
+        today = datetime.now(ZoneInfo('Asia/Taipei')).date()
+        def aged(days):
+            stamp = (today - timedelta(days=days)).isoformat()
+            return {'ticker': '2330.TW', 'price': 100, 'as_of': stamp, 'fetched_at': datetime.now(timezone.utc).isoformat(),
+                    'evidence_id': 'TWQ-x', 'history': [{'date': stamp, 'close': 100}]}
+        check_quote(aged(11), '2330.TW')
+        with self.assertRaises(ValueError):
+            check_quote(aged(15), '2330.TW')
 
     def test_report_api_and_decision_survive_restart_without_formal_jobs(self):
         store = Store(self.directory.name)

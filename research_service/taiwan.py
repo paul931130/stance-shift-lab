@@ -21,6 +21,13 @@ LIMITATIONS = ['僅有延遲日線行情，非即時報價。', '未提供財報
 logger = get_logger(__name__)
 HEARTBEAT_SECONDS = 15
 OWNER_TIMEOUT_SECONDS = 90
+# Lunar New Year closes TWSE for up to about a week; with weekends the last
+# trading day can be eleven calendar days back.
+QUOTE_MAX_AGE_DAYS = 14
+NUMERAL_CLAIM = re.compile(r'\d|[零〇一二三四五六七八九十百千萬億兆兩壹貳參肆伍陸柒捌玖拾佰仟]+(?:元|股|日|天|月|年|成|倍|點|趴|%)|百分之')
+# Idioms that read as numeral + unit but assert no quantity.
+# A numeral before 一 (十一點) is a real claim, so it is not an idiom.
+NUMERAL_IDIOMS = re.compile(r'(?<![零〇一二三四五六七八九十百千萬億兆兩壹貳參肆伍陸柒捌玖拾佰仟])一(?:點|成不變|天到晚)|有朝一日')
 
 
 class ReportLeaseLost(RuntimeError):
@@ -70,7 +77,7 @@ def check_quote(quote, ticker):
         raise ValueError('行情價格無效')
     date = datetime.strptime(quote['as_of'], '%Y-%m-%d').date()
     age = datetime.now(ZoneInfo('Asia/Taipei')).date() - date
-    if age < timedelta(0) or age > timedelta(days=7):
+    if age < timedelta(0) or age > timedelta(days=QUOTE_MAX_AGE_DAYS):
         raise ValueError('行情過期或時間無效，請確認來源')
     if not quote.get('evidence_id'):
         raise ValueError('缺少行情證據')
@@ -96,16 +103,21 @@ def check_quote(quote, ticker):
     return quote
 
 
-def validate_output(result, evidence_id):
+def validate_output(result, evidence_id, ticker=None):
     validate(result, DECISION_SCHEMA)
     if result['action'] == 'NoTrade' or set(result['evidence_ids']) != {evidence_id}:
         raise ValueError('模型引用無效')
     if result['numeric_claims']:
         raise ValueError('本探索模式只允許引用證據 ID，不允許重述數值')
     prose = [result['rationale'], *result['risks'], result.get('strongest_counterpoint', '')]
+    # Evidence IDs and the stock code may contain digits, but narrative numeric assertions cannot.
+    names = [evidence_id]
+    if ticker:
+        names += [ticker, ticker.split('.')[0]]
     for text in prose:
-        # Evidence IDs may contain digits, but narrative numeric assertions cannot.
-        if re.search(r'\d|[零〇一二三四五六七八九十百千萬億兆兩壹貳參肆伍陸柒捌玖拾佰仟]+(?:元|股|日|天|月|年|成|倍|點|趴|%)|百分之', text.replace(evidence_id, '')):
+        for name in names:
+            text = text.replace(name, ' ')
+        if NUMERAL_CLAIM.search(NUMERAL_IDIOMS.sub(' ', text)):
             raise ValueError('敘述不得包含未綁定數字，請僅引用證據 ID')
     if not math.isfinite(result['confidence']) or not math.isfinite(result['expected_return_pct']):
         raise ValueError('模型數值無效')
@@ -165,7 +177,7 @@ class TaiwanService:
     def _beat(self):
         while not self.stop.wait(HEARTBEAT_SECONDS):
             try:
-                if not self.heartbeat():
+                if not self.heartbeat() and not self.rejoin():
                     return
             except Exception:
                 logger.exception('Taiwan service heartbeat failed; retrying')
@@ -180,6 +192,22 @@ class TaiwanService:
                                (now(), self.service_id, self._cutoff())).rowcount == 1
             self._recover(db)
             return alive
+
+    def rejoin(self):
+        """After a missed lease (e.g. host sleep), register under a fresh id.
+
+        The old id stays fenced: its in-flight reports were failed by recovery
+        and their workers lose every later save, so only new reports run.
+        """
+        with self.lock, self.connect() as db:
+            if self.closed:
+                return False
+            db.execute('BEGIN IMMEDIATE')
+            self._recover(db)
+            self.service_id = uuid.uuid4().hex
+            db.execute('INSERT INTO services VALUES (?,?)', (self.service_id, now()))
+            logger.warning('Taiwan service lease expired; rejoined as %s', self.service_id)
+            return True
 
     @contextmanager
     def connect(self):
@@ -304,7 +332,7 @@ class TaiwanService:
                     payload['arguments'] = results
                 messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': json.dumps(payload, ensure_ascii=False)}]
                 result, audit = self.model_call(protocol, messages)
-                results[role] = validate_output(result, quote['evidence_id'])
+                results[role] = validate_output(result, quote['evidence_id'], report['ticker'])
                 # Only allow bounded, non-sensitive provider metadata into the public audit.
                 usage = audit.get('usage', {}) if isinstance(audit, dict) else {}
                 safe_usage = {k: v for k, v in usage.items() if k in ('prompt_tokens', 'completion_tokens', 'total_tokens', 'client_elapsed_seconds') and isinstance(v, (int, float)) and math.isfinite(v)}

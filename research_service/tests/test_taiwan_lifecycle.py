@@ -209,6 +209,21 @@ class TaiwanLifecycleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             service.create('2330.TW', MODEL)
 
+    def test_rejoin_after_expired_lease_fences_old_reports_and_accepts_new_ones(self):
+        service, model = self.service()
+        stale = service.create('2330.TW', MODEL)
+        self.assertTrue(model.entered.wait(5))
+        old_id = service.service_id
+        expired = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+        with service.connect() as db:
+            db.execute('UPDATE services SET heartbeat=? WHERE id=?', (expired, old_id))
+        self.assertFalse(service.heartbeat())
+        self.assertTrue(service.rejoin())
+        self.assertNotEqual(service.service_id, old_id)
+        self.assertEqual(service.get(stale['id'])['status'], 'failed')
+        model.release.set()
+        self.assertEqual(service.create('2317.TW', MODEL)['owner'], service.service_id)
+
     def test_run_cannot_claim_other_owner_or_repeat_completed_work(self):
         first, first_model = self.service()
         second, second_model = self.service()
