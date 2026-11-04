@@ -28,11 +28,22 @@ if [ -n "${CODESPACE_NAME:-}" ]; then
     set_value RESEARCH_PUBLIC_ORIGIN "https://$host"
 fi
 
-# docker-in-docker starts its daemon alongside this hook.
+# docker-in-docker starts its daemon alongside this hook. It selects the
+# legacy iptables backend, which newer host kernels no longer provide
+# ("can't initialize iptables table 'nat'"); switch to nft so its retries,
+# or one restart below, can bring the daemon up.
+if [ -x /usr/sbin/iptables-nft ] && sudo -n true 2>/dev/null; then
+    sudo -n update-alternatives --set iptables /usr/sbin/iptables-nft >/dev/null 2>&1 || true
+    sudo -n update-alternatives --set ip6tables /usr/sbin/ip6tables-nft >/dev/null 2>&1 || true
+fi
 i=0
 until docker info >/dev/null 2>&1; do
     i=$((i + 1))
-    if [ "$i" -gt 60 ]; then
+    if [ "$i" -eq 30 ] && [ -x /usr/local/share/docker-init.sh ]; then
+        echo "[INFO] Docker 尚未啟動，以 iptables-nft 重新啟動 dockerd" >&2
+        (sudo -n /usr/local/share/docker-init.sh true >/dev/null 2>&1 &) || true
+    fi
+    if [ "$i" -gt 90 ]; then
         echo "[FAIL] Docker daemon 未啟動" >&2
         # docker-in-docker writes the daemon log here; show why it stopped.
         tail -n 40 /tmp/dockerd.log >&2 2>/dev/null || true
