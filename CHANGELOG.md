@@ -2,6 +2,16 @@
 
 研究台可以用 `stance-shift` CLI、Python API 或網頁研究台（Docker、pip、Codespaces）操作，三者共用同一套流程與資料庫。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## 10/22 審查的三個程式問題（2026-11-04，未啟動正式實驗）
+
+- 排程：同一 protocol hash、同一 ticker 有較早日期的案例還在 running 時，worker 不再領取較晚案例，記憶不再依執行競速改變；不同 ticker 照常平行。新增雙 worker 回歸測試。
+- RQ3 日面板：每一組的日報酬必須剛好涵蓋 entry 到 maturity 的 61 個交易日，且別的案例在此窗口內有交易的日子這一案也必須有；四組同一天一起缺報酬不再被當成 0 通過。用 RQ1 的 180 案 × 4 組實際資料核對，720 組都符合。
+- RQ3 推論：Sharpe 不可估時不再整體拋錯。該端點標 `not_estimable` 與原因、沒有 Holm 值；Holm 仍以六項計算（不可估項以 p=1 佔位，不縮小 family），並輸出 `overall_superiority_claim_allowed=false`。
+- `storage.py` 屬於 source digest 的模組，這次修改會改變 source digest：舊的凍結工作不能用新程式續跑，RQ2／RQ3 的離線封裝要重做。
+- 離線封裝的 `launch-manifest.json` 另外記錄統計與報表模組（statistics、rq_analysis、rq_repeats、rq_study、rq3_inference、rq3_reporting、reporting）的 SHA-256；這些不在 source digest 內（RQ1 升格稽核第 11 項的缺口）。
+- 連線用實驗室 GPU：新增 `scripts/check_lab_ollama.py`（核對遠端 Ollama 的模型與權重 digest，可選每個模型一個極短請求）與 `docs/rq-prep/lab-start.md`；`scripts/lab_bundle.py` 供日後把程式搬到實驗室時打包 RQ1 快照。
+- 報告 v11：RQ1 不再寫成「回答立場交換本身」，改為比較整套立場交換流程與固定立場流程（D 同時改變立場交換、隔離對手、強制引用與驗證重試）；RQ2 的比較量同樣改述為 D−C 差異。README 與網站現在指向同一份 PDF。
+
 ## RQ 審查修正（2026-10-15，僅本機，未啟動正式實驗）
 
 - RQ1：從保存快照建立唯讀分析副本，以 `eb36a8a` 的歷史 reporting 原始碼重算；180 案、3,960 筆原始決策、1,219 日日面板與主表一致，輸出附完整性清單，不改原登記或結果。

@@ -1,6 +1,6 @@
 # RQ 準備文件索引（2026-10-08）
 
-**目前操作入口：[2026-10-17 正式實驗前操作單](preformal-runbook-20261017.md)。** 舊表格與預算只保留歷史脈絡。
+**目前操作入口：[2026-10-17 正式實驗前操作單](preformal-runbook-20261017.md)。** 用實驗室電腦的 GPU 跑時先讀 [lab-start.md](lab-start.md)（目前狀態、開跑前必改項、SSH 連線設定）。 舊表格與預算只保留歷史脈絡。
 
 > 2026-10-15 更新：以下決策表保留 10 月 8 日的規劃脈絡，不代表目前仍未實作。Model Router、Domain Debate、Final Aggregator 與 web 接線均已存在；v7 將 RQ2 的 BB、至少三 seed 與 RQ3 的兩個對照列為必要。現況以 [研究狀態](../research-status.md) 為準。草稿內舊預算與建議不可直接用作正式登記。
 
