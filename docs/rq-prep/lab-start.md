@@ -27,7 +27,7 @@
 
 這次改了 `storage.py`（source digest 的模組之一），source digest 已變：舊的凍結工作不能用新程式續跑，10/17 的離線封裝要重做（第五節步驟 4）。
 
-研究設計上的建議（不擋開跑，但要在登記前決定）：
+研究設計上的建議（不擋開跑，但要在登記前決定；選項與建議整理在 [design-decisions-20261105.md](design-decisions-20261105.md)）：
 
 - **RQ3 只跑 fixed**，只能回答「領域分工 vs 通才」的架構差，回答不了「資訊異質性會不會改變 D−C」。要回答它需要加 D_domain（約兩倍成本），否則報告要改述。
 - **檢定力**：180 案、不一致比例 0.2–0.3 時，偵測 5 個百分點差異的檢定力只有約 23–32%，10 個百分點約 69–85%（常態近似粗估）。報告信賴區間，「不顯著」不寫成「等效」，必要時加 TOST。
@@ -83,13 +83,18 @@
 **最短路徑：開好 SSH 通道後，一個指令跑完下面的步驟 2–6。**
 
 ```powershell
-ssh -N -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -L 11435:127.0.0.1:11434 <帳號>@<實驗室主機>   # 另一個終端，保持開著
-.\scripts\lab-run.ps1                  # 連線檢查 → 記憶探針＋canary（A、B）→ RQ2／RQ3 三案 pilot
-.\scripts\lab-run.ps1 -Stage check     # 只檢查連線與權重
-.\scripts\lab-run.ps1 -Offline         # 不呼叫模型，只跑環境檢查、封裝與離線 pilot
+.\scripts\lab-run.ps1 -SshTarget <帳號>@<實驗室主機>   # 腳本自己開通道、斷線自動重開（需要 SSH 金鑰）
+.\scripts\lab-run.ps1                                  # 或者：通道已在另一個終端開好
+.\scripts\lab-run.ps1 -Stage check                     # 只檢查連線與權重
+.\scripts\lab-run.ps1 -Offline                         # 不呼叫模型，只跑環境檢查、封裝與離線 pilot
+.\scripts\lab-run.ps1 -Resume work\lab-run-<時間>      # 從停下的地方接著跑
 ```
 
-每次都寫到新的 `work\lab-run-<時間>\`，附 `summary.json`（每步結束碼、秒數、git commit）；任何一步失敗就停下並指出記錄檔。它只在這個 PowerShell 視窗清掉 GPUtw 設定、指向通道，不登記、不排正式案例、不續跑舊工作。pilot 跑完代表程式完成，仍要照操作單第 3 節人工驗收輸出。下面是腳本內部的各步驟，出問題時可以逐步手動執行。
+每次都寫到新的 `work\lab-run-<時間>\`，附 `summary.json`（每步結束碼、秒數、git commit）；任何一步失敗就停下並指出記錄檔。
+
+- **接續**：`-Resume` 跳過已成功的步驟，失敗的那一步改用新的輸出名稱（`-try2`）重跑，舊輸出保留。程式（git commit 或未提交的修改）和原本那次不同時會拒絕接續，因為改過程式就要重做受影響的檢查。
+- **不睡眠**：腳本執行期間電腦不會進入睡眠，結束後恢復。
+- **自動驗收**：兩個 pilot 跑完後自動執行 `scripts/check_pilot.py`，逐項檢查操作單第 3 節的項目（各組完整、原始回應可追溯、無引用／schema 失敗或降級、28 份提案提示未截斷、tokens／重試／延遲齊全、權重未變、記憶無未完成早案），並估算 180 案所需時間。也可以單獨執行：`.\.venv\Scripts\python.exe scripts/check_pilot.py <pilot 輸出資料夾>`。截斷是用 prompt tokens 間接判斷，namespace 失敗只能從無效引用看出，這兩項仍要人工看一眼。它只在這個 PowerShell 視窗清掉 GPUtw 設定、指向通道，不登記、不排正式案例、不續跑舊工作。pilot 跑完代表程式完成，仍要照操作單第 3 節人工驗收輸出。下面是腳本內部的各步驟，出問題時可以逐步手動執行。
 
 1. 開 SSH 通道（另開一個終端，整段實驗期間保持開著）：
 
