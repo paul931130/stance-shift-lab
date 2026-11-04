@@ -32,7 +32,12 @@ fi
 i=0
 until docker info >/dev/null 2>&1; do
     i=$((i + 1))
-    [ "$i" -gt 60 ] && { echo "[FAIL] Docker daemon 未啟動" >&2; exit 1; }
+    if [ "$i" -gt 60 ]; then
+        echo "[FAIL] Docker daemon 未啟動" >&2
+        # docker-in-docker writes the daemon log here; show why it stopped.
+        tail -n 40 /tmp/dockerd.log >&2 2>/dev/null || true
+        exit 1
+    fi
     sleep 1
 done
 
