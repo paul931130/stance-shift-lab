@@ -80,6 +80,17 @@
 
 ## 五、這台電腦每次開跑
 
+**最短路徑：開好 SSH 通道後，一個指令跑完下面的步驟 2–6。**
+
+```powershell
+ssh -N -o ServerAliveInterval=30 -o ServerAliveCountMax=6 -L 11435:127.0.0.1:11434 <帳號>@<實驗室主機>   # 另一個終端，保持開著
+.\scripts\lab-run.ps1                  # 連線檢查 → 記憶探針＋canary（A、B）→ RQ2／RQ3 三案 pilot
+.\scripts\lab-run.ps1 -Stage check     # 只檢查連線與權重
+.\scripts\lab-run.ps1 -Offline         # 不呼叫模型，只跑環境檢查、封裝與離線 pilot
+```
+
+每次都寫到新的 `work\lab-run-<時間>\`，附 `summary.json`（每步結束碼、秒數、git commit）；任何一步失敗就停下並指出記錄檔。它只在這個 PowerShell 視窗清掉 GPUtw 設定、指向通道，不登記、不排正式案例、不續跑舊工作。pilot 跑完代表程式完成，仍要照操作單第 3 節人工驗收輸出。下面是腳本內部的各步驟，出問題時可以逐步手動執行。
+
 1. 開 SSH 通道（另開一個終端，整段實驗期間保持開著）：
 
    ```powershell
