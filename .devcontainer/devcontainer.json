@@ -4,7 +4,10 @@
   "name": "Stance Shift Research",
   "image": "mcr.microsoft.com/devcontainers/base:ubuntu-24.04",
   "features": {
-    "ghcr.io/devcontainers/features/docker-in-docker:2": {}
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      // Pinned: Moby 29.9.2 (2026-11) fails to start dockerd here; 29.9.1 worked.
+      "version": "29.9.1"
+    }
   },
   "hostRequirements": {
     "cpus": 2,

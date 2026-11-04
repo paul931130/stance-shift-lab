@@ -1,7 +1,6 @@
 """Offline acceptance checks for the isolated Taiwan exploratory workflow."""
 from copy import deepcopy
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 import json
 import os
 import tempfile
@@ -42,7 +41,7 @@ class RecordingModel:
 
 class TaiwanTests(unittest.TestCase):
     def setUp(self):
-        self.directory = tempfile.TemporaryDirectory(dir=Path(__file__).resolve().parents[2])
+        self.directory = tempfile.TemporaryDirectory()  # system temp: /app is read-only in the Docker image
         self.addCleanup(self.directory.cleanup)
         self.model = RecordingModel()
         self.service = TaiwanService(self.directory.name, self.model, quote_loader=quote)

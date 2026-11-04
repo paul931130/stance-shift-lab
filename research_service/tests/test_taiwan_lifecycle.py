@@ -1,7 +1,6 @@
 """Offline shared-database ownership and shutdown regression checks."""
 from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 import json
 import tempfile
 import threading
@@ -40,9 +39,8 @@ class BlockingModel:
 
 class TaiwanLifecycleTests(unittest.TestCase):
     def setUp(self):
-        root = Path(__file__).resolve().parents[2] / 'tmp'
-        root.mkdir(exist_ok=True)
-        self.directory = tempfile.TemporaryDirectory(prefix='taiwan-lifecycle-', dir=root)
+        # System temp folder: /app is read-only inside the Docker image.
+        self.directory = tempfile.TemporaryDirectory(prefix='taiwan-lifecycle-')
         self.services = []
         self.models = []
 
