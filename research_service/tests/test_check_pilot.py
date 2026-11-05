@@ -58,7 +58,7 @@ class CheckPilotTests(unittest.TestCase):
                 for target in (output, output / "data"):
                     result = check_pilot.check_pilot(target)
                     self.assertTrue(result["passed"], result["checks"])
-                    self.assertEqual(len(result["checks"]), 9)
+                    self.assertEqual(len(result["checks"]), 10)
                 statuses = self.statuses(output)
                 self.assertEqual(statuses["c_budget_aggregation_prompt_not_truncated"],
                                  "pass" if rq3 else "not_applicable")
@@ -144,7 +144,32 @@ class CheckPilotTests(unittest.TestCase):
                 final = next(r for r in state["control_records"] if r["key"] == "c-budget-final")
                 final["audit"]["usage"]["prompt_tokens"] = 8192
             mutate(output, fill)
-            self.assertEqual(self.failing(output), ["c_budget_aggregation_prompt_not_truncated"])
+            self.assertEqual(self.failing(output), ["all_prompts_within_context",
+                                                    "c_budget_aggregation_prompt_not_truncated"])
+
+    def test_any_ollama_prompt_at_context_limit_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.build(directory, False)
+            ok = next(c for c in check_pilot.check_pilot(output)["checks"] if c["check"] == "all_prompts_within_context")
+            self.assertEqual(ok["status"], "pass", ok)
+            def fill(config, state):
+                judge = next(r for r in state["records"] if r["kind"] == "adjudication")
+                judge["audit"]["usage"]["prompt_tokens"] = 6144
+            mutate(output, fill)
+            self.assertEqual(self.failing(output), ["all_prompts_within_context"])
+            def cloud(config, state):
+                config["protocol"]["model"] = "gemini/test"
+                audits = [r.get("audit") or {} for r in state["records"]]
+                audits += [item.get("audit") or {} for item in (state.get("research") or {}).values()
+                           if isinstance(item, dict)]
+                for audit in audits:
+                    if "model" in audit:
+                        audit["model"] = "gemini/test"
+                    if isinstance(audit.get("model_route"), dict):
+                        audit["model_route"]["model"] = "gemini/test"
+            mutate(output, cloud)
+            item = next(c for c in check_pilot.check_pilot(output)["checks"] if c["check"] == "all_prompts_within_context")
+            self.assertEqual(item["status"], "info", item)
 
     def test_missing_usage_and_pending_memory_fail(self):
         with tempfile.TemporaryDirectory() as directory:

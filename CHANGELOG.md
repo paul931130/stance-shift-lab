@@ -12,6 +12,7 @@
 - 連線用實驗室 GPU：新增 `scripts/check_lab_ollama.py`（核對遠端 Ollama 的模型與權重 digest，可選每個模型一個極短請求）與 `docs/rq-prep/lab-start.md`；`scripts/lab_bundle.py` 供日後把程式搬到實驗室時打包 RQ1 快照。
 - `scripts/check_pilot.py`：自動檢查三案 pilot 輸出（操作單第 3 節的七項），唯讀開啟資料庫，輸出通過／不通過表與 180 案時間估計；`lab-run.ps1` 在 pilot 後自動執行。`lab-run.ps1` 另加 `-Resume`（跳過已成功步驟、失敗步驟改 `-tryN` 重跑、程式變動時拒絕）、`-SshTarget`（自動開通道與重連）與執行期間防止睡眠。`run_design_pilot.py` 失敗時把完整 traceback 寫到輸出旁的 `.error.txt`。
 - `scripts/lab-run.ps1`：開好 SSH 通道後一個指令依序跑連線與權重檢查、A／B 記憶探針與 canary、RQ2／RQ3 三案 pilot；每次輸出新資料夾與 summary.json，失敗即停，不登記也不排正式案例。`-Offline` 不呼叫模型。
+- `check_pilot.py` 新增 `all_prompts_within_context`：不只 RQ3 的 C_budget，每一次 Ollama 呼叫的 prompt tokens 都要小於上下文減輸出上限，否則判失敗；雲端模型只報最大值（info）。Gemini 試跑中最大的是裁決者（約 5,200–5,500／6,144），qwen 實測前不能確定沒有截斷。
 - `debate_clash` 第二步（2026-11-05）：第 2、3 輪不再要求也不再提供 `strongest_counterpoint`；C／D 裁決者必須對每個交鋒回合（帶 `rebutted_opponent_claim` 的回合）給 `clash_verdicts`，提示列出回合編號，少列、多列或重複都會重試；交鋒模式下換邊輪 `rebutted_claim` 上限 400 字（原機制仍是 240）。用 5 個未看過結果的案例檢查，只看失敗率與交鋒指標。
 - `check_pilot.py` 新增 `debate_engagement`（info，不判失敗）：C 組第 3 輪和自己第 2 輪一字不差的比例、相似度、引用對方的比例、對方新證據被採用的比例，附 RQ1 參考值（63.3%／0.886／0%／0.6%），當作「C／D 真的在辯論」的操弄檢核。新增 `docs/rq-prep/development-cases-20261105.md`：開發階段看過結果的 22 個案例與處理規則。
 - 實驗選項 `debate_clash`（2026-11-05，預設關閉，關閉時協議 hash 的欄位不變）：辯論輪分立論／反駁／結辯；第 2 輪起（D 隔離換邊輪除外）要逐字引用上一輪對立立場發言的一句（`rebutted_opponent_claim`）再反駁，理由不能和自己上一輪太像（相似度 < 0.8），否則重試。D 第 3 輪的對立發言是自己換邊時那一輪。只適用 v3-1002.3 以後的版本；RQ3 領域辯論尚未套用。起因是 RQ1 的 C 組幾乎沒有交鋒，數據見 design-decisions-20261105.md 第 5 項。改動 models／engine／protocol，prompt source 與 source digest 改變。

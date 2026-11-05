@@ -292,6 +292,45 @@ def check_debate_engagement(jobs):
     return result
 
 
+def check_all_prompts(jobs):
+    """Every Ollama call must leave the output cap free in the context window, or it was truncated.
+
+    Cloud models (e.g. gemini/...) have no such window in the protocol; their largest prompt is
+    reported as info so a cloud trial still shows how close a lab run would come.
+    """
+    name = "all_prompts_within_context"
+    if not jobs:
+        return row(name, False, "no jobs in database")
+    problems, local, cloud = [], [], []
+    for job in jobs:
+        tag, protocol = job["id"][:8], job["config"].get("protocol") or {}
+        context = protocol.get("model_context_length") or DEFAULT_CONTEXT
+        limit = context - (protocol.get("max_output_tokens") or 0)
+        for key, record in model_calls(job["state"]):
+            audit = record.get("audit") or {}
+            model = ((audit.get("model_route") or {}).get("model") or audit.get("model")
+                     or protocol.get("model") or "")
+            tokens = [u.get("prompt_tokens") for a in call_audits(audit) for u in attempt_usages(a)]
+            tokens = [t for t in tokens if number(t)]
+            if not tokens:
+                continue
+            item = (max(tokens), f"{tag}/{key}", limit)
+            (local if str(model).startswith("ollama/") else cloud).append(item)
+            if str(model).startswith("ollama/") and item[0] >= limit:
+                problems.append(f"{tag}/{key}: prompt_tokens {item[0]} >= context {context} - output cap = {limit}")
+    if problems:
+        return row(name, False, summarize(problems, ""))
+    if local:
+        top = max(local)
+        return row(name, True, f"{len(local)} Ollama calls; largest {top[1]} {top[0]} < limit {top[2]} "
+                               f"(headroom {top[2] - top[0]})")
+    if cloud:
+        top = max(cloud)
+        return row(name, True, f"cloud models only: largest {top[1]} {top[0]} prompt tokens; an Ollama run "
+                               f"would need it below {top[2]} (provider token counts differ)", "info")
+    return row(name, True, "prompt_tokens not recorded", "not_applicable")
+
+
 def check_budget_prompt(jobs):
     name = "c_budget_aggregation_prompt_not_truncated"
     rq3 = [job for job in jobs if design_of(job["config"]) == "RQ3"]
@@ -420,7 +459,7 @@ def check_pilot(path):
     per_job, usage_problems = tally(jobs)
     rows = [check_complete_and_arms(jobs, manifest), check_traceable(jobs),
             check_failures_and_degradation(jobs, degraded_rows), check_unbound_numbers(jobs),
-            check_debate_engagement(jobs),
+            check_debate_engagement(jobs), check_all_prompts(jobs),
             check_budget_prompt(jobs),
             check_usage(per_job, usage_problems), check_digests(jobs), check_memory(jobs)]
     return {"checks": rows, "timing": timing_summary(jobs, per_job),
