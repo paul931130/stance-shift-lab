@@ -15,5 +15,6 @@
 - 決策 1 選 A：更新 rq3-preregistration-draft.md 與報告 RQ3 段落的措辭。選 B：先開 RQ3 新協議版本的開發，現有 RQ3 pilot 只當流程檢查。
 - 決策 2 選 B：在 analysis-plan 加 `equivalence` 區塊（邊界、90% 區間、不進 family），分析程式加輸出，補測試。
 - 決策 4 選 C：在 roadmap 列為 RQ2 之後的下一個研究，現在不動程式。
+- 決策 5 不論選哪個：試跑用了 180 案中的 22 案並看了準確率，處理規則見 [development-cases-20261105.md](development-cases-20261105.md)（機制只能用構念理由調整、正式分析加排除這 22 案的敏感性分析）。`check_pilot.py` 的 `debate_engagement` 項會在每次 pilot 報告交鋒指標，當作操弄檢核。
 - 決策 5 選 B：case 設定加 `debate_clash: true`，重做 RQ2／RQ3 離線封裝；RQ3 的領域辯論（domain_debate.py）尚未套用，要另外決定。選 A：把 `debate_clash` 留作關閉的實驗選項。
 - 每項決定寫進對應的事前登記草稿，註明決定日期與研究者。

@@ -8,12 +8,15 @@ No model, network or GPU is touched.
 Example: python scripts/check_pilot.py work/pilot-rq2 [--output work/pilot-rq2-check.json]
 Exit code 0 only if every check passes (not_applicable and info do not fail).
 Unbound numbers that the protocol keeps on record (accepted_as_output, unsupported_numbers)
-are reported as a rate (info), not as a failure.
+are reported as a rate (info), not as a failure. Debate engagement (the manipulation check that
+the C/D arms actually debate) is reported as info next to the RQ1 reference.
 """
 import argparse
 from contextlib import closing
+from difflib import SequenceMatcher
 import json
 from pathlib import Path
+import re
 import sqlite3
 import sys
 
@@ -31,6 +34,11 @@ MAX_DETAIL = 6
 # Reference rate: share of model calls whose output was kept with unbound numbers on record,
 # counted on the complete jobs of work/preformal-20261017/rq1-source-backup.sqlite3 (2026-11-05).
 REFERENCE_UNBOUND = (2940, 9702)
+# Debate engagement of RQ1 arm C round 3 (180 cases, 360 turns; measured 2026-11-05):
+# rationale identical to the agent's own round 2, mean similarity to it, and the share of turns
+# that newly cited evidence the opponent had used when there was such evidence to take up.
+REFERENCE_ENGAGEMENT_C3 = {"identical": 0.633, "similarity": 0.886, "uptake": 0.006}
+DEBATE_KEY = re.compile(r"^([cd])((?:-(?:ab|ba|bb))?)-r([123])-agent-([ab])$")
 
 
 def find_database(path):
@@ -223,6 +231,67 @@ def check_unbound_numbers(jobs):
     return result
 
 
+def debate_turns(state):
+    """{(group, assignment): {(round, agent): output}} for the C/D debate records of one job."""
+    arms = {}
+    for record in state.get("records") or []:
+        match = DEBATE_KEY.match(record.get("key", ""))
+        if match:
+            arms.setdefault((match.group(1).upper(), match.group(2)), {})[
+                (int(match.group(3)), match.group(4))] = record.get("output") or {}
+    return arms
+
+
+def engagement(jobs, group, rounds):
+    """Engagement of the given debate rounds: self-similarity, opponent quotes, evidence uptake."""
+    turns = identical = quoted = uptake_turns = uptook = 0
+    similarity = 0.0
+    for job in jobs:
+        for (arm_group, _), outputs in debate_turns(job["state"]).items():
+            if arm_group != group:
+                continue
+            for (round_number, agent), output in outputs.items():
+                if round_number not in rounds:
+                    continue
+                own = [outputs.get((k, agent)) for k in range(1, round_number)]
+                other = outputs.get((round_number - 1, "b" if agent == "a" else "a"))
+                if not all(own) or other is None:
+                    continue
+                turns += 1
+                mine, last = str(output.get("rationale") or ""), str(own[-1].get("rationale") or "")
+                identical += mine.strip() == last.strip()
+                similarity += SequenceMatcher(None, mine, last).ratio()  # same measure as the 2026-11-05 analysis
+                quoted += bool(output.get("rebutted_opponent_claim"))
+                cited_before = set().union(*(set(item.get("evidence_ids") or []) for item in own))
+                available = set(other.get("evidence_ids") or []) - cited_before
+                if available:
+                    uptake_turns += 1
+                    uptook += bool(set(output.get("evidence_ids") or []) & available)
+    if not turns:
+        return None
+    return {"turns": turns, "identical": round(identical / turns, 3), "similarity": round(similarity / turns, 3),
+            "quoted_opponent": round(quoted / turns, 3),
+            "uptake": round(uptook / uptake_turns, 3) if uptake_turns else None}
+
+
+def check_debate_engagement(jobs):
+    """Manipulation check that C/D debate; reported (info), never a failure."""
+    name = "debate_engagement"
+    c3 = engagement(jobs, "C", {3})
+    if c3 is None:
+        return row(name, True, "no complete C debate turns to measure", "not_applicable")
+    ref = REFERENCE_ENGAGEMENT_C3
+    detail = (f"C round 3 ({c3['turns']} turns): identical to own round 2 {c3['identical']:.1%}, "
+              f"similarity {c3['similarity']:.2f}, opponent-evidence uptake "
+              f"{'n/a' if c3['uptake'] is None else format(c3['uptake'], '.1%')}, quoted opponent "
+              f"{c3['quoted_opponent']:.1%}; RQ1 reference {ref['identical']:.1%} / {ref['similarity']:.2f} / "
+              f"{ref['uptake']:.1%}")
+    result = row(name, True, detail, "info")
+    result.update(c_round2=engagement(jobs, "C", {2}), c_round3=c3, d_round3=engagement(jobs, "D", {3}),
+                  reference_c_round3=ref)
+    return result
+
+
 def check_budget_prompt(jobs):
     name = "c_budget_aggregation_prompt_not_truncated"
     rq3 = [job for job in jobs if design_of(job["config"]) == "RQ3"]
@@ -351,6 +420,7 @@ def check_pilot(path):
     per_job, usage_problems = tally(jobs)
     rows = [check_complete_and_arms(jobs, manifest), check_traceable(jobs),
             check_failures_and_degradation(jobs, degraded_rows), check_unbound_numbers(jobs),
+            check_debate_engagement(jobs),
             check_budget_prompt(jobs),
             check_usage(per_job, usage_problems), check_digests(jobs), check_memory(jobs)]
     return {"checks": rows, "timing": timing_summary(jobs, per_job),
