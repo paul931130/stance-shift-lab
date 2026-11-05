@@ -17,7 +17,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 REPO_URL = "https://github.com/paul931130/stance-shift-lab"
-BANNER_TEXT = "線上展示版：介面與資料為本機展示模式事先錄製（合成資料、固定回應，非研究結果）；無法新增工作。完整系統請見 GitHub。"
+BANNER_TEXT = "研究台介面預覽：合成錄製資料與固定回應，非研究結果，無法新增分析。想分析自己的股票，請建立私人雲端研究台。"
 BANNER_STYLE = (
     "margin:0;padding:6px 12px;"
     "background:#fff3cd;color:#664d03;border-bottom:1px solid #e0c36a;"
@@ -102,7 +102,8 @@ def rewrite_index(html):
     html = re.sub(r'(<script\b[^>]*type="module")', '<script src="demo-data.js"></script>\n\\1', html, count=1)
     banner = (
         f'<div id="static-demo-banner" style="{BANNER_STYLE}">{BANNER_TEXT} '
-        f'<a href="{REPO_URL}" style="color:inherit;font-weight:600">GitHub</a></div>'
+        f'<a href="{REPO_URL}/blob/main/docs/cloud-start.md" style="color:inherit;font-weight:600">建立雲端研究台</a> · '
+        '<a href="../demo/" style="color:inherit;font-weight:600">播放真實案例</a></div>'
     )
     html = re.sub(r"(<body\b[^>]*>)", lambda m: m.group(1) + "\n" + banner, html, count=1)
     return html

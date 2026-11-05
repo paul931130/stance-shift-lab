@@ -24,6 +24,10 @@ def _primary(row):
             and row.get("decision_layer") == "candidate" and row.get("group") in ARMS)
 
 
+def _not_estimable(error):
+    return {"status": "not_estimable", "reason": str(error), "pvalue": None, "confidence_interval": None}
+
+
 def build_panel(jobs):
     """Validate one common complete-case panel; never silently omit an arm.
 
@@ -33,7 +37,7 @@ def build_panel(jobs):
     """
     if not jobs:
         raise ValueError("No complete RQ3 cases")
-    correct, dates, case_ids, daily = [], [], [], {}
+    correct, dates, case_ids, daily, windows = [], [], [], {}, []
     for job in sorted(jobs, key=lambda j: (j["config"]["analysis_date"], j["config"]["ticker"])):
         config, state = job["config"], job["state"]
         key = f"{config['ticker']}:{config['analysis_date']}"
@@ -41,7 +45,7 @@ def build_panel(jobs):
             raise ValueError("Duplicate stock/date case")
         case_ids.append(key)
         dates.append(config["analysis_date"])
-        outcomes = {}
+        outcomes, window = {}, None
         for row in state.get("cases", []):
             if not _primary(row):
                 continue
@@ -51,6 +55,10 @@ def build_panel(jobs):
             if row.get("status") != "complete" or not isinstance(row.get("correct"), bool):
                 raise ValueError("Every primary outcome must be a complete Boolean")
             outcomes[arm] = row["correct"]
+            span = (row.get("entry_date"), row.get("maturity_date"))
+            if not all(isinstance(day, str) and day for day in span) or (window and span != window):
+                raise ValueError("Every primary outcome needs the same entry and maturity date")
+            window = span
         if set(outcomes) != set(ARMS):
             raise ValueError("Missing primary arm outcome")
         correct.append([outcomes[arm] for arm in ARMS])
@@ -67,7 +75,17 @@ def build_panel(jobs):
             daily.setdefault(day, dict.fromkeys(ARMS, 0.))[arm] += value / len(jobs)
         if not seen[ARMS[0]] or len({tuple(sorted(seen[arm])) for arm in ARMS}) != 1:
             raise ValueError("Incomplete or misaligned per-case daily panel")
+        held = sorted(seen[ARMS[0]])
+        # Day 0 is the entry session and day 60 the exit open: exactly 61 sessions.
+        if held[0] != window[0] or held[-1] != window[1] or len(held) != 61:
+            raise ValueError("Daily panel must cover every session from entry to maturity")
+        windows.append((window, set(held)))
     days = sorted(daily)
+    # A day another case traded inside this case's holding window must be
+    # here too; only days outside the window count as cash for this sleeve.
+    for (entry, maturity), held in windows:
+        if any(entry <= day <= maturity and day not in held for day in days):
+            raise ValueError("Missing daily return inside a case holding window")
     return {"case_ids": case_ids, "date_ids": dates, "correctness": np.asarray(correct, dtype=float),
             "trading_dates": days, "returns": np.asarray([[daily[day][arm] for arm in ARMS] for day in days])}
 
@@ -76,26 +94,41 @@ def infer_panel(panel, *, date_block_length, daily_block_length, replicates=1999
     """Three Domain-minus-baseline contrasts, with one shared six-test Holm family."""
     correct, returns = panel["correctness"], panel["returns"]
     contrasts = np.column_stack([correct[:, 1] - correct[:, ARMS.index(arm)] for arm in BASELINES])
-    accuracy = date_block_bootstrap(contrasts, panel["date_ids"], block_length=date_block_length,
-                                    replicates=replicates, seed=bootstrap_seed)
+    try:
+        accuracy = date_block_bootstrap(contrasts, panel["date_ids"], block_length=date_block_length,
+                                        replicates=replicates, seed=bootstrap_seed)["contrasts"]
+    except ValueError as error:
+        accuracy = [_not_estimable(error) for _ in BASELINES]
     results, pvalues = {}, []
     for index, arm in enumerate(BASELINES):
-        sharpe = sharpe_combination_test(returns[:, [1, ARMS.index(arm)]], (1., -1.),
-                                         block_length=daily_block_length, replicates=replicates, seed=bootstrap_seed)
-        if sharpe.get("pvalue") is None:
-            raise ValueError("All six proposed family endpoints must be estimable")
-        acc = accuracy["contrasts"][index]
+        try:
+            sharpe = sharpe_combination_test(returns[:, [1, ARMS.index(arm)]], (1., -1.),
+                                             block_length=daily_block_length, replicates=replicates,
+                                             seed=bootstrap_seed)
+        except ValueError as error:
+            sharpe = _not_estimable(error)
+        if sharpe.get("pvalue") is None and sharpe.get("status") != "not_estimable":
+            sharpe = {**sharpe, "status": "not_estimable", "reason": "degenerate standard error"}
+        acc = accuracy[index]
         results[arm] = {"accuracy": acc, "sharpe": sharpe}
         pvalues.extend((acc["pvalue"], sharpe["pvalue"]))
-    adjusted = holm_adjust(pvalues)
+    # Plan rule report_not_estimable_no_family_reduction: Holm keeps all six
+    # tests. A not-estimable endpoint enters as p=1, which leaves every other
+    # endpoint's multiplier as in the full family, and gets no Holm value.
+    adjusted = holm_adjust([1. if value is None else value for value in pvalues])
     for index, arm in enumerate(BASELINES):
         for offset, endpoint in enumerate(("accuracy", "sharpe")):
-            results[arm][endpoint]["holm_pvalue"] = adjusted[2 * index + offset]
+            row = results[arm][endpoint]
+            row["holm_pvalue"] = None if row["pvalue"] is None else adjusted[2 * index + offset]
+    not_estimable = [f"C_domain-minus-{arm}:{endpoint}" for arm in BASELINES
+                     for endpoint in ("accuracy", "sharpe") if results[arm][endpoint]["pvalue"] is None]
     return {"schema": "rq3-inference-proposal/v1", "n_cases": len(panel["case_ids"]),
             "n_analysis_dates": len(set(panel["date_ids"])), "n_trading_days": len(panel["trading_dates"]),
             "case_ids": panel["case_ids"], "trading_dates": panel["trading_dates"], "contrasts": results,
             "family": [f"C_domain-minus-{arm}:{endpoint}" for arm in BASELINES for endpoint in ("accuracy", "sharpe")],
             "family_status": "conservative_proposal_requires_prior_registration",
+            "family_size": 6, "not_estimable": not_estimable,
+            "overall_superiority_claim_allowed": not not_estimable,
             "date_block_length": date_block_length, "daily_block_length": daily_block_length,
             "replicates": replicates, "bootstrap_seed": bootstrap_seed,
             "notes": ["All comparisons use the same complete stock/date cases and daily panel.",

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>台股探索台 · 多代理人研究室</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="/assets/taiwan.css">
+  <script type="module" src="/assets/js/taiwan.js"></script>
+</head>
+<body>
+<header><a href="/">← 研究室</a><span>TAIWAN RESEARCH LAB</span><span class="badge">探索模式</span></header>
+<main>
+  <section class="intro"><p class="eyebrow">市場資料 × 多代理人觀點</p><h1>先研究，再留下你的判斷。</h1><p>選一檔台股，在行情旁閱讀多空與裁判報告，保存一筆模擬決策。</p></section>
+  <p class="boundary">目前採 Yahoo 日線資料，尚未連接 Shioaji。資料可能延遲，未納入完整台灣財報與新聞；本頁不屬正式研究，不提供下單或成交功能。</p>
+  <p id="notice" role="status" aria-live="polite" hidden></p>
+  <section id="login" class="card" hidden><h2>登入研究服務</h2><form id="login-form"><label>存取金鑰<input id="access-key" type="password" autocomplete="current-password" required></label><button type="submit">登入</button></form></section>
+  <div id="workspace">
+    <form id="selection" class="toolbar card"><label>台股代碼<input id="ticker" value="2330.TW" placeholder="2330.TW 或 6488.TWO" pattern="[0-9]{4,6}\.(TW|TWO)" required></label><label>常見標的<select id="preset"><option value="2330.TW">2330 台積電</option><option value="2317.TW">2317 鴻海</option><option value="2454.TW">2454 聯發科</option><option value="0050.TW">0050 元大台灣50</option><option value="6488.TWO">6488 環球晶</option></select></label><button id="load" type="submit">更新行情</button></form>
+    <div class="columns">
+      <section class="card market"><div class="section-head"><h2>行情快照</h2><span id="quote-symbol" class="badge">尚未載入</span></div><p id="quote-name" class="muted">—</p><p id="price" class="price">—</p><p id="change">—</p><dl id="quote-meta"></dl><h3>近期收盤價</h3><div id="history" class="history" aria-label="近期收盤價"></div><p id="delay" class="muted">等待行情資料</p></section>
+      <section class="card research"><div class="section-head"><h2>多代理人研究</h2><span id="report-status" class="badge">尚未建立</span></div><div class="research-controls"><label>模型<select id="model"><option value="">載入中</option></select></label><button id="generate" type="button" disabled>產生研究報告</button><button id="retry" type="button" class="secondary" hidden>重試讀取報告</button></div><p id="progress" role="status" aria-live="polite">研究會使用建立報告時的行情快照；選擇模型後會實際呼叫模型。</p><div id="report"></div></section>
+    </div>
+    <section class="card"><h2>記錄模擬決策</h2><p id="decision-context" class="muted">完成並選取報告後才能保存。數量以股計，僅記錄判斷，不代表委託、成交或持倉。</p><form id="decision-form"><fieldset id="decision-fields" disabled><div class="decision-controls"><label>判斷<select id="action"><option value="Hold">觀望 Hold</option><option value="Buy">模擬買進 Buy</option><option value="Sell">模擬賣出 Sell</option></select></label><label>數量（股）<input id="quantity" type="number" min="0" max="1000000" step="1" value="0" required></label><label class="note-label">判斷備註<input id="note" maxlength="2000" placeholder="記錄理由與需要再確認的條件"></label><button id="save" type="submit">保存模擬決策</button></div></fieldset></form></section>
+    <div class="columns"><section class="card"><div class="section-head"><h2>研究紀錄</h2><button id="refresh-reports" type="button" class="secondary">重新整理</button></div><div id="reports-list" class="records">載入中</div></section><section class="card"><div class="section-head"><h2>模擬決策紀錄</h2><button id="refresh-decisions" type="button" class="secondary">重新整理</button></div><div id="decisions-list" class="records">載入中</div></section></div>
+  </div>
+</main>
+<footer>探索用途 · 模型結論可能錯誤，請核對來源與資料時間。</footer>
+</body>
+</html>
+

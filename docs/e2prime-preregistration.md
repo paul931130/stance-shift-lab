@@ -122,3 +122,25 @@ v3-0930.3 要求文字中的數字與來源值相同（或四捨五入到 3 位�
 證據來源：本機研究資料庫的唯讀副本 `work/rq1-snapshot/research.sqlite3`（不公開）。核對時先檢視 `preregistrations`、`preregistration_meta` 與 `jobs` 的 schema，再以完整 protocol hash 查詢 `preregistrations.protocol_hash`、`preregistrations.frozen_at`，以及 `jobs.config` 中相同 `protocol_hash` 的工作總數與最早 `created_at`。本節沒有公開資料庫、金鑰或原始資料，也沒有重新執行實驗或重算統計結果。
 
 本補記不改變 RQ1「已見樣本的回溯比較」定位：同批樣本曾用於試跑與規則調整，因此不是事前確認性檢驗，也不是獨立樣本外驗證。補記本身不等於完成所有升格條件；其他稽核缺口與研究者確認仍依 [RQ1 升格稽核](rq-prep/rq1-promotion-audit.md) 處理。
+
+## 事後登記補記之二：執行環境與偏離說明（2026-11-04 補記）
+
+只追加，不改上方原文與 2026-10-19 補記。下表補上 [RQ1 升格稽核](rq-prep/rq1-promotion-audit.md) 第 5、11、12 項列為「只在文件與筆記中」的執行環境，並寫明每項的來源。
+
+| 項目 | 紀錄 | 來源 |
+|---|---|---|
+| source digest（9 個 protocol 模組） | `6ea8111977b7bb73a5c6dc0304e2c8d5ef787b5d8edf5242b51c2f98a0b67aa1` | 2026-11-04 依 `protocol.prompt_source_digest()` 的算法，以 commit `eb36a8a` 的 9 個模組重算；與部署當時 `/health` 記下的 `6ea81119…`、稽核記下的 `…7aa1` 相符 |
+| 服務映像 | `sha256:fbd889ff…`，tag `v3-1002.3-reviewfix-20261002`，建立於 2026-10-02T05:20:38Z，埠 8003 | 部署當時的研究筆記與稽核第 11 項；完整 image id 沒有留存，映像沒有 git 標籤 |
+| 模型權重 | `ollama/qwen3:32b`，digest `030ee887880fc378860c2dd35101da424377520441ae4bfe7be6deff8ade7840`，32.8B，context 40960 | 資料庫中 180 個工作的 `model_identity`，全部相同 |
+| Ollama | `ollama/ollama:0.35.0` 自訂映像，模型放在 `/vault/ollama/models`；`OLLAMA_NUM_PARALLEL=4`，研究程式以 `ollama_parallel=1` 依序呼叫 | 研究筆記；資料庫沒有記錄 Ollama 版本 |
+| GPU | GPUtw RTX 5090：2026-10-02 用執行個體 `61159cf5`（節點 BE58），之後續跑到完成用 `7dfd6579`（節點 D4CD） | 研究筆記；資料庫沒有記錄執行個體 |
+
+**執行中的偏離與續跑：**
+
+1. 2026-10-02 13:35 開始執行（登記 05:35:33Z）。17:04（台北時間）本機 DNS 短暫中斷，3 案因模型身分檢查無法連線（ModelIdentityUnavailable）暫停；斷路器擋住佇列，以「全部續跑」接回原工作。資料庫中 7 次權重檢查結果為 `unavailable`，都在 after_step，時間與這次中斷相符，沒有任何一次 digest 改變。
+2. 17:30 依原訂時段停機，當時 83/180 完成、97 案暫停、0 個錯誤。之後以相同映像、相同 source digest、相同權重續跑原工作，沒有另建工作取代；2026-10-04 03:26（台北時間）180/180 完成。
+3. 換 GPU 執行個體不換權重：程式每一步都核對權重 digest，資料庫中 9,734 次檢查有 9,727 次通過、7 次 `unavailable`（第 1 點），沒有任何一次不符。
+
+**統計重算：** 2026-10-15 以 `scripts/audit_rq1_snapshot.py`，從 commit `eb36a8a` 取出歷史 reporting 程式碼，在唯讀副本上重算主表與敏感性：C／D Sharpe 0.5912556／0.5383993，McNemar p 0.2101135（Holm 0.4202271），Ledoit–Wolf p 0.8015，日面板 1,219 日，與報告相同。證據包 SHA-256 `9c606070a491f244a27c6bbbddad980c9c4e9f6c16dc8b1c34e2ff87bb2e8f9a`（不公開）。這次用的是歷史程式碼，不是凍結映像本身。
+
+本補記不改變 RQ1 的定位，也不等於研究者已確認可列入新版正式結果（稽核第 14 項）。

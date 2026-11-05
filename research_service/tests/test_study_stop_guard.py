@@ -31,6 +31,15 @@ class StudyStopGuardTests(unittest.TestCase):
         with patch("research_service.protocol.protocol_is_current", return_value=True):
             return self.store.claim()
 
+    def claim_and_finish(self):
+        # A running earlier case of the same ticker holds back later ones, so
+        # finish each claimed case before asking for the next.
+        job = self.claim()
+        if job:
+            self.store.save_step(job["id"], {**job["state"], "finished": True},
+                                 owner=job["owner"], generation=job["lease_generation"])
+        return job
+
     def test_pause_error_and_cancel_each_block_registered_study(self):
         for command in ("pause", "cancel"):
             with self.subTest(command=command):
@@ -57,8 +66,8 @@ class StudyStopGuardTests(unittest.TestCase):
         self.assertIsNone(self.claim())
         with patch("research_service.protocol.protocol_is_current", return_value=True):
             self.store.control(first["id"], "resume")
-        self.assertEqual(self.claim()["id"], first["id"])
-        self.assertEqual(self.claim()["id"], second["id"])
+        self.assertEqual(self.claim_and_finish()["id"], first["id"])
+        self.assertEqual(self.claim_and_finish()["id"], second["id"])
 
     def test_stopped_study_does_not_block_other_study(self):
         self.register()
@@ -74,14 +83,14 @@ class StudyStopGuardTests(unittest.TestCase):
         qualifier = self.job(date="2026-01-01", purpose="qualification")
         self.store.control(qualifier["id"], "pause")
         regular = self.job(date="2026-01-02")
-        self.assertEqual(self.claim()["id"], regular["id"])
+        self.assertEqual(self.claim_and_finish()["id"], regular["id"])
 
         stopped = self.job(date="2026-01-03")
         self.store.control(stopped["id"], "pause")
         report = self.job(date="2026-01-04", purpose="report_bank")
         another_qualifier = self.job(date="2026-01-05", purpose="qualification")
-        self.assertEqual(self.claim()["id"], report["id"])
-        self.assertEqual(self.claim()["id"], another_qualifier["id"])
+        self.assertEqual(self.claim_and_finish()["id"], report["id"])
+        self.assertEqual(self.claim_and_finish()["id"], another_qualifier["id"])
 
     def test_unregistered_and_outside_frozen_sample_keep_old_behavior(self):
         unregistered = self.job("unregistered", date="2026-01-01")

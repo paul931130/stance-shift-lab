@@ -20,10 +20,10 @@ from .ollama import probe_models
 logger = get_logger(__name__)
 
 STATIC = Path(__file__).resolve().parent.parent / "static"
-STATIC_ASSETS = ("app.css", "dataset.css", "flow.css", "rq.css")
+STATIC_ASSETS = ("app.css", "dataset.css", "flow.css", "rq.css", "taiwan.css")
 JS_MODULE_NAME = re.compile(r"[a-z][a-z0-9-]*\.js")
 # Paths the login screen needs before a session exists; they hold no research data.
-PUBLIC_PATHS = {"/", "/health", "/api/login", *(f"/assets/{name}" for name in STATIC_ASSETS)}
+PUBLIC_PATHS = {"/", "/taiwan", "/health", "/api/login", *(f"/assets/{name}" for name in STATIC_ASSETS)}
 
 
 def is_public_path(path):
@@ -32,6 +32,10 @@ def is_public_path(path):
 
 def build_router(ctx):
     router = APIRouter()
+
+    @router.get("/taiwan")
+    def taiwan_page():
+        return FileResponse(STATIC / "taiwan.html")
 
     @router.get("/")
     def home():

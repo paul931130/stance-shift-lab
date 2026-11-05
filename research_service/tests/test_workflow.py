@@ -73,8 +73,8 @@ class WorkflowTests(unittest.TestCase):
     def tearDown(self):
         self.tmp.cleanup()
 
-    def create(self, analysis_date="2024-12-31"):
-        return self.store.create({"ticker": "NVDA", "analysis_date": analysis_date, "dataset_id": self.dataset_id,
+    def create(self, analysis_date="2024-12-31", ticker="NVDA"):
+        return self.store.create({"ticker": ticker, "analysis_date": analysis_date, "dataset_id": self.dataset_id,
             "protocol": asdict(self.protocol), "protocol_hash": self.protocol.fingerprint})
 
     def complete(self, job):
@@ -149,7 +149,8 @@ class WorkflowTests(unittest.TestCase):
         self.assertTrue(all(len(item["claim"]) <= 1200 for item in inputs["domains"]["sentiment"]))
 
     def test_recovery_releases_only_jobs_of_stopped_services(self):
-        live, dead = self.create("2024-12-31"), self.create("2025-03-31")
+        # Different tickers: a running earlier same-ticker case would hold the later one back.
+        live, dead = self.create("2024-12-31"), self.create("2025-03-31", ticker="AAPL")
         self.store.heartbeat("live")
         self.assertEqual(self.store.claim("worker:live")["id"], live["id"])
         self.assertEqual(self.store.claim("worker:dead")["id"], dead["id"])

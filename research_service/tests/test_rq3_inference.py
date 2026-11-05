@@ -22,11 +22,14 @@ class RQ3InferenceTests(unittest.TestCase):
         rng = np.random.default_rng(123)
         jobs = []
         for index in range(20):
+            # Overlapping 61-session holding windows, staggered by 10 sessions.
             cases = [{"group": arm, "horizon": 60, "cost_model": "corwin_schultz", "decision_layer": "candidate",
-                      "status": "complete", "correct": bool(rng.random() < .5)} for arm in ARMS]
+                      "status": "complete", "correct": bool(rng.random() < .5),
+                      "entry_date": f"day-{10 * index:03d}", "maturity_date": f"day-{10 * index + 60:03d}"}
+                     for arm in ARMS]
             daily = [{"group": arm, "horizon": 60, "cost_model": "corwin_schultz", "decision_layer": "candidate",
                       "date": f"day-{day:03d}", "return": float(rng.normal(.001, .01))}
-                     for day in range(80) for arm in ARMS]
+                     for day in range(10 * index, 10 * index + 61) for arm in ARMS]
             jobs.append({"id": str(index), "config": {"ticker": "TEST", "analysis_date": f"date-{index:02d}"},
                          "state": {"cases": cases, "daily": daily}})
         return jobs
@@ -43,8 +46,12 @@ class RQ3InferenceTests(unittest.TestCase):
             self.assertAlmostEqual(result["contrasts"][arm]["accuracy"]["estimate"], expected)
             self.assertGreaterEqual(result["contrasts"][arm]["accuracy"]["holm_pvalue"],
                                     result["contrasts"][arm]["accuracy"]["pvalue"])
-        expected_return = sum(j["state"]["daily"][0]["return"] for j in jobs) / len(jobs)
-        self.assertAlmostEqual(panel["returns"][0, 0], expected_return)
+        # Day 0 lies only in case 0's window; other sleeves are cash that day.
+        self.assertAlmostEqual(panel["returns"][0, 0], jobs[0]["state"]["daily"][0]["return"] / len(jobs))
+        overlap = panel["trading_dates"].index("day-060")  # cases 0..6 all hold this day
+        expected = sum(row["return"] for j in jobs for row in j["state"]["daily"]
+                       if row["date"] == "day-060" and row["group"] == "C") / len(jobs)
+        self.assertAlmostEqual(panel["returns"][overlap, 0], expected)
 
     def test_missing_or_duplicate_arm_rejected_for_all_comparisons(self):
         for mode in ("missing", "duplicate", "nonboolean"):
@@ -73,6 +80,35 @@ class RQ3InferenceTests(unittest.TestCase):
                     rows[0]["return"] = float("nan")
                 with self.assertRaises(ValueError):
                     build_panel(jobs)
+
+    def test_whole_case_missing_one_day_inside_its_window_rejected(self):
+        # All four arms lose the same day, so the per-arm alignment check alone passes.
+        for day in ("day-020", "day-000"):
+            with self.subTest(day=day):
+                jobs = self.fixture()
+                state = jobs[0]["state"]
+                state["daily"] = [row for row in state["daily"] if row["date"] != day]
+                with self.assertRaisesRegex(ValueError, "entry to maturity|holding window"):
+                    build_panel(jobs)
+
+    def test_not_estimable_sharpe_keeps_six_endpoint_family(self):
+        jobs = self.fixture()
+        for job in jobs:
+            for row in job["state"]["daily"]:
+                row["return"] = 0.
+        result = infer_panel(build_panel(jobs), date_block_length=1, daily_block_length=10, replicates=199)
+        self.assertEqual(result["family_size"], 6)
+        self.assertEqual(len(result["family"]), 6)
+        self.assertFalse(result["overall_superiority_claim_allowed"])
+        self.assertEqual(result["not_estimable"], [f"C_domain-minus-{arm}:sharpe" for arm in BASELINES])
+        for arm in BASELINES:
+            self.assertEqual(result["contrasts"][arm]["sharpe"]["status"], "not_estimable")
+            self.assertIsNone(result["contrasts"][arm]["sharpe"]["holm_pvalue"])
+            self.assertIsNotNone(result["contrasts"][arm]["accuracy"]["holm_pvalue"])
+        # Holm over six: p=1 placeholders never shrink the multipliers of the estimable ones.
+        smallest = min(result["contrasts"][arm]["accuracy"]["pvalue"] for arm in BASELINES)
+        self.assertAlmostEqual(min(result["contrasts"][arm]["accuracy"]["holm_pvalue"] for arm in BASELINES),
+                               min(1., 6 * smallest))
 
     def test_duplicate_case_rejected(self):
         jobs = self.fixture()

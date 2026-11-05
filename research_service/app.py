@@ -23,7 +23,7 @@ from .logging_config import get_logger
 from .security import SessionAuth
 from .settings import Settings
 from .storage import JobLeaseLost, Store, now
-from .web import datasets, jobs, studies, system
+from .web import datasets, jobs, studies, system, taiwan
 from .web.context import AppContext
 from .web.ollama import probe_models
 
@@ -89,7 +89,8 @@ def create_app(store=None, model_call=None, start_worker=True):
         trusted_proxies=_env_list("RESEARCH_TRUSTED_PROXIES"),
         # A queue held 15 min by the breaker counts as idle; with the 15-min auto-stop a broken
         # endpoint stops the GPU about 30 min after the first failures.
-        autostop=AutoStop(lambda: 0 if breaker.held_for(15 * 60) else store.active_job_count()))
+        autostop=AutoStop(lambda: (0 if breaker.held_for(15 * 60) else store.active_job_count())
+                         + app.state.taiwan_service.active_count()))
     container_local = os.getenv("RESEARCH_CONTAINER_LOCAL", "false") == "true"
     public_origin = os.getenv("RESEARCH_PUBLIC_ORIGIN", "").rstrip("/")
     allowed_hosts = _env_list("RESEARCH_ALLOWED_HOSTS", "localhost,127.0.0.1,::1,testserver")
@@ -175,6 +176,7 @@ def create_app(store=None, model_call=None, start_worker=True):
         stop.set()
         if start_worker:
             await asyncio.to_thread(thread.join, 5)
+        app.state.taiwan_service.close()
 
     # Keep the generated API contract available for review and integration.
     # The auth middleware below still protects it in remote mode.
@@ -233,6 +235,9 @@ def create_app(store=None, model_call=None, start_worker=True):
         return JSONResponse({"detail": f"伺服器內部錯誤（{type(exc).__name__}）；詳細原因已記錄在服務日誌"},
                             status_code=500)
 
-    for area in (system, datasets, jobs, studies):
-        app.include_router(area.build_router(ctx))
+    for area in (system, datasets, jobs, studies, taiwan):
+        router = area.build_router(ctx, model_call=model_call) if area is taiwan else area.build_router(ctx)
+        if area is taiwan:
+            app.state.taiwan_service = router.taiwan_service
+        app.include_router(router)
     return app

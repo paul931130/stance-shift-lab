@@ -4,34 +4,47 @@
 
 **多代理人立場交換辯論 × 可稽核股票回測研究框架**
 
+研究原型：已公開負結果，不是交易系統。
+
 [![CI](https://github.com/paul931130/stance-shift-lab/actions/workflows/ci.yml/badge.svg)](https://github.com/paul931130/stance-shift-lab/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Python 3.12+](https://img.shields.io/badge/Python-3.12%2B-3776AB?logo=python&logoColor=white)](pyproject.toml)
 [![Open in GitHub Codespaces](https://img.shields.io/badge/Codespaces-Open-181717?logo=github)](https://codespaces.new/paul931130/stance-shift-lab)
 
-🚀 [研究問題](#研究問題) | ⚡ [五分鐘試跑](#五分鐘試跑) | 🧪 [跑正式實驗](#跑正式實驗) | 📦 [CLI 與 Python](#cli-與-python) | 📚 [文件](#文件) | 📄 [引用](#引用)
+▶ [線上看案例](https://paul931130.github.io/stance-shift-lab/demo/) | ☁ [分析自己的股票](docs/cloud-start.md) | 🛠 [自行部署](docs/getting-started.md) | 🚀 [研究問題](#研究問題) | 📄 [研究報告](report/stance-shift-report.pdf)
 
 </div>
 
 ---
 
-公開入口：[專題網站](https://paul931130.github.io/stance-shift-lab/) · [唯讀合成展示](https://paul931130.github.io/stance-shift-lab/app/) · [研究報告 PDF](report/stance-shift-report.pdf)
+## 從這裡開始
 
-專題網站整理研究內容；`app/` 是唯讀合成資料展示，不呼叫模型，也不建立正式實驗。
+**第一次來，直接按 [播放真實案例 →](https://paul931130.github.io/stance-shift-lab/demo/)**。不用安裝、登入或金鑰，選 INTC 或 AAPL，即可看研究摘要、三輪多空辯論與 60 個交易日後的結果。
+
+| 你想做什麼 | 入口 | 打開後會做什麼 |
+|---|---|---|
+| 先看系統如何判斷 | [播放真實案例](https://paul931130.github.io/stance-shift-lab/demo/) | 回放兩個已完成的 RQ1 案例，不執行新分析 |
+| 輸入自己的股票與日期 | [建立自己的雲端研究台](docs/cloud-start.md) | 在私人 Codespace 填自己的 OpenAI／Gemini／OpenRouter API key，供 Agent 分析；不需在電腦安裝 Python 或 Docker |
+| 自行部署或重現研究 | [安裝與部署](docs/getting-started.md) | 在自己的環境啟動完整系統，控制資料、模型與研究設定 |
+
+[專題網站](https://paul931130.github.io/stance-shift-lab/) 整理研究設計與結果；[研究台介面預覽](https://paul931130.github.io/stance-shift-lab/app/) 使用合成錄製資料，不能新增工作。公開網站目前沒有共用的新分析後端；雲端研究台需要自己的 GitHub 帳號、可用 Codespaces 額度與模型／資料設定。
 
 | 研究 | 目前狀態 | 證據界線 |
 |---|---|---|
 | RQ1 | 已完成 180 案回溯比較 | 未取得 D 優於 C 的顯著證據；不是獨立樣本外驗證 |
-| RQ2 | 模型路由已實作，正式研究待完成 | 真實模型資格、完整設計 pilot、正式登記與執行仍未完成 |
-| RQ3 | 領域辯論、整合與必要對照已實作，正式研究待完成 | 合成測試不代表模型資格通過或已有正式研究結果 |
+| RQ2 | 程式已實作，正式研究未執行 | 真實模型資格、完整設計 pilot、正式登記與執行仍未完成；尚無結果 |
+| RQ3 | 程式已實作，正式研究未執行 | 合成測試不代表模型資格通過或已有正式研究結果；尚無結果 |
+
+**RQ1 結果**（qwen3:32b、180 案、60 個交易日）：C 正確 105 案（58.3%）、D 正確 99 案（55.0%），精確 McNemar p≈0.21，D 未優於 C；兩組都低於「一律看多」的 62.2%。C、D 判斷不同的 16 案中，C 對 11 案、D 對 5 案。D 同時改變立場交換與資訊可見性等設計，結果不能歸因於單純的立場交換；樣本曾用於前導調整，屬回溯比較。
 
 版本內證據與後續條件見 [研究狀態](docs/research-status.md)。
 
 ## 最新消息
 
+- [2026-10] **台股探索第一版**：由首頁「台股探索」進入行情／多空與裁判報告／模擬決策流程；目前使用 Yahoo 延遲日線，尚未接 Shioaji。獨立保存探索紀錄，不納入正式研究。見 [操作說明](docs/taiwan-exploratory.md)。
 - [2026-10] **正式實驗總覽與 GPU 自動關機**：網頁最上方直接看每個事前登記研究的進度、錯誤與剩餘時間；佇列閒置 15 分鐘自動關閉 GPUtw 機器，不再空燒算力。
 - [2026-09] **協議 v3-1001.1**：文字裡的每個數字都要綁定來源證據（`numeric_claims`）；情緒面改用窗口內**全部**新聞標題的 FinBERT 指標。
-- [2026-09] **記憶污染檢查**：Gemini 3.1 Pro 不看資料也能以 89% 準確率「回想」2022–2024 的漲跌；qwen3:32b 沒有這個現象。見 [知識截止日](docs/knowledge-cutoff.md)。
+- [2026-09] **記憶污染檢查**（探索性，不屬 RQ2）：Gemini 3.1 Pro 不看資料也能以 89% 準確率「回想」2022–2024 的漲跌；qwen3:32b 沒有這個現象。見 [知識截止日](docs/knowledge-cutoff.md)。
 
 完整變更見 [CHANGELOG.md](CHANGELOG.md)。
 
@@ -74,7 +87,13 @@ flowchart LR
 
 ## 五分鐘試跑
 
-不需要任何金鑰，用內建的合成資料看完整流程：
+只想看流程，直接開 [線上真實案例](https://paul931130.github.io/stance-shift-lab/demo/)，選案例 →「播放案例」→ 點證據標籤看來源 → 比較 C／D 的辯論與結果。這是既有實驗的回放，不會呼叫模型。
+
+要輸入自己的股票，照 [雲端研究台操作](docs/cloud-start.md) 建立私人 Codespace；第一次建置需等待，不能保證五分鐘內完成。設定完成後，從「資料準備」建立資料集，再到「建立實驗」執行。
+
+### 本機安裝
+
+需要在自己電腦執行時，再使用下面的指令。不需要金鑰的合成試跑方式如下：
 
 ```bash
 git clone https://github.com/paul931130/stance-shift-lab.git
@@ -144,7 +163,7 @@ FNSPID 對部分股票與年份沒有新聞（例如 JPM、MCD 在 2020 年後�
 | 租雲端 GPU | [GPUtw 雲端 GPU](docs/gputw-integration.md)、[選擇模型來源](docs/model-sources.md) |
 | 系統架構 | [多代理架構](docs/multi-agent-architecture.md)、[專案結構](docs/project-layout.md) |
 | 研究方法 | [統計方法](docs/statistical-methods.md)、[時間切分](docs/temporal-split.md)、[知識截止日與記憶污染](docs/knowledge-cutoff.md) |
-| 本專題的實驗 | [實驗架構](docs/experiment-architecture.md)、[E2′ 事前登記](docs/e2prime-preregistration.md) |
+| 本專題的實驗 | [研究狀態](docs/research-status.md)、[RQ 準備索引](docs/rq-prep/README.md)；歷史紀錄：[實驗架構（舊版規劃）](docs/experiment-architecture.md)、[E2′ 事前登記](docs/e2prime-preregistration.md) |
 
 目前研究進度與證據界線見 [研究狀態](docs/research-status.md)；RQ2／RQ3 操作入口見 [正式實驗前操作單](docs/rq-prep/preformal-runbook-20261017.md)。
 
@@ -170,7 +189,7 @@ CI 在 Linux／Windows 跑單元測試、以 ES module 檢查前端、跑瀏覽�
 ```bibtex
 @software{stance_shift_research,
   title  = {Stance Shift Research: Auditable Multi-Agent Stance-Switching Debate for Stock Backtesting},
-  author = {paul931130},
+  author = {Huang, Yue Zhen},
   year   = {2026},
   url    = {https://github.com/paul931130/stance-shift-lab}
 }

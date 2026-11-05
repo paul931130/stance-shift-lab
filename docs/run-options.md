@@ -1,6 +1,8 @@
 # 執行方式：網頁研究台、Docker 與 Codespaces
 
-這份文件是 [README](../README.md) 的詳細版，說明 CLI 以外的三種跑法。只想在終端機跑一個案例，照 README 的「安裝與 CLI」即可。
+第一次使用可先 [播放線上真實案例](https://paul931130.github.io/stance-shift-lab/demo/)，不用安裝或金鑰。要在瀏覽器輸入自己的股票，先照 [雲端研究台操作](cloud-start.md) 建立私人 Codespace。
+
+這份文件是 [README](../README.md) 的詳細版，說明完整後端的三種跑法。只想在終端機跑一個案例，先看 [本機安裝](../README.md#本機安裝) 與 [CLI 與 Python](../README.md#cli-與-python)。
 
 網頁研究台能做 CLI 做不到的事：180 個案例的資料就緒度、批次排程、四組配對統計、試跑檢查與事前登記、匯出研究產物 ZIP。三種跑法都能開網頁研究台，擇一即可。模型來源有三種：雲端模型 API、GPUtw 雲端 GPU、Ollama；Codespaces 沒有顯示卡，只接前兩種。
 
@@ -14,7 +16,7 @@
 | 資料存哪裡 | 那一台 Codespace（開新的一台就沒了） | 自己電腦 | 自己電腦（專案的 `research-data/`） |
 | 費用 | 用自己 GitHub 帳號的 Codespaces 額度 | 免費 | 免費 |
 
-不論哪種跑法，都要先準備下面的金鑰。
+執行新的真實分析才需要下面的資料與模型設定；觀看線上案例或合成展示不需要金鑰。
 
 ## 事前準備：金鑰
 
@@ -146,7 +148,7 @@ Windows、macOS（Intel／Apple Silicon）、Linux 都用同一個 Docker 映像
 
 ## 跑法三：pip 安裝後開網頁
 
-照 README 的「[安裝](../README.md#安裝)」裝好後，三種模型來源都能接；少了 Docker，電腦上的 Ollama 直接用 `127.0.0.1:11434` 連，不用任何網路設定。
+照 README 的「[本機安裝](../README.md#本機安裝)」裝好後，三種模型來源都能接；少了 Docker，電腦上的 Ollama 直接用 `127.0.0.1:11434` 連，不用任何網路設定。
 
 1. **啟動研究台**（在專案資料夾、虛擬環境已啟用）：
 
@@ -195,7 +197,7 @@ pip 跑法與 Docker 用的是同一份程式；遇到安裝問題，改用跑�
 
 ## 進階：終端機指令
 
-研究操作用 `stance-shift`（見 README 的「[安裝與 CLI](../README.md#安裝與-cli)」）；用 Docker 時，`./research.sh cli`（Windows：`docker compose -f compose.research.yaml run --rm research python -m research_service.cli`）會在容器內執行同一個 `stance-shift`，和網頁研究台共用資料。
+研究操作用 `stance-shift`（見 README 的「[CLI 與 Python](../README.md#cli-與-python)」）；用 Docker 時，`./research.sh cli`（Windows：`docker compose -f compose.research.yaml run --rm research python -m research_service.cli`）會在容器內執行同一個 `stance-shift`，和網頁研究台共用資料。
 
 `research.sh`／`research.ps1` 負責 Docker 的安裝設定、啟停、檢查與日誌：`setup`、`start`、`stop`、`status`、`logs`、`doctor`、`test`，Windows 另有 `backup`。`research.ps1` 裡的 `collect`、`run`、`jobs` 等研究指令仍可使用，但之後會由跨平台的 `stance-shift` 取代。
 

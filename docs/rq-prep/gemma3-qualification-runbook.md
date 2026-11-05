@@ -1,6 +1,6 @@
 # gemma3:27b 資格檢驗操作手冊（RQ2 模型 B）
 
-適用版本：未標註（下次修訂時補上） · 最後更新：2026-10-19
+適用版本：RQ2 `v3-1015.1` 的模型 B（gemma3:27b，放在實驗室 Ollama，見 [lab-start.md](lab-start.md)） · 最後更新：2026-11-04
 
 > 2026-10-15：請先讀 [新版實驗推進手冊](experiment-launch-20261015.md)。下方保留舊 Bash／模型資格脈絡；使用者的 PowerShell 指令、獨立唯讀探針副本、新版 RQ2／RQ3 pilot 及 report-bank seed 規則以新手冊為準。不要直接對原 RQ1 快照初始化 Store；舊 canary 不能代表新設計已合格。
 
