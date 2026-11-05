@@ -19,7 +19,7 @@ from . import model_router
 from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate,
                      prompt_text, unalias_evidence_ids, unsupported_numbers, validate_decision, validate_research)
 from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, NUMERIC_CLAIM_VERSIONS,
-                       STRICT_VALIDATION_VERSIONS, decision_plan, decision_wave, same_arm,
+                       STRICT_VALIDATION_VERSIONS, decision_plan, decision_wave, is_switched, same_arm,
                        protocol_from, protocol_is_current, protocol_matches_fingerprint, temperature_for)
 from .storage import now
 from .model_identity import (ModelIdentityError, ModelIdentityMismatch, ModelIdentityUnavailable,
@@ -275,6 +275,24 @@ def completeness_diagnostic(records, protocol):
                         "mean_novelty_rate": average(control_pairs)}}
 
 
+def clash_context(protocol, call, records):
+    """(opposing, own) previous-round outputs for a debate-clash turn, else None.
+
+    The opposing turn is the previous-round turn with the other stance: the counterpart in C, and
+    in D round 3 the agent's own switched round-2 turn (the counterpart argued the same side then).
+    """
+    if (not getattr(protocol, "debate_clash", None) or call.kind != "debate" or not call.round
+            or call.round < 2 or is_switched(protocol, call)):
+        return None
+    previous = [r for r in records if same_arm(r, call) and r.get("kind") == "debate"
+                and r.get("round") == call.round - 1]
+    opposing = [r for r in previous if r.get("stance") != call.stance]
+    own = next((r for r in previous if r.get("agent") == call.agent), None)
+    if len(opposing) != 1 or own is None:
+        raise ValueError("debate clash turn is missing the previous round")
+    return opposing[0].get("output", {}), own.get("output", {})
+
+
 def validation_hint(error):
     """What a retry prompt says about a rejected answer.
 
@@ -360,7 +378,7 @@ class Engine:
         audit.setdefault("temperature", protocol.temperature if temperature is None else temperature)
         return result, audit
 
-    def validated_decision(self, protocol, call, messages, evidence, own_round1=None):
+    def validated_decision(self, protocol, call, messages, evidence, own_round1=None, clash=None):
         """Generate one decision, retrying only an auditable validation rejection.
 
         Provider transport and JSON failures remain the provider's responsibility.
@@ -390,7 +408,8 @@ class Engine:
                 result = validate_decision(result, decision_evidence, call, prompt_text(messages),
                                            claim_bound=claim_bound, strict=strict, own_round1=own_round1,
                                            canonical=protocol.version in CANONICAL_CLAIM_VERSIONS,
-                                           adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS)
+                                           adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS,
+                                           clash=clash)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
@@ -421,7 +440,8 @@ class Engine:
                                                      prompt_text(messages), redact_numbers=True,
                                                      claim_bound=claim_bound, strict=strict, own_round1=own_round1,
                                                      canonical=protocol.version in CANONICAL_CLAIM_VERSIONS,
-                                                     adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS)
+                                                     adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS,
+                                                     clash=clash)
                         except (ValueError, JsonSchemaValidationError, TypeError) as other:
                             # Numbers were not the only defect (e.g. an invented evidence ID):
                             # retry for that defect instead of failing the step.
@@ -802,7 +822,8 @@ class Engine:
                 # The D switch round is checked against what this same agent wrote in round 1.
                 own = next((r for r in snapshot if same_arm(r, call) and r.get("agent") == call.agent
                             and r.get("round") == 1 and r["kind"] == "debate"), None) if call.kind == "debate" else None
-                return self.validated_decision(protocol, call, messages, state["report"]["evidence"], own_round1=own)
+                return self.validated_decision(protocol, call, messages, state["report"]["evidence"], own_round1=own,
+                                               clash=clash_context(protocol, call, snapshot))
 
             # Ollama defaults to a single runner.  Sending a whole wave at
             # once makes queued CPU requests outlive the runner keep-alive and

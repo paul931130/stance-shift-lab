@@ -203,6 +203,8 @@ def _compact_history(records, rationale_chars=320):
                  "strongest_counterpoint": _short_text(output.get("strongest_counterpoint"), 240)}
         if output.get("rebutted_claim"):
             shown["rebutted_claim"] = _short_text(output.get("rebutted_claim"), 240)
+        if output.get("rebutted_opponent_claim"):
+            shown["rebutted_opponent_claim"] = _short_text(output.get("rebutted_opponent_claim"), 240)
         compact.append({"key": record.get("key"), "stance": record.get("stance"), "round": record.get("round"),
                         "output": {key: value for key, value in shown.items() if value is not None}})
     return compact
@@ -834,6 +836,11 @@ def messages_for(call, report, records, memory, protocol):
                 common += (" rebutted_claim must be copied word for word from your own round-1 rationale, "
                            "strongest_counterpoint or risks; confidence_shift must equal this turn's confidence "
                            "minus your round-1 confidence exactly.")
+        if getattr(protocol, "debate_clash", None):
+            common += CLASH_ROLES.get(call.round, "")
+            if call.round and call.round > 1 and not (call.group == "D" and call.round == SWITCH_ROUND):
+                common += CLASH_TURN.format(previous=call.round - 1,
+                                            opposite="BEAR" if call.stance == "BULL" else "BULL")
     elif call.kind == "adjudication":
         common += (" You are the neutral Adjudicator. Weigh the complete debate without favoring speaker order. "
             "Assigned Bull/Bear counts are not evidence. For each side, check its cited evidence IDs against the evidence list in the report: "
@@ -849,6 +856,20 @@ def messages_for(call, report, records, memory, protocol):
     if call.kind == "adjudication":
         payload["matured_same_group_memory"] = _compact_memory(memory)
     return [{"role": "system", "content": common}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False, sort_keys=True)}]
+
+
+CLASH_ROLES = {
+    1: " Round role: OPENING. Build your strongest evidence-based case for your assigned stance.",
+    2: " Round role: REBUTTAL. Your job this round is to answer the other side, not to repeat your case.",
+    3: " Round role: CLOSING. Answer the other side's latest turn, then explain why your side's evidence "
+       "outweighs theirs.",
+}
+CLASH_TURN = (" Clash turn: the history shows the round {previous} turn that argued {opposite}, the stance you now "
+              "oppose. In rebutted_opponent_claim, copy one sentence word for word from the rationale field of that "
+              "turn (at most 200 characters): a claim it makes for {opposite}. Do not quote its "
+              "strongest_counterpoint, risks or rebutted_opponent_claim. Use your rationale to refute that claim "
+              "with cited evidence. Do not restate your previous rationale; give reasoning you have not given before.")
+CLASH_SIMILARITY_LIMIT = 0.8
 
 
 def output_schema_for(messages):
@@ -871,6 +892,9 @@ def output_schema_for(messages):
         schema["properties"]["rationale"] = {"type": "string", "maxLength": 1500}
     if "The Adjudicator must choose Buy or Sell" in system:
         schema["properties"]["action"]["enum"] = ["Buy", "Sell"]
+    if "Clash turn:" in system:
+        schema["properties"]["rebutted_opponent_claim"] = {"type": "string", "minLength": 1, "maxLength": 240}
+        schema["required"].append("rebutted_opponent_claim")
     if "role-switch round" in system:
         schema["properties"]["rebutted_claim"] = {"type": "string", "minLength": 1, "maxLength": 240}
         schema["properties"]["confidence_shift"] = {"type": "number", "minimum": -1, "maximum": 1}
@@ -1066,7 +1090,7 @@ def generate(protocol, messages, seed=None, temperature=None):
 
 
 def validate_decision(result, evidence, call=None, context=None, redact_numbers=False, claim_bound=False,
-                      strict=False, own_round1=None, canonical=None, adjudicator_commits=False):
+                      strict=False, own_round1=None, canonical=None, adjudicator_commits=False, clash=None):
     allowed_actions = ("Buy", "Hold", "Sell")
     if call is not None and call.kind == "debate":
         allowed_actions = ("Buy",) if call.stance == "BULL" else ("Sell",)
@@ -1107,6 +1131,8 @@ def validate_decision(result, evidence, call=None, context=None, redact_numbers=
                 raise ValueError("角色交換輪缺少自己第 1 輪歷史；不能驗證 rebutted_claim")
             if strict and own_round1 is not None:
                 validate_self_rebuttal(result, own_round1)
+        if clash is not None:
+            validate_clash(result, *clash)
     cited = set(result["evidence_ids"])
     if claim_bound:
         validate_numeric_claims(result, evidence, redact=redact_numbers, strict=strict, canonical=canonical)
@@ -1148,6 +1174,26 @@ def validate_self_rebuttal(result, own_round1, shift_tolerance=0.05):
         if abs(result["confidence_shift"] - actual) > shift_tolerance + 1e-9:
             result["confidence_shift_reported"] = result["confidence_shift"]
             result["confidence_shift"] = actual
+
+
+def validate_clash(result, opposing_previous, own_previous):
+    """Debate clash: quote the counterpart's latest claim and do not restate one's own last turn."""
+    from difflib import SequenceMatcher
+    quote = result.get("rebutted_opponent_claim")
+    claim = _words(quote)
+    letters = re.findall(r"[^\W\d_]", str(quote or ""), re.UNICODE)
+    if not isinstance(quote, str) or len(claim) < 3 or len(letters) < 12:
+        raise ValueError("rebutted_opponent_claim must quote one recognizable claim (a sentence, not a fragment) "
+                         "from the rationale of the previous round's opposing turn")
+    prose = _words(opposing_previous.get("rationale", ""))
+    match = SequenceMatcher(None, claim, prose, autojunk=False).find_longest_match(0, len(claim), 0, len(prose))
+    if match.size < max(3, round(0.7 * len(claim))):
+        raise ValueError(f"rebutted_opponent_claim {str(quote)[:90]!r} is not in the rationale of the previous "
+                         "round's opposing turn; copy one of its sentences word for word (at least 70% of its words "
+                         "in one run)")
+    mine, before = str(result.get("rationale", "")).lower(), str(own_previous.get("rationale", "")).lower()
+    if before and SequenceMatcher(None, mine, before, autojunk=False).ratio() >= CLASH_SIMILARITY_LIMIT:
+        raise ValueError("rationale restates your previous turn; refute the quoted claim with new reasoning")
 
 
 def validate_research(result, evidence, domain, claim_bound=False, strict=False, redact=False, canonical=None):

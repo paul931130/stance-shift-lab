@@ -100,6 +100,8 @@ class JobInput(BaseModel):
     # Frozen inference settings; None keeps the protocol default (8192 tokens, one call at a time).
     model_context_length: int | None = None
     ollama_parallel: int | None = None
+    # Experimental debate clash (StudyProtocol.debate_clash); None keeps the original debate.
+    debate_clash: bool | None = None
     # RQ2 Model Router (protocol v3-1006.1). Giving debate_model_b selects the router version;
     # `model` stays the Judge/research model and is model A unless debate_model_a says otherwise.
     debate_model_a: str | None = Field(default=None, max_length=200)
