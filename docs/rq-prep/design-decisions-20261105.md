@@ -17,7 +17,7 @@
 - 決策 1 選 A：更新 rq3-preregistration-draft.md 與報告 RQ3 段落的措辭。選 B：先開 RQ3 新協議版本的開發，現有 RQ3 pilot 只當流程檢查。
 - 決策 2 選 B：在 analysis-plan 加 `equivalence` 區塊（邊界、90% 區間、不進 family），分析程式加輸出，補測試。
 - 決策 4 選 C：在 roadmap 列為 RQ2 之後的下一個研究，現在不動程式。
-- 決策 5 不論選哪個：試跑用了 180 案中的 22 案並看了準確率，處理規則見 [development-cases-20261105.md](development-cases-20261105.md)（機制只能用構念理由調整、正式分析加排除這 22 案的敏感性分析）。`check_pilot.py` 的 `debate_engagement` 項會在每次 pilot 報告交鋒指標，當作操弄檢核。
+- 決策 5 不論選哪個：試跑用了 180 案中的 27 案並看了準確率，處理規則見 [development-cases-20261105.md](development-cases-20261105.md)（機制只能用構念理由調整、正式分析加排除這 27 案的敏感性分析）。`check_pilot.py` 的 `debate_engagement` 項會在每次 pilot 報告交鋒指標，當作操弄檢核。
 - 決策 5 選 B：case 設定加 `debate_clash: true`，重做 RQ2／RQ3 離線封裝；RQ3 的領域辯論（domain_debate.py）尚未套用，要另外決定。選 A：把 `debate_clash` 留作關閉的實驗選項。
 - **已做（2026-11-05）**：RQ2／RQ3 封裝案例設定 `debate_clash: true`，RQ3 案例 `model_context_length: 16384`（RQ3 只用 qwen3:32b）；`domain_debate.py` 接上交鋒驗證與領域裁判 `clash_verdicts`；分析計畫加 `equivalence` 區塊，`rq_repeats.py` 與 `rq3_inference.py` 輸出 90% 區間與是否等效。RQ3 用 Gemini 2.5 Flash 跑 5 個未看過結果的案例（只看失敗率與交鋒指標）：5／5 跑完；領域辯論第 2、3 輪 100% 引用對方、相似度 0.15／0.20；20 個領域裁判都給了逐條判定；被退回的重試 5 次；C_budget 彙整 10,353 tokens，在 16384 上下文內（14,336 以下）。
 - 決策 6 選 A：在 `domain_debate.py` 接上交鋒驗證與領域裁判的逐條判定，拿掉 `web/jobs.py` 對 RQ3 + `debate_clash` 的阻擋，用未看過結果的案例在 Gemini 上檢查，再重做 RQ3 封裝。
