@@ -59,6 +59,14 @@ class DebateClashTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 validate_clash(dict(bad), OPPONENT, OWN)
 
+    def test_closing_may_answer_an_earlier_opposing_turn(self):
+        later = {"rationale": "Leverage stays high, so the cash flow gains will not protect the equity holders."}
+        good = {"rebutted_opponent_claim": "Revenue declined year over year, which signals weakening demand",
+                "rationale": "The revenue dip is a one-off; operating cash flow and margins point the other way."}
+        validate_clash(dict(good), [OPPONENT, later], OWN)
+        with self.assertRaises(ValueError):
+            validate_clash(dict(good), [later], OWN)
+
     def test_clash_context_skips_opening_and_isolated_switch_round(self):
         p = protocol(debate_clash=True)
         records = [record("c-r1-agent-a", "C", "agent-a", 1, OWN), record("c-r1-agent-b", "C", "agent-b", 1, OPPONENT),
@@ -66,7 +74,7 @@ class DebateClashTests(unittest.TestCase):
         self.assertIsNone(clash_context(p, call(p, "c-r1-agent-a"), records))
         self.assertIsNone(clash_context(p, call(p, "d-r2-agent-a"), records))
         self.assertIsNone(clash_context(protocol(), call(protocol(), "c-r2-agent-a"), records))
-        self.assertEqual(clash_context(p, call(p, "c-r2-agent-a"), records), (OPPONENT, OWN))
+        self.assertEqual(clash_context(p, call(p, "c-r2-agent-a"), records), ([OPPONENT], OWN))
         with self.assertRaises(ValueError):
             clash_context(p, call(p, "c-r3-agent-a"), records)
 
@@ -77,8 +85,10 @@ class DebateClashTests(unittest.TestCase):
         records = [dict(record("d-r2-agent-a", "D", "agent-a", 2, switched_a), stance="BEAR"),
                    dict(record("d-r2-agent-b", "D", "agent-b", 2, switched_b), stance="BULL")]
         # agent-a argues BULL again in round 3; the round-2 BEAR turn was its own switched turn.
-        self.assertEqual(clash_context(p, call(p, "d-r3-agent-a"), records), (switched_a, switched_a))
-        self.assertEqual(clash_context(p, call(p, "d-r3-agent-b"), records), (switched_b, switched_b))
+        self.assertEqual(clash_context(p, call(p, "d-r3-agent-a"), records), ([switched_a], switched_a))
+        self.assertEqual(clash_context(p, call(p, "d-r3-agent-b"), records), ([switched_b], switched_b))
+        with_round1 = records + [record("d-r1-agent-b", "D", "agent-b", 1, OPPONENT)]
+        self.assertEqual(clash_context(p, call(p, "d-r3-agent-a"), with_round1)[0], [OPPONENT, switched_a])
         prompt = messages_for(call(p, "d-r3-agent-a"), REPORT, [], [], p)[0]["content"]
         self.assertIn("argued BEAR", prompt)
 

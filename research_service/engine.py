@@ -276,21 +276,23 @@ def completeness_diagnostic(records, protocol):
 
 
 def clash_context(protocol, call, records):
-    """(opposing, own) previous-round outputs for a debate-clash turn, else None.
+    """(opposing outputs, own previous-round output) for a debate-clash turn, else None.
 
-    The opposing turn is the previous-round turn with the other stance: the counterpart in C, and
-    in D round 3 the agent's own switched round-2 turn (the counterpart argued the same side then).
+    Opposing turns are every earlier turn that argued the other stance: the counterpart's turns in
+    C; in D round 3 also the agent's own switched round-2 turn (the counterpart argued the same
+    side then). A closing may answer any of them, not only the latest.
     """
     if (not getattr(protocol, "debate_clash", None) or call.kind != "debate" or not call.round
             or call.round < 2 or is_switched(protocol, call)):
         return None
-    previous = [r for r in records if same_arm(r, call) and r.get("kind") == "debate"
-                and r.get("round") == call.round - 1]
-    opposing = [r for r in previous if r.get("stance") != call.stance]
-    own = next((r for r in previous if r.get("agent") == call.agent), None)
-    if len(opposing) != 1 or own is None:
+    earlier = [r for r in records if same_arm(r, call) and r.get("kind") == "debate"
+               and (r.get("round") or 0) < call.round]
+    opposing = [r.get("output", {}) for r in sorted(earlier, key=lambda r: r["round"])
+                if r.get("stance") != call.stance]
+    own = next((r for r in earlier if r.get("agent") == call.agent and r.get("round") == call.round - 1), None)
+    if not any(r.get("round") == call.round - 1 and r.get("stance") != call.stance for r in earlier) or own is None:
         raise ValueError("debate clash turn is missing the previous round")
-    return opposing[0].get("output", {}), own.get("output", {})
+    return opposing, own.get("output", {})
 
 
 def validation_hint(error):

@@ -864,11 +864,12 @@ CLASH_ROLES = {
     3: " Round role: CLOSING. Answer the other side's latest turn, then explain why your side's evidence "
        "outweighs theirs.",
 }
-CLASH_TURN = (" Clash turn: the history shows the round {previous} turn that argued {opposite}, the stance you now "
-              "oppose. In rebutted_opponent_claim, copy one sentence word for word from the rationale field of that "
-              "turn (at most 200 characters): a claim it makes for {opposite}. Do not quote its "
-              "strongest_counterpoint, risks or rebutted_opponent_claim. Use your rationale to refute that claim "
-              "with cited evidence. Do not restate your previous rationale; give reasoning you have not given before.")
+CLASH_TURN = (" Clash turn: the history shows earlier turns that argued {opposite}, the stance you now oppose "
+              "(the latest is round {previous}). In rebutted_opponent_claim, copy word for word one claim from the "
+              "rationale field of one of those turns, preferably the latest: one sentence, or a contiguous part of "
+              "a long sentence, at most 200 characters. Do not quote strongest_counterpoint, risks or "
+              "rebutted_opponent_claim. Use your rationale to refute that claim with cited evidence. Do not restate "
+              "your previous rationale; give reasoning you have not given before.")
 CLASH_SIMILARITY_LIMIT = 0.8
 
 
@@ -893,7 +894,8 @@ def output_schema_for(messages):
     if "The Adjudicator must choose Buy or Sell" in system:
         schema["properties"]["action"]["enum"] = ["Buy", "Sell"]
     if "Clash turn:" in system:
-        schema["properties"]["rebutted_opponent_claim"] = {"type": "string", "minLength": 1, "maxLength": 240}
+        # 200 characters are asked for; a whole long sentence copied verbatim is still accepted.
+        schema["properties"]["rebutted_opponent_claim"] = {"type": "string", "minLength": 1, "maxLength": 400}
         schema["required"].append("rebutted_opponent_claim")
     if "role-switch round" in system:
         schema["properties"]["rebutted_claim"] = {"type": "string", "minLength": 1, "maxLength": 240}
@@ -1176,20 +1178,25 @@ def validate_self_rebuttal(result, own_round1, shift_tolerance=0.05):
             result["confidence_shift"] = actual
 
 
-def validate_clash(result, opposing_previous, own_previous):
-    """Debate clash: quote the counterpart's latest claim and do not restate one's own last turn."""
+def validate_clash(result, opposing_turns, own_previous):
+    """Debate clash: quote an earlier opposing-stance claim and do not restate one's own last turn."""
     from difflib import SequenceMatcher
     quote = result.get("rebutted_opponent_claim")
     claim = _words(quote)
     letters = re.findall(r"[^\W\d_]", str(quote or ""), re.UNICODE)
     if not isinstance(quote, str) or len(claim) < 3 or len(letters) < 12:
         raise ValueError("rebutted_opponent_claim must quote one recognizable claim (a sentence, not a fragment) "
-                         "from the rationale of the previous round's opposing turn")
-    prose = _words(opposing_previous.get("rationale", ""))
-    match = SequenceMatcher(None, claim, prose, autojunk=False).find_longest_match(0, len(claim), 0, len(prose))
-    if match.size < max(3, round(0.7 * len(claim))):
-        raise ValueError(f"rebutted_opponent_claim {str(quote)[:90]!r} is not in the rationale of the previous "
-                         "round's opposing turn; copy one of its sentences word for word (at least 70% of its words "
+                         "from the rationale of an earlier opposing-stance turn")
+    if isinstance(opposing_turns, dict):
+        opposing_turns = [opposing_turns]
+    best = 0
+    for turn in opposing_turns:
+        prose = _words(turn.get("rationale", ""))
+        best = max(best, SequenceMatcher(None, claim, prose, autojunk=False)
+                   .find_longest_match(0, len(claim), 0, len(prose)).size)
+    if best < max(3, round(0.7 * len(claim))):
+        raise ValueError(f"rebutted_opponent_claim {str(quote)[:90]!r} is not in the rationale of any earlier "
+                         "opposing-stance turn; copy one of its claims word for word (at least 70% of its words "
                          "in one run)")
     mine, before = str(result.get("rationale", "")).lower(), str(own_previous.get("rationale", "")).lower()
     if before and SequenceMatcher(None, mine, before, autojunk=False).ratio() >= CLASH_SIMILARITY_LIMIT:
