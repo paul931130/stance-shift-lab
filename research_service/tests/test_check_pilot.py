@@ -181,6 +181,24 @@ class CheckPilotTests(unittest.TestCase):
             mutate(output, lambda c, s: s["memory_audit"].update(pending_earlier_cases=["2024-01-02"]))
             self.assertEqual(self.failing(output), ["memory_no_pending_earlier_cases"])
 
+    def test_failed_attempt_without_response_needs_no_tokens(self):
+        def with_attempt(error_type):
+            def change(config, state):
+                audit = state["records"][0]["audit"]
+                audit["attempts"] = [{"attempt": 1, "status": "failed", "error_type": error_type,
+                                      "usage": {"client_elapsed_seconds": 1.3}},
+                                     {"attempt": 2, "status": "complete", "usage": dict(audit["usage"])}]
+                audit["provider_attempts"] = 2
+            return change
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.build(directory, False)
+            mutate(output, with_attempt("ServiceUnavailableError"))
+            self.assertEqual(self.failing(output), [])
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.build(directory, False)
+            mutate(output, with_attempt("ValidationError"))  # a response came back: its tokens must be recorded
+            self.assertEqual(self.failing(output), ["tokens_retries_latency_recorded"])
+
     def test_cli_exit_codes_output_file_and_wal_refusal(self):
         with tempfile.TemporaryDirectory() as directory:
             output = self.build(directory, False)

@@ -36,10 +36,11 @@ from . import aggregator
 from . import models
 from .breaker import is_provider_failure
 from .data import digest
-from .engine import Engine, compute_usage, derive_action, gate, validation_hint
+from .engine import Engine, clash_context, compute_usage, derive_action, gate, validation_hint
 from .logging_config import get_logger
-from .models import (_compact_history, _compact_report, _decision_evidence, alias_messages, evidence_aliases,
-                     messages_for, prompt_text, validate_financial_interpretation, validate_financial_numbers)
+from .models import (CLASH_VERDICTS, CLASH_VERDICTS_SCHEMA, _compact_history, _compact_report, _decision_evidence,
+                     alias_messages, clash_turns, evidence_aliases, messages_for, prompt_text,
+                     validate_clash_verdicts, validate_financial_interpretation, validate_financial_numbers)
 from .protocol import (DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, QUARTERLY_VERSION, SWITCH_ROUND, DecisionCall,
                        decision_plan, protocol_from, protocol_matches_fingerprint)
 from .storage import now
@@ -87,8 +88,14 @@ def _install_view_schema():
         return
 
     def output_schema_for(messages):
-        if VIEW_MARKER in str(messages[0].get("content", "")):
-            return deepcopy(DOMAIN_VIEW_SCHEMA)
+        system = str(messages[0].get("content", ""))
+        if VIEW_MARKER in system:
+            schema = deepcopy(DOMAIN_VIEW_SCHEMA)
+            if "Clash verdicts:" in system:
+                # Debate clash: the domain judge rules on each clash turn, as the C/D Adjudicator does.
+                schema["properties"]["clash_verdicts"] = deepcopy(CLASH_VERDICTS_SCHEMA)
+                schema["required"].append("clash_verdicts")
+            return schema
         return original(messages)
 
     output_schema_for.rq3_wrapper = True
@@ -339,6 +346,8 @@ def view_messages(domain, sliced, records, protocol, settings):
         "(0..1), supporting_evidence_ids (array), counter_evidence_ids (array), uncertainty (string under 300 "
         "characters), information_gaps (array of at most 4 short strings), rationale (string).")
     debate = [record for record in records if record.get("kind") == "debate"]
+    if getattr(protocol, "debate_clash", None):
+        system += CLASH_VERDICTS.format(turns=json.dumps(clash_turns(debate)))
     payload = {"domain": domain, "report": _compact_report(sliced),
                "debate": _compact_history(debate, protocol.rationale_chars or 320)}
     return [{"role": "system", "content": system},
@@ -351,7 +360,7 @@ def _number(value):
     return isinstance(value, (int, float)) and not isinstance(value, bool)
 
 
-def validate_view(result, items, domain, context=None):
+def validate_view(result, items, domain, context=None, verdict_turns=None):
     """Validate one Domain View against its schema rules and the domain namespace.
 
     As in v3-1002.3 decisions, numbers in prose are recorded (``unsupported_numbers``),
@@ -402,6 +411,9 @@ def validate_view(result, items, domain, context=None):
             "binary": direction in BINARY_DIRECTIONS, "invalid_evidence_ids": []}
     if unsupported:
         view["unsupported_numbers"] = unsupported
+    if verdict_turns is not None:
+        validate_clash_verdicts(result, verdict_turns)
+        view["clash_verdicts"] = result["clash_verdicts"]
     return view
 
 
@@ -529,26 +541,32 @@ class DomainDebateEngine(Engine):
             if kind == "debate":
                 own = next((record for record in records if record.get("agent") == call.agent
                             and record.get("round") == 1 and record["kind"] == "debate"), None)
+                # Bind this domain's records now: run() executes later, after the loop moved on.
                 prepared[call.key] = (kind, arm, domain, call,
-                                      debate_messages(call, sliced, records, protocol, settings, domain), items, own)
+                                      debate_messages(call, sliced, records, protocol, settings, domain), items,
+                                      (own, clash_context(protocol, call, records)))
             elif kind == "view":
                 prepared[view_key(arm, domain)] = (kind, arm, domain, None,
                                                    view_messages(domain, sliced, records, protocol, settings),
-                                                   items, None)
+                                                   items,
+                                                   clash_turns(records) if getattr(protocol, "debate_clash", None)
+                                                   else None)
             else:
                 built = aggregator.build(protocol, settings, config, state, arm, records)
                 prepared[aggregator_key(arm)] = (kind, arm, None, built, built["messages"], built["evidence"], None)
 
-        def run(key, kind, arm, domain, call, messages, items, own):
+        def run(key, kind, arm, domain, call, messages, items, bound):
             if kind == "debate":
-                result, audit = self.validated_decision(protocol, call, messages, items, own_round1=own)
+                own, clash = bound
+                result, audit = self.validated_decision(protocol, call, messages, items, own_round1=own,
+                                                        clash=clash)
                 check_namespace(result["evidence_ids"], items, domain)
                 audit["namespace"] = {"domain": domain, "allowed": len(items),
                                       "rejected_attempts": sum("evidence_id" in failure.get("message", "")
                                                                for failure in audit.get("validation_retries", []))}
                 return result, audit
             if kind == "view":
-                return self.validated_view(protocol, key, messages, items, domain)
+                return self.validated_view(protocol, key, messages, items, domain, verdict_turns=bound)
             return aggregator.run(self, protocol, call)
 
         completed, failures, provider_failures = {}, [], []
@@ -585,7 +603,7 @@ class DomainDebateEngine(Engine):
             state["_step_provider_failure"] = any(provider_failures)
         return "domain_debate_wave[" + ",".join(prepared) + "]", workers
 
-    def validated_view(self, protocol, key, messages, items, domain):
+    def validated_view(self, protocol, key, messages, items, domain, verdict_turns=None):
         """One Domain View with the same bounded, audited retry policy as decisions."""
         aliases = evidence_aliases(items)
         allowed_ids = [aliases[item["evidence_id"]] for item in items]
@@ -597,7 +615,7 @@ class DomainDebateEngine(Engine):
                 result, audit = self.call_model(protocol, alias_messages(attempt_messages, aliases), retry_key,
                                                 protocol.temperature)
                 view = validate_view(json.loads(json.dumps(_unalias_view(result, aliases))), items, domain,
-                                     prompt_text(messages))
+                                     prompt_text(messages), verdict_turns=verdict_turns)
                 audit = dict(audit)
                 audit["validation_retries"] = failures
                 if view.get("unsupported_numbers"):

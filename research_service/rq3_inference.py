@@ -10,7 +10,7 @@ import numpy as np
 from .data import digest
 from .protocol import QUARTER_DATES, STUDY_TICKERS
 from .reporting import stable_model_identity
-from .rq_analysis import date_block_bootstrap, sharpe_combination_test
+from .rq_analysis import EQUIVALENCE_MARGINS, date_block_bootstrap, equivalence, sharpe_combination_test
 from .rq_study import select_cases
 from .rq3_reporting import rq3_study_report
 from .statistics import holm_adjust
@@ -97,8 +97,11 @@ def infer_panel(panel, *, date_block_length, daily_block_length, replicates=1999
     try:
         accuracy = date_block_bootstrap(contrasts, panel["date_ids"], block_length=date_block_length,
                                         replicates=replicates, seed=bootstrap_seed)["contrasts"]
+        accuracy90 = date_block_bootstrap(contrasts, panel["date_ids"], block_length=date_block_length,
+                                          replicates=replicates, seed=bootstrap_seed, alpha=.10)["contrasts"]
     except ValueError as error:
         accuracy = [_not_estimable(error) for _ in BASELINES]
+        accuracy90 = [{} for _ in BASELINES]
     results, pvalues = {}, []
     for index, arm in enumerate(BASELINES):
         try:
@@ -109,8 +112,16 @@ def infer_panel(panel, *, date_block_length, daily_block_length, replicates=1999
             sharpe = _not_estimable(error)
         if sharpe.get("pvalue") is None and sharpe.get("status") != "not_estimable":
             sharpe = {**sharpe, "status": "not_estimable", "reason": "degenerate standard error"}
+        try:
+            sharpe90 = sharpe_combination_test(returns[:, [1, ARMS.index(arm)]], (1., -1.),
+                                               block_length=daily_block_length, replicates=replicates,
+                                               seed=bootstrap_seed, alpha=.10)
+        except ValueError:
+            sharpe90 = {}
         acc = accuracy[index]
-        results[arm] = {"accuracy": acc, "sharpe": sharpe}
+        results[arm] = {"accuracy": acc, "sharpe": sharpe, "equivalence": {
+            "accuracy": equivalence(accuracy90[index].get("confidence_interval"), EQUIVALENCE_MARGINS["accuracy"]),
+            "sharpe": equivalence(sharpe90.get("confidence_interval"), EQUIVALENCE_MARGINS["sharpe"])}}
         pvalues.extend((acc["pvalue"], sharpe["pvalue"]))
     # Plan rule report_not_estimable_no_family_reduction: Holm keeps all six
     # tests. A not-estimable endpoint enters as p=1, which leaves every other

@@ -1,6 +1,6 @@
 # RQ2／RQ3 登記前的設計決策（2026-11-05，待研究者決定）
 
-來源：2026-11-04 教授式審查（見 [lab-start.md](lab-start.md) 第二節）。這幾項不擋模型資格檢查與三案 pilot，但要在正式登記前定案，並寫進登記與 [analysis-plan-20261015.json](analysis-plan-20261015.json)。**本頁只列選項與建議，研究者尚未決定。**
+來源：2026-11-04 教授式審查（見 [lab-start.md](lab-start.md) 第二節）。這幾項不擋模型資格檢查與三案 pilot，但要在正式登記前定案，並寫進登記與 [analysis-plan-20261015.json](analysis-plan-20261015.json)。**2026-11-05 研究者依建議採用 1A、2B、3 照原計畫、4C、5B、6A、7A，待指導教授確認；程式與封裝已照此修改（見下方「決定之後要做的事」）。**
 
 | # | 決策 | 選項 | 影響 | 建議 |
 |---|---|---|---|---|
@@ -19,6 +19,7 @@
 - 決策 4 選 C：在 roadmap 列為 RQ2 之後的下一個研究，現在不動程式。
 - 決策 5 不論選哪個：試跑用了 180 案中的 22 案並看了準確率，處理規則見 [development-cases-20261105.md](development-cases-20261105.md)（機制只能用構念理由調整、正式分析加排除這 22 案的敏感性分析）。`check_pilot.py` 的 `debate_engagement` 項會在每次 pilot 報告交鋒指標，當作操弄檢核。
 - 決策 5 選 B：case 設定加 `debate_clash: true`，重做 RQ2／RQ3 離線封裝；RQ3 的領域辯論（domain_debate.py）尚未套用，要另外決定。選 A：把 `debate_clash` 留作關閉的實驗選項。
+- **已做（2026-11-05）**：RQ2／RQ3 封裝案例設定 `debate_clash: true`，RQ3 案例 `model_context_length: 16384`（RQ3 只用 qwen3:32b）；`domain_debate.py` 接上交鋒驗證與領域裁判 `clash_verdicts`；分析計畫加 `equivalence` 區塊，`rq_repeats.py` 與 `rq3_inference.py` 輸出 90% 區間與是否等效。RQ3 用 Gemini 2.5 Flash 跑 5 個未看過結果的案例（只看失敗率與交鋒指標）：5／5 跑完；領域辯論第 2、3 輪 100% 引用對方、相似度 0.15／0.20；20 個領域裁判都給了逐條判定；被退回的重試 5 次；C_budget 彙整 10,353 tokens，在 16384 上下文內（14,336 以下）。
 - 決策 6 選 A：在 `domain_debate.py` 接上交鋒驗證與領域裁判的逐條判定，拿掉 `web/jobs.py` 對 RQ3 + `debate_clash` 的阻擋，用未看過結果的案例在 Gemini 上檢查，再重做 RQ3 封裝。
 - 決策 7 選 A：RQ3 案例設定 `model_context_length: 16384`，實驗室先確認記憶體與速度；選 B：改 `rq3_controls.py` 的彙整內容並補測試。兩者都要重做 RQ3 封裝。
 - 每項決定寫進對應的事前登記草稿，註明決定日期與研究者。

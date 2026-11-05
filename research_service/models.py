@@ -854,9 +854,7 @@ def messages_for(call, report, records, memory, protocol):
             common += (" The Adjudicator must choose Buy or Sell: synthesize what both sides agree the evidence shows "
                        "and pick the direction it supports more; Hold is not available to the Adjudicator.")
         if getattr(protocol, "debate_clash", None):
-            turns = [r["key"] for r in visible_history(call, records, protocol)
-                     if (r.get("output") or {}).get("rebutted_opponent_claim")]
-            common += CLASH_VERDICTS.format(turns=json.dumps(turns))
+            common += CLASH_VERDICTS.format(turns=json.dumps(clash_turns(visible_history(call, records, protocol))))
     # A and every B sample deliberately receive byte-identical prompts and no memory.
     payload = {"report": _compact_report(report),
                "history": _compact_history(visible_history(call, records, protocol), protocol.rationale_chars or 320)}
@@ -884,6 +882,19 @@ CLASH_VERDICTS = (" Clash verdicts: the clash turns are {turns}. Add exactly one
                   "no numbers). Then base your decision on these verdicts and the evidence.")
 
 
+CLASH_VERDICTS_SCHEMA = {"type": "array", "maxItems": 8, "items": {
+    "type": "object", "additionalProperties": False, "required": ["turn", "supports", "reason"],
+    "properties": {"turn": {"type": "string", "maxLength": 60},
+                   "supports": {"type": "string", "enum": ["BULL", "BEAR", "neither"]},
+                   "reason": {"type": "string", "minLength": 1, "maxLength": 240}}}}
+
+
+def clash_turns(records):
+    """Keys of debate turns that quoted and refuted an opposing claim (debate clash)."""
+    return [r["key"] for r in records if r.get("kind") == "debate"
+            and (r.get("output") or {}).get("rebutted_opponent_claim")]
+
+
 def counterpoint_required(protocol, call):
     """strongest_counterpoint is asked of every debate turn, except after round 1 under debate clash."""
     return not (getattr(protocol, "debate_clash", None) and call.round and call.round > 1)
@@ -907,11 +918,7 @@ def output_schema_for(messages):
         # Debate clash after round 1: not asked for, so not offered either (models filled it in).
         del schema["properties"]["strongest_counterpoint"]
     if "Clash verdicts:" in system:
-        schema["properties"]["clash_verdicts"] = {"type": "array", "maxItems": 8, "items": {
-            "type": "object", "additionalProperties": False, "required": ["turn", "supports", "reason"],
-            "properties": {"turn": {"type": "string", "maxLength": 40},
-                           "supports": {"type": "string", "enum": ["BULL", "BEAR", "neither"]},
-                           "reason": {"type": "string", "minLength": 1, "maxLength": 240}}}}
+        schema["properties"]["clash_verdicts"] = deepcopy(CLASH_VERDICTS_SCHEMA)
         schema["required"].append("clash_verdicts")
     if "Keep rationale under 600 characters" in system:
         # v3-1002.3+: 600 is the requested length; reject only clear overruns (Gemini's D switch

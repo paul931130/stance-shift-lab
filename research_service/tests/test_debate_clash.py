@@ -133,7 +133,7 @@ class DebateClashTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 validate_clash_verdicts({"clash_verdicts": bad}, turns)
 
-    def test_rq3_domain_debate_refuses_debate_clash_until_wired(self):
+    def test_rq3_domain_debate_accepts_debate_clash(self):
         import json
         import tempfile
         from pathlib import Path
@@ -144,8 +144,49 @@ class DebateClashTests(unittest.TestCase):
             raw = json.loads(args.cases.read_text(encoding="utf-8"))
             raw["cases"][0]["debate_clash"] = True
             args.cases.write_text(json.dumps(raw), encoding="utf-8")
-            with self.assertRaisesRegex(Exception, "debate_clash"):
-                run(args)
+            manifest = run(args)
+            self.assertEqual(manifest["status"], "offline_prepared")
+            self.assertTrue(manifest["cases"][0]["config"]["protocol"]["debate_clash"])
+
+    def test_domain_judge_rules_on_each_clash_turn(self):
+        from research_service import domain_debate, models
+        p = protocol(debate_clash=True)
+        quoted = {"rationale": "x", "rebutted_opponent_claim": "Revenue declined year over year"}
+        records = [dict(record("c_domain-technical-r2-agent-a", "C", "agent-a", 2, quoted)),
+                   dict(record("c_domain-technical-r1-agent-a", "C", "agent-a", 1, OWN))]
+        settings = domain_debate.settings_from_request({"rule": "fixed", "include_controls": True})
+        messages = domain_debate.view_messages("technical", REPORT, records, p, settings)
+        self.assertIn('the clash turns are ["c_domain-technical-r2-agent-a"]', messages[0]["content"])
+        self.assertIn("clash_verdicts", models.output_schema_for(messages)["required"])
+        plain = domain_debate.view_messages("technical", REPORT, records, protocol(), settings)
+        self.assertNotIn("clash_verdicts", models.output_schema_for(plain)["required"])
+
+    def test_each_domain_turn_is_checked_against_its_own_domain(self):
+        """Regression: run() once read the loop's last records, so every domain saw the last domain."""
+        from unittest.mock import patch
+        from research_service import domain_debate
+        from research_service.domain_debate import DomainDebateEngine, debate_call
+        p = protocol(debate_clash=True)
+        settings = domain_debate.settings_from_request({"rule": "fixed", "include_controls": True})
+        ready, seen = [], {}
+        for domain, text in (("technical", "Momentum turned negative over the last month."),
+                             ("fundamental", "Revenue fell sharply against the prior year.")):
+            records = [{**record(f"c_domain-{domain}-r1-agent-a", "C", "agent-a", 1, OWN), "arm": "C_domain",
+                        "domain": domain},
+                       {**record(f"c_domain-{domain}-r1-agent-b", "C", "agent-b", 1, {"rationale": text}),
+                        "arm": "C_domain", "domain": domain}]
+            call_ = debate_call("C_domain", domain, 2, "agent-a", "BULL")
+            ready.append(("debate", "C_domain", domain, call_, REPORT, [], records))
+
+        def capture(self, protocol_, call_, messages, items, own_round1=None, clash=None, **_):
+            seen[call_.key] = clash[0][0]["rationale"]
+            return {"evidence_ids": []}, {}
+        engine = DomainDebateEngine.__new__(DomainDebateEngine)
+        engine.uses_builtin_provider, engine.parallel_workers, engine.ollama_parallel = False, 2, 1
+        with patch.object(DomainDebateEngine, "_ready", return_value=ready),                 patch.object(DomainDebateEngine, "validated_decision", capture):
+            engine.domain_wave(p, settings, {}, {"domain_records": []})
+        self.assertEqual(seen, {"c_domain-technical-r2-agent-a": "Momentum turned negative over the last month.",
+                                "c_domain-fundamental-r2-agent-a": "Revenue fell sharply against the prior year."})
 
 if __name__ == "__main__":
     unittest.main()
