@@ -133,5 +133,19 @@ class DebateClashTests(unittest.TestCase):
             with self.subTest(bad=bad), self.assertRaises(ValueError):
                 validate_clash_verdicts({"clash_verdicts": bad}, turns)
 
+    def test_rq3_domain_debate_refuses_debate_clash_until_wired(self):
+        import json
+        import tempfile
+        from pathlib import Path
+        from research_service.tests import test_design_pilot
+        from scripts.run_design_pilot import run
+        with tempfile.TemporaryDirectory() as directory:
+            args = test_design_pilot.DesignPilotTests().setup_run(Path(directory), rq3=True)
+            raw = json.loads(args.cases.read_text(encoding="utf-8"))
+            raw["cases"][0]["debate_clash"] = True
+            args.cases.write_text(json.dumps(raw), encoding="utf-8")
+            with self.assertRaisesRegex(Exception, "debate_clash"):
+                run(args)
+
 if __name__ == "__main__":
     unittest.main()

@@ -80,6 +80,10 @@ def prepare(ctx, payload, model_probe=None, route_probe=None):
             raise PreflightError("design_mismatch", "RQ2 模型指派與 RQ3 領域辯論不能在同一個工作同時使用")
         if payload.design != "quarterly":
             raise PreflightError("design_mismatch", "RQ3 領域辯論目前只定義季度設計")
+        if payload.debate_clash:
+            # Domain debates share messages_for but not the clash checks; mixing would leave
+            # C/D checked and C_domain/D_domain unchecked (design decision 6, 2026-11-05).
+            raise PreflightError("design_mismatch", "debate_clash 尚未接到 RQ3 領域辯論，不能和 domain_debate 一起使用")
         try:
             domain_settings = domain_debate.settings_from_request(payload.domain_debate)
         except (TypeError, ValueError) as error:
