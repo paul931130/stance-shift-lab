@@ -136,6 +136,10 @@ class StudyProtocol:
     ollama_parallel: int | None = None
     # Rationale length asked for and shown to later turns (v3-1002.3+: 600; None = the old 320).
     rationale_chars: int | None = None
+    # Debate clash (experimental, 2026-11-05): round roles (opening / rebuttal / closing) and,
+    # from round 2 except the isolated D switch round, a verbatim quote of the counterpart's
+    # latest claim to refute plus a no-restatement check. None/False = the original debate.
+    debate_clash: bool | None = None
 
     def __post_init__(self):
         if self.version not in ("v3-0905.1", "v3-0905.2", "v3-0907.1", "v3-0907.2", "v3-0907.3", "v3-0908.1", "v3-0908.2", "v3-0909.1", "v3-0909.2", "v3-0909.3", "v3-0909.4", "v3-0909.5", "v3-0909.6", "v3-0909.7", "v3-0912.1", "v3-0913.1", "v3-0913.2", "v3-0922.1", "v3-0922.2", "v3-0922.3", "v3-0922.4", "v3-0923.1", "v3-0926.1", "v3-0926.2", "v3-0926.3", "v3-0926.4", "v3-0926.5", "v3-0926.6", "v3-0926.7", "v3-0927.1", "v3-0927.2", "v3-0929.1", "v3-0930.1", "v3-0930.2", "v3-0930.3", "v3-0930.4", "v3-1001.1", "v3-1001.2", "v3-1001.3", "v3-1001.4", "v3-1002.1", "v3-1002.2", QUARTERLY_VERSION, MONTHLY_VERSION, ROUTER_VERSION):
@@ -160,6 +164,8 @@ class StudyProtocol:
                 object.__setattr__(self, "ollama_parallel", 1)
             if not 1024 <= self.model_context_length <= 131072 or not 1 <= self.ollama_parallel <= 8:
                 raise ValueError("model_context_length must be 1024-131072 and ollama_parallel 1-8")
+        if self.debate_clash and self.version not in EVIDENCE_REF_VERSIONS:
+            raise ValueError("debate_clash requires an evidence-reference protocol version (v3-1002.3+)")
         if self.missing_data_policy not in ("allow_decision", "force_no_trade"):
             raise ValueError("Unsupported missing-data policy")
         if self.version == "v3-0905.1" and self.missing_data_policy != "force_no_trade":
@@ -239,6 +245,9 @@ class StudyProtocol:
         for key in ("model_context_length", "ollama_parallel", "rationale_chars"):
             if payload[key] is None:
                 del payload[key]
+        # Protocols without debate clash keep their hashes.
+        if not payload.get("debate_clash"):
+            payload.pop("debate_clash", None)
         # RouterProtocol only: endpoints without their transport URL (see RouterProtocol).
         if payload.get("model_endpoints") is None:
             payload.pop("model_endpoints", None)

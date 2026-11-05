@@ -125,6 +125,22 @@ def date_block_bootstrap(case_contrasts, date_ids, *, block_length=1, replicates
     return {**meta, **rows[0]} if single else {**meta, "contrasts": rows}
 
 
+EQUIVALENCE_MARGINS = {"accuracy": .05, "sharpe": .2}  # design decision 2 (2026-11-05), fixed before results
+
+
+def equivalence(interval90, margin) -> dict:
+    """Secondary TOST: equivalent when the whole 90% interval lies inside (-margin, margin).
+
+    It never enters the Holm family and cannot change the primary conclusion. ``None`` (an
+    endpoint that is not estimable) is reported as such, never as equivalent.
+    """
+    if not interval90:
+        return {"status": "not_estimable", "margin": margin, "equivalent": None}
+    low, high = interval90
+    return {"status": "ok", "role": "secondary_tost_not_in_family", "margin": margin,
+            "confidence_interval_90": [low, high], "equivalent": bool(-margin < low and high < margin)}
+
+
 def block_length_sensitivity(case_contrasts, date_ids, *, block_lengths=(1, 2, 4), **kwargs) -> dict:
     """Repeat :func:`date_block_bootstrap` for several date-block lengths (same seed)."""
     results = {}

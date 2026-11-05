@@ -203,6 +203,8 @@ def _compact_history(records, rationale_chars=320):
                  "strongest_counterpoint": _short_text(output.get("strongest_counterpoint"), 240)}
         if output.get("rebutted_claim"):
             shown["rebutted_claim"] = _short_text(output.get("rebutted_claim"), 240)
+        if output.get("rebutted_opponent_claim"):
+            shown["rebutted_opponent_claim"] = _short_text(output.get("rebutted_opponent_claim"), 240)
         compact.append({"key": record.get("key"), "stance": record.get("stance"), "round": record.get("round"),
                         "output": {key: value for key, value in shown.items() if value is not None}})
     return compact
@@ -810,9 +812,12 @@ def messages_for(call, report, records, memory, protocol):
         "Return one compact JSON object with action (Buy, Hold, Sell), expected_return_pct (-60..60), confidence (0..1), rationale (string), evidence_ids (array of supplied IDs), risks (array of strings), numeric_claims (array; [] when no narrative number is used).")
     if call.kind == "debate":
         required_action = "Buy" if call.stance == "BULL" else "Sell"
+        # Debate clash: from round 2 a debater answers the other side instead of conceding its case.
+        counterpoint = counterpoint_required(protocol, call)
         common += (f" Your assigned debate stance is {call.stance}. Argue this stance using evidence, address counterarguments and disclose uncertainty. "
             f"For this debate turn action MUST be {required_action}; it records the assigned argument rather than the final recommendation. "
-            "Also state strongest_counterpoint: the single strongest evidence-supported argument against your assigned stance. "
+            + ("Also state strongest_counterpoint: the single strongest evidence-supported argument against your assigned stance. "
+               if counterpoint else "") +
             "Your expected_return_pct must have the sign of your assigned stance. Do not answer Hold or NoTrade. "
             f"This is round {call.round} of exactly 3.")
         if call.group == "D" and call.round == SWITCH_ROUND:
@@ -834,6 +839,11 @@ def messages_for(call, report, records, memory, protocol):
                 common += (" rebutted_claim must be copied word for word from your own round-1 rationale, "
                            "strongest_counterpoint or risks; confidence_shift must equal this turn's confidence "
                            "minus your round-1 confidence exactly.")
+        if getattr(protocol, "debate_clash", None):
+            common += CLASH_ROLES.get(call.round, "")
+            if call.round and call.round > 1 and not (call.group == "D" and call.round == SWITCH_ROUND):
+                common += CLASH_TURN.format(previous=call.round - 1,
+                                            opposite="BEAR" if call.stance == "BULL" else "BULL")
     elif call.kind == "adjudication":
         common += (" You are the neutral Adjudicator. Weigh the complete debate without favoring speaker order. "
             "Assigned Bull/Bear counts are not evidence. For each side, check its cited evidence IDs against the evidence list in the report: "
@@ -843,12 +853,51 @@ def messages_for(call, report, records, memory, protocol):
         if protocol.version in EVIDENCE_REF_VERSIONS:
             common += (" The Adjudicator must choose Buy or Sell: synthesize what both sides agree the evidence shows "
                        "and pick the direction it supports more; Hold is not available to the Adjudicator.")
+        if getattr(protocol, "debate_clash", None):
+            common += CLASH_VERDICTS.format(turns=json.dumps(clash_turns(visible_history(call, records, protocol))))
     # A and every B sample deliberately receive byte-identical prompts and no memory.
     payload = {"report": _compact_report(report),
                "history": _compact_history(visible_history(call, records, protocol), protocol.rationale_chars or 320)}
     if call.kind == "adjudication":
         payload["matured_same_group_memory"] = _compact_memory(memory)
     return [{"role": "system", "content": common}, {"role": "user", "content": json.dumps(payload, ensure_ascii=False, sort_keys=True)}]
+
+
+CLASH_ROLES = {
+    1: " Round role: OPENING. Build your strongest evidence-based case for your assigned stance.",
+    2: " Round role: REBUTTAL. Your job this round is to answer the other side, not to repeat your case.",
+    3: " Round role: CLOSING. Answer the other side's latest turn, then explain why your side's evidence "
+       "outweighs theirs.",
+}
+CLASH_TURN = (" Clash turn: the history shows earlier turns that argued {opposite}, the stance you now oppose "
+              "(the latest is round {previous}). In rebutted_opponent_claim, copy word for word one claim from the "
+              "rationale field of one of those turns, preferably the latest: one sentence, or a contiguous part of "
+              "a long sentence, at most 200 characters. Do not quote strongest_counterpoint, risks or "
+              "rebutted_opponent_claim. Use your rationale to refute that claim with cited evidence. Do not restate "
+              "your previous rationale; give reasoning you have not given before.")
+CLASH_SIMILARITY_LIMIT = 0.8
+CLASH_VERDICTS = (" Clash verdicts: the clash turns are {turns}. Add exactly one item per turn to "
+                  "clash_verdicts with turn (that key, copied exactly), supports (BULL, BEAR or neither: "
+                  "which side the cited evidence supports on that quoted claim) and reason (one short sentence, "
+                  "no numbers). Then base your decision on these verdicts and the evidence.")
+
+
+CLASH_VERDICTS_SCHEMA = {"type": "array", "maxItems": 8, "items": {
+    "type": "object", "additionalProperties": False, "required": ["turn", "supports", "reason"],
+    "properties": {"turn": {"type": "string", "maxLength": 60},
+                   "supports": {"type": "string", "enum": ["BULL", "BEAR", "neither"]},
+                   "reason": {"type": "string", "minLength": 1, "maxLength": 240}}}}
+
+
+def clash_turns(records):
+    """Keys of debate turns that quoted and refuted an opposing claim (debate clash)."""
+    return [r["key"] for r in records if r.get("kind") == "debate"
+            and (r.get("output") or {}).get("rebutted_opponent_claim")]
+
+
+def counterpoint_required(protocol, call):
+    """strongest_counterpoint is asked of every debate turn, except after round 1 under debate clash."""
+    return not (getattr(protocol, "debate_clash", None) and call.round and call.round > 1)
 
 
 def output_schema_for(messages):
@@ -860,19 +909,31 @@ def output_schema_for(messages):
     if "action MUST be Buy" in system:
         schema["properties"]["action"]["enum"] = ["Buy"]
         schema["properties"]["expected_return_pct"] = {"type": "number", "exclusiveMinimum": 0, "maximum": 60}
-        schema["required"].append("strongest_counterpoint")
     elif "action MUST be Sell" in system:
         schema["properties"]["action"]["enum"] = ["Sell"]
         schema["properties"]["expected_return_pct"] = {"type": "number", "minimum": -60, "exclusiveMaximum": 0}
+    if "Also state strongest_counterpoint" in system:
         schema["required"].append("strongest_counterpoint")
+    elif "Round role:" in system:
+        # Debate clash after round 1: not asked for, so not offered either (models filled it in).
+        del schema["properties"]["strongest_counterpoint"]
+    if "Clash verdicts:" in system:
+        schema["properties"]["clash_verdicts"] = deepcopy(CLASH_VERDICTS_SCHEMA)
+        schema["required"].append("clash_verdicts")
     if "Keep rationale under 600 characters" in system:
         # v3-1002.3+: 600 is the requested length; reject only clear overruns (Gemini's D switch
         # turn went past 700 three times). Later turns still see 600 characters of it.
         schema["properties"]["rationale"] = {"type": "string", "maxLength": 1500}
     if "The Adjudicator must choose Buy or Sell" in system:
         schema["properties"]["action"]["enum"] = ["Buy", "Sell"]
+    if "Clash turn:" in system:
+        # 200 characters are asked for; a whole long sentence copied verbatim is still accepted.
+        schema["properties"]["rebutted_opponent_claim"] = {"type": "string", "minLength": 1, "maxLength": 400}
+        schema["required"].append("rebutted_opponent_claim")
     if "role-switch round" in system:
-        schema["properties"]["rebutted_claim"] = {"type": "string", "minLength": 1, "maxLength": 240}
+        # Debate clash allows a long round-1 sentence copied whole, as for rebutted_opponent_claim.
+        schema["properties"]["rebutted_claim"] = {"type": "string", "minLength": 1,
+                                                  "maxLength": 400 if "Round role:" in system else 240}
         schema["properties"]["confidence_shift"] = {"type": "number", "minimum": -1, "maximum": 1}
         schema["required"] += ["rebutted_claim", "confidence_shift"]
     return schema
@@ -1066,7 +1127,8 @@ def generate(protocol, messages, seed=None, temperature=None):
 
 
 def validate_decision(result, evidence, call=None, context=None, redact_numbers=False, claim_bound=False,
-                      strict=False, own_round1=None, canonical=None, adjudicator_commits=False):
+                      strict=False, own_round1=None, canonical=None, adjudicator_commits=False, clash=None,
+                      counterpoint=True, verdict_turns=None):
     allowed_actions = ("Buy", "Hold", "Sell")
     if call is not None and call.kind == "debate":
         allowed_actions = ("Buy",) if call.stance == "BULL" else ("Sell",)
@@ -1093,7 +1155,8 @@ def validate_decision(result, evidence, call=None, context=None, redact_numbers=
     if not isinstance(result.get("risks"), list) or not all(isinstance(x, str) for x in result["risks"]):
         raise ValueError("模型 risks 格式不正確")
     if call is not None and call.kind == "debate":
-        if not isinstance(result.get("strongest_counterpoint"), str) or not result["strongest_counterpoint"].strip():
+        if counterpoint and (not isinstance(result.get("strongest_counterpoint"), str)
+                             or not result["strongest_counterpoint"].strip()):
             raise ValueError("辯論代理人未提供 strongest_counterpoint")
         if (call.stance == "BULL" and expected_return <= 0) or (call.stance == "BEAR" and expected_return >= 0):
             raise ValueError("辯論 expected_return_pct 與指派立場不一致")
@@ -1107,6 +1170,10 @@ def validate_decision(result, evidence, call=None, context=None, redact_numbers=
                 raise ValueError("角色交換輪缺少自己第 1 輪歷史；不能驗證 rebutted_claim")
             if strict and own_round1 is not None:
                 validate_self_rebuttal(result, own_round1)
+        if clash is not None:
+            validate_clash(result, *clash)
+    if verdict_turns is not None:
+        validate_clash_verdicts(result, verdict_turns)
     cited = set(result["evidence_ids"])
     if claim_bound:
         validate_numeric_claims(result, evidence, redact=redact_numbers, strict=strict, canonical=canonical)
@@ -1148,6 +1215,41 @@ def validate_self_rebuttal(result, own_round1, shift_tolerance=0.05):
         if abs(result["confidence_shift"] - actual) > shift_tolerance + 1e-9:
             result["confidence_shift_reported"] = result["confidence_shift"]
             result["confidence_shift"] = actual
+
+
+def validate_clash(result, opposing_turns, own_previous):
+    """Debate clash: quote an earlier opposing-stance claim and do not restate one's own last turn."""
+    from difflib import SequenceMatcher
+    quote = result.get("rebutted_opponent_claim")
+    claim = _words(quote)
+    letters = re.findall(r"[^\W\d_]", str(quote or ""), re.UNICODE)
+    if not isinstance(quote, str) or len(claim) < 3 or len(letters) < 12:
+        raise ValueError("rebutted_opponent_claim must quote one recognizable claim (a sentence, not a fragment) "
+                         "from the rationale of an earlier opposing-stance turn")
+    if isinstance(opposing_turns, dict):
+        opposing_turns = [opposing_turns]
+    best = 0
+    for turn in opposing_turns:
+        prose = _words(turn.get("rationale", ""))
+        best = max(best, SequenceMatcher(None, claim, prose, autojunk=False)
+                   .find_longest_match(0, len(claim), 0, len(prose)).size)
+    if best < max(3, round(0.7 * len(claim))):
+        raise ValueError(f"rebutted_opponent_claim {str(quote)[:90]!r} is not in the rationale of any earlier "
+                         "opposing-stance turn; copy one of its claims word for word (at least 70% of its words "
+                         "in one run)")
+    mine, before = str(result.get("rationale", "")).lower(), str(own_previous.get("rationale", "")).lower()
+    if before and SequenceMatcher(None, mine, before, autojunk=False).ratio() >= CLASH_SIMILARITY_LIMIT:
+        raise ValueError("rationale restates your previous turn; refute the quoted claim with new reasoning")
+
+
+def validate_clash_verdicts(result, turns):
+    """The Adjudicator rules on every clash turn it saw, exactly once."""
+    verdicts = result.get("clash_verdicts")
+    if not isinstance(verdicts, list):
+        raise ValueError("clash_verdicts must list one verdict per clash turn")
+    named = [item.get("turn") for item in verdicts if isinstance(item, dict)]
+    if sorted(named) != sorted(turns):
+        raise ValueError(f"clash_verdicts must name each of these turns exactly once: {sorted(turns)}")
 
 
 def validate_research(result, evidence, domain, claim_bound=False, strict=False, redact=False, canonical=None):

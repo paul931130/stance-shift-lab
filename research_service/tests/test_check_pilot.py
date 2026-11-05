@@ -58,7 +58,7 @@ class CheckPilotTests(unittest.TestCase):
                 for target in (output, output / "data"):
                     result = check_pilot.check_pilot(target)
                     self.assertTrue(result["passed"], result["checks"])
-                    self.assertEqual(len(result["checks"]), 8)
+                    self.assertEqual(len(result["checks"]), 10)
                 statuses = self.statuses(output)
                 self.assertEqual(statuses["c_budget_aggregation_prompt_not_truncated"],
                                  "pass" if rq3 else "not_applicable")
@@ -121,6 +121,22 @@ class CheckPilotTests(unittest.TestCase):
             mutate(output, lambda c, s: s["records"][0]["audit"].update(numeric_redaction=["12.3"]))
             self.assertEqual(self.failing(output), ["no_citation_schema_namespace_failures_or_degradation"])
 
+    def test_debate_engagement_is_reported_not_failed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.build(directory, False)
+            def repeat(config, state):
+                records = {r["key"]: r for r in state["records"]}
+                for key, record in records.items():
+                    if "-r3-" in key and key.startswith("c"):
+                        record["output"]["rationale"] = records[key.replace("-r3-", "-r2-")]["output"]["rationale"]
+            mutate(output, repeat)
+            result = check_pilot.check_pilot(output)
+            self.assertTrue(result["passed"], result["checks"])
+            item = next(c for c in result["checks"] if c["check"] == "debate_engagement")
+            self.assertEqual(item["status"], "info")
+            self.assertEqual(item["c_round3"]["identical"], 1.0)
+            self.assertIn("RQ1 reference", item["detail"])
+
     def test_budget_prompt_at_context_limit_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             output = self.build(directory, True)
@@ -128,7 +144,32 @@ class CheckPilotTests(unittest.TestCase):
                 final = next(r for r in state["control_records"] if r["key"] == "c-budget-final")
                 final["audit"]["usage"]["prompt_tokens"] = 8192
             mutate(output, fill)
-            self.assertEqual(self.failing(output), ["c_budget_aggregation_prompt_not_truncated"])
+            self.assertEqual(self.failing(output), ["all_prompts_within_context",
+                                                    "c_budget_aggregation_prompt_not_truncated"])
+
+    def test_any_ollama_prompt_at_context_limit_fails(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.build(directory, False)
+            ok = next(c for c in check_pilot.check_pilot(output)["checks"] if c["check"] == "all_prompts_within_context")
+            self.assertEqual(ok["status"], "pass", ok)
+            def fill(config, state):
+                judge = next(r for r in state["records"] if r["kind"] == "adjudication")
+                judge["audit"]["usage"]["prompt_tokens"] = 6144
+            mutate(output, fill)
+            self.assertEqual(self.failing(output), ["all_prompts_within_context"])
+            def cloud(config, state):
+                config["protocol"]["model"] = "gemini/test"
+                audits = [r.get("audit") or {} for r in state["records"]]
+                audits += [item.get("audit") or {} for item in (state.get("research") or {}).values()
+                           if isinstance(item, dict)]
+                for audit in audits:
+                    if "model" in audit:
+                        audit["model"] = "gemini/test"
+                    if isinstance(audit.get("model_route"), dict):
+                        audit["model_route"]["model"] = "gemini/test"
+            mutate(output, cloud)
+            item = next(c for c in check_pilot.check_pilot(output)["checks"] if c["check"] == "all_prompts_within_context")
+            self.assertEqual(item["status"], "info", item)
 
     def test_missing_usage_and_pending_memory_fail(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -139,6 +180,24 @@ class CheckPilotTests(unittest.TestCase):
             output = self.build(directory, False)
             mutate(output, lambda c, s: s["memory_audit"].update(pending_earlier_cases=["2024-01-02"]))
             self.assertEqual(self.failing(output), ["memory_no_pending_earlier_cases"])
+
+    def test_failed_attempt_without_response_needs_no_tokens(self):
+        def with_attempt(error_type):
+            def change(config, state):
+                audit = state["records"][0]["audit"]
+                audit["attempts"] = [{"attempt": 1, "status": "failed", "error_type": error_type,
+                                      "usage": {"client_elapsed_seconds": 1.3}},
+                                     {"attempt": 2, "status": "complete", "usage": dict(audit["usage"])}]
+                audit["provider_attempts"] = 2
+            return change
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.build(directory, False)
+            mutate(output, with_attempt("ServiceUnavailableError"))
+            self.assertEqual(self.failing(output), [])
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.build(directory, False)
+            mutate(output, with_attempt("ValidationError"))  # a response came back: its tokens must be recorded
+            self.assertEqual(self.failing(output), ["tokens_retries_latency_recorded"])
 
     def test_cli_exit_codes_output_file_and_wal_refusal(self):
         with tempfile.TemporaryDirectory() as directory:

@@ -1,5 +1,7 @@
 # RQ2 事前登記草稿：異質模型辯論（qwen3:32b × 模型 B）
 
+> 2026-11-05 設計決策（研究者依[設計決策表](design-decisions-20261105.md)的建議採用，**待指導教授確認**）：辯論改用交鋒機制 `debate_clash`（立論／反駁／結辯，第 2 輪起逐字引用並反駁對立立場的一個主張、不能重講自己上一輪、不再要求 `strongest_counterpoint`，裁決者對每個交鋒回合給 `clash_verdicts`）；次要分析加等效檢定（準確率差 ±5 個百分點、Sharpe 差 ±0.2，90% 信賴區間完全落在邊界內才算等效，不進 Holm family）；區塊長度敏感性照原計畫；正式分析另加排除 27 個開發案例的敏感性分析（[development-cases-20261105.md](development-cases-20261105.md)）。封裝中每個 RQ2 案例都設定 `debate_clash: true`、上下文維持 8192。
+
 > 2026-10-15：本文件下方是舊草稿。依 v7，BB 已改為必要組、每條件至少三個 seed；Model Router 已實作。舊單種子預算、optional BB 與待開發描述均不可當成現在的正式方案。兩個 homo baseline 的推論、seed 與多重檢定規則須在新版登記中一併鎖定。見 [研究狀態](../research-status.md)。
 
 > **草稿，尚未登記，尚未執行任何案例。** 標示【待鎖定】的項目要由研究者決定，決定後才能凍結協議、建置映像、重算 hash 並正式登記。正式登記後，本文件只能追加「偏離說明」，不能改寫規則。格式比照 `docs/e2prime-preregistration.md`。

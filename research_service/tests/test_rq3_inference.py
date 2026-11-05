@@ -40,6 +40,8 @@ class RQ3InferenceTests(unittest.TestCase):
         result = infer_panel(panel, date_block_length=1, daily_block_length=10, replicates=199)
         self.assertEqual(result["n_cases"], 20)
         self.assertEqual(len(result["family"]), 6)
+        self.assertEqual({arm: sorted(result["contrasts"][arm]["equivalence"]) for arm in BASELINES},
+                         {arm: ["accuracy", "sharpe"] for arm in BASELINES})
         for arm in BASELINES:
             expected = sum(int(j["state"]["cases"][1]["correct"])
                            - int(j["state"]["cases"][ARMS.index(arm)]["correct"]) for j in jobs) / len(jobs)

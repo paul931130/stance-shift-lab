@@ -62,6 +62,7 @@ class MonthlyProtocolTests(unittest.TestCase):
         protocol = StudyProtocol()
         legacy = dataclasses.asdict(protocol)
         del legacy["design"]
+        del legacy["debate_clash"]  # added 2026-11-05; off (None) is left out of the hash as well
         from research_service.protocol import prompt_source_digest
         legacy["prompt_source"] = prompt_source_digest()  # v3-1002.3+: prompt code is hashed too
         expected = hashlib.sha256(json.dumps(legacy, sort_keys=True, separators=(",", ":")).encode()).hexdigest()

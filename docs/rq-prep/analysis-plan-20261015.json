@@ -14,6 +14,8 @@
   "pilot_cases": 3,
   "model_context_length": 8192,
   "ollama_parallel": 1,
+  "debate_clash": true,
+  "rq3_model_context_length": 16384,
   "analysis": {
     "alpha": 0.05,
     "date_block_length": 2,
@@ -48,7 +50,19 @@
     "horizon": 60,
     "cost_model": "corwin_schultz",
     "family_rule": "joint_holm_two_sided_alpha_0.05",
-    "superiority_rule": "Both primary endpoint estimates must be positive and all corresponding Holm p-values < alpha; report each named baseline without selecting the better one."
+    "superiority_rule": "Both primary endpoint estimates must be positive and all corresponding Holm p-values < alpha; report each named baseline without selecting the better one.",
+    "equivalence": {
+      "role": "secondary_tost_not_in_holm_family",
+      "confidence_level": 0.9,
+      "accuracy_margin": 0.05,
+      "sharpe_margin": 0.2,
+      "rule": "Equivalent only when the whole 90% interval lies strictly inside (-margin, margin); margins fixed 2026-11-05 before any formal result and never adjusted afterwards."
+    },
+    "exploratory": [
+      "debate_engagement_manipulation_check: C/D round-3 self-similarity, quoted opponent share and opponent-evidence uptake (check_pilot.py debate_engagement)",
+      "clash_verdict_alignment: whether the Adjudicator's decision follows the majority of its clash_verdicts, and accuracy when it does",
+      "development_case_sensitivity: primary results recomputed without the 27 cases in docs/rq-prep/development-cases-20261105.md"
+    ]
   },
   "failure_policy": {
     "stop_entire_registered_protocol_on_paused_or_cancelled": true,
@@ -80,5 +94,10 @@
   "seed_scope": {
     "formal_seeds": "RQ2 only; average within case before inference",
     "rq3_inference_seed": "RQ3 single protocol; no multi-seed pooling"
+  },
+  "design_decisions": {
+    "source": "docs/rq-prep/design-decisions-20261105.md",
+    "adopted": "1A 2B 3-keep 4C 5B 6A 7A",
+    "adopted_by": "researcher on 2026-11-05, pending advisor confirmation"
   }
 }

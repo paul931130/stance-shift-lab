@@ -5,7 +5,7 @@ experiment and does not merge protocol hashes on its own.
 """
 import numpy as np
 
-from .rq_analysis import date_block_bootstrap, sharpe_combination_test
+from .rq_analysis import EQUIVALENCE_MARGINS, date_block_bootstrap, equivalence, sharpe_combination_test
 from .rq_study import matched_seed_inputs
 from .statistics import holm_adjust
 
@@ -26,6 +26,8 @@ def rq2_repeated_inference(correct_by_seed, dates_by_seed, returns_by_seed, trad
     # The same date draw is used for every seed, stock, arm and baseline.
     accuracy = date_block_bootstrap(per_seed.mean(axis=0), frame["date_ids"],
                                     block_length=date_block_length, replicates=replicates, seed=bootstrap_seed)
+    accuracy90 = date_block_bootstrap(per_seed.mean(axis=0), frame["date_ids"], block_length=date_block_length,
+                                      replicates=replicates, seed=bootstrap_seed, alpha=.10)
     reference_days = list(trading_dates_by_seed[seeds[0]])
     if not reference_days or reference_days != sorted(set(reference_days)):
         raise ValueError("Trading days must be unique and sorted")
@@ -69,7 +71,17 @@ def rq2_repeated_inference(correct_by_seed, dates_by_seed, returns_by_seed, trad
         observed_sharpe = [value for value in seed_sharpe.values() if value is not None]
         sharpe_sd = (float(np.std(observed_sharpe, ddof=1))
                      if len(observed_sharpe) == len(seeds) and len(observed_sharpe) >= 2 else None)
+        try:
+            sharpe90 = sharpe_combination_test(daily, (1., -1., -1., 1.), block_length=daily_block_length,
+                                               replicates=replicates, seed=bootstrap_seed, alpha=.10)
+        except ValueError:
+            sharpe90 = {}
         contrasts[baseline] = {"accuracy": acc, "sharpe": sharpe,
+                               "equivalence": {
+                                   "accuracy": equivalence(accuracy90["contrasts"][index]["confidence_interval"],
+                                                           EQUIVALENCE_MARGINS["accuracy"]),
+                                   "sharpe": equivalence(sharpe90.get("confidence_interval"),
+                                                         EQUIVALENCE_MARGINS["sharpe"])},
                                "seed_accuracy_interactions": dict(zip(seeds, by_seed.tolist())),
                                "seed_accuracy_sd": float(by_seed.std(ddof=1)),
                                "seed_sharpe_interactions": seed_sharpe,

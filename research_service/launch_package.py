@@ -21,6 +21,9 @@ DEFAULT_PLAN = {
     "formal_seeds": [905, 906, 907], "rq3_inference_seed": 905,
     "report_bank_seed": 904, "pilot_cases": 3,
     "model_context_length": 8192, "ollama_parallel": 1,
+    # Design decisions 5-7 (2026-11-05): debate clash in RQ2 and RQ3; RQ3 (qwen only) uses a
+    # 16384 context so the C_budget aggregation of 28 proposals is not truncated.
+    "debate_clash": True, "rq3_model_context_length": 16384,
     "analysis": {"alpha": 0.05, "date_block_length": 2, "daily_block_length": 20,
                  "replicates": 1999, "bootstrap_seed": 905,
                  "rq2_family": RQ2_FAMILY, "rq3_family": RQ3_FAMILY},
@@ -49,7 +52,8 @@ def validate_plan(plan):
     plan = dict(plan)
     plan.setdefault("rq3_inference_seed", 905)
     _no_secrets(plan)
-    for key in ("model_a", "model_b", "model_context_length", "ollama_parallel"):
+    for key in ("model_a", "model_b", "model_context_length", "ollama_parallel", "debate_clash",
+                "rq3_model_context_length"):
         if plan.get(key) != DEFAULT_PLAN[key]:
             raise ValueError(f"Plan {key} must match the fixed design")
     seeds = plan.get("formal_seeds")
@@ -132,14 +136,15 @@ def _rq2_case(case, plan, endpoints, seed):
             "model": plan["model_a"], "inference_seed": seed,
             "model_context_length": plan["model_context_length"], "ollama_parallel": plan["ollama_parallel"],
             "debate_model_a": plan["model_a"], "debate_model_b": plan["model_b"],
-            "debate_assignments": ["AA", "AB", "BA", "BB"],
+            "debate_assignments": ["AA", "AB", "BA", "BB"], "debate_clash": plan["debate_clash"],
             "model_endpoints": endpoints}
 
 
 def _rq3_case(case, plan, seed):
     return {"dataset_id": case["dataset_id"], "analysis_date": case["analysis_date"],
             "model": plan["model_a"], "inference_seed": seed,
-            "model_context_length": plan["model_context_length"], "ollama_parallel": plan["ollama_parallel"],
+            "model_context_length": plan["rq3_model_context_length"], "ollama_parallel": plan["ollama_parallel"],
+            "debate_clash": plan["debate_clash"],
             "domain_debate": {"rq3_version": "rq3-1015.1", "rule": "fixed", "include_controls": True}}
 
 

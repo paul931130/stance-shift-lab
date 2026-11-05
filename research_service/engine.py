@@ -16,10 +16,10 @@ from .backtest import evaluate
 from .breaker import is_provider_failure
 from .data import digest, research_inputs
 from . import model_router
-from .models import (alias_messages, compact_research_evidence, evidence_aliases, generate,
+from .models import (alias_messages, compact_research_evidence, counterpoint_required, evidence_aliases, generate,
                      prompt_text, unalias_evidence_ids, unsupported_numbers, validate_decision, validate_research)
 from .protocol import (CANONICAL_CLAIM_VERSIONS, DOMAIN_NAMES, EVIDENCE_REF_VERSIONS, NUMERIC_CLAIM_VERSIONS,
-                       STRICT_VALIDATION_VERSIONS, decision_plan, decision_wave, same_arm,
+                       STRICT_VALIDATION_VERSIONS, decision_plan, decision_wave, is_switched, same_arm,
                        protocol_from, protocol_is_current, protocol_matches_fingerprint, temperature_for)
 from .storage import now
 from .model_identity import (ModelIdentityError, ModelIdentityMismatch, ModelIdentityUnavailable,
@@ -275,6 +275,34 @@ def completeness_diagnostic(records, protocol):
                         "mean_novelty_rate": average(control_pairs)}}
 
 
+def clash_context(protocol, call, records):
+    """(opposing outputs, own previous-round output) for a debate-clash turn, else None.
+
+    Opposing turns are every earlier turn that argued the other stance: the counterpart's turns in
+    C; in D round 3 also the agent's own switched round-2 turn (the counterpart argued the same
+    side then). A closing may answer any of them, not only the latest.
+    """
+    if (not getattr(protocol, "debate_clash", None) or call.kind != "debate" or not call.round
+            or call.round < 2 or is_switched(protocol, call)):
+        return None
+    earlier = [r for r in records if same_arm(r, call) and r.get("kind") == "debate"
+               and (r.get("round") or 0) < call.round]
+    opposing = [r.get("output", {}) for r in sorted(earlier, key=lambda r: r["round"])
+                if r.get("stance") != call.stance]
+    own = next((r for r in earlier if r.get("agent") == call.agent and r.get("round") == call.round - 1), None)
+    if not any(r.get("round") == call.round - 1 and r.get("stance") != call.stance for r in earlier) or own is None:
+        raise ValueError("debate clash turn is missing the previous round")
+    return opposing, own.get("output", {})
+
+
+def clash_verdict_turns(protocol, call, records):
+    """Keys of the clash turns the Adjudicator must rule on, else None (no debate clash)."""
+    if not getattr(protocol, "debate_clash", None) or call.kind != "adjudication":
+        return None
+    return [r["key"] for r in records if same_arm(r, call) and r.get("kind") == "debate"
+            and (r.get("output") or {}).get("rebutted_opponent_claim")]
+
+
 def validation_hint(error):
     """What a retry prompt says about a rejected answer.
 
@@ -360,7 +388,7 @@ class Engine:
         audit.setdefault("temperature", protocol.temperature if temperature is None else temperature)
         return result, audit
 
-    def validated_decision(self, protocol, call, messages, evidence, own_round1=None):
+    def validated_decision(self, protocol, call, messages, evidence, own_round1=None, clash=None, verdict_turns=None):
         """Generate one decision, retrying only an auditable validation rejection.
 
         Provider transport and JSON failures remain the provider's responsibility.
@@ -390,7 +418,9 @@ class Engine:
                 result = validate_decision(result, decision_evidence, call, prompt_text(messages),
                                            claim_bound=claim_bound, strict=strict, own_round1=own_round1,
                                            canonical=protocol.version in CANONICAL_CLAIM_VERSIONS,
-                                           adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS)
+                                           adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS,
+                                           clash=clash, counterpoint=counterpoint_required(protocol, call),
+                                           verdict_turns=verdict_turns)
                 audit = dict(audit)
                 audit["validation_retries"] = validation_failures
                 return result, audit
@@ -421,7 +451,9 @@ class Engine:
                                                      prompt_text(messages), redact_numbers=True,
                                                      claim_bound=claim_bound, strict=strict, own_round1=own_round1,
                                                      canonical=protocol.version in CANONICAL_CLAIM_VERSIONS,
-                                                     adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS)
+                                                     adjudicator_commits=protocol.version in EVIDENCE_REF_VERSIONS,
+                                                     clash=clash, counterpoint=counterpoint_required(protocol, call),
+                                                     verdict_turns=verdict_turns)
                         except (ValueError, JsonSchemaValidationError, TypeError) as other:
                             # Numbers were not the only defect (e.g. an invented evidence ID):
                             # retry for that defect instead of failing the step.
@@ -802,7 +834,9 @@ class Engine:
                 # The D switch round is checked against what this same agent wrote in round 1.
                 own = next((r for r in snapshot if same_arm(r, call) and r.get("agent") == call.agent
                             and r.get("round") == 1 and r["kind"] == "debate"), None) if call.kind == "debate" else None
-                return self.validated_decision(protocol, call, messages, state["report"]["evidence"], own_round1=own)
+                return self.validated_decision(protocol, call, messages, state["report"]["evidence"], own_round1=own,
+                                               clash=clash_context(protocol, call, snapshot),
+                                               verdict_turns=clash_verdict_turns(protocol, call, snapshot))
 
             # Ollama defaults to a single runner.  Sending a whole wave at
             # once makes queued CPU requests outlive the runner keep-alive and

@@ -33,6 +33,18 @@ class RepeatedInferenceTests(unittest.TestCase):
         self.assertEqual(result["contrasts"]["AA"]["seed_accuracy_sd"], 0)
         self.assertEqual(result["contrasts"]["AA"]["seed_sharpe_sd"], 0)
         self.assertEqual(result["contrasts"]["AA"]["seed_sharpe_observed_count"], 3)
+        tost = result["contrasts"]["AA"]["equivalence"]["accuracy"]
+        narrow = date_block_bootstrap(contrast, [dates[905][k] for k in ids], replicates=199, alpha=.10)
+        self.assertEqual(tost["confidence_interval_90"], narrow["confidence_interval"])
+        self.assertEqual(tost["margin"], .05)
+        self.assertIn(result["contrasts"]["BB"]["equivalence"]["sharpe"]["status"], ("ok", "not_estimable"))
+
+    def test_equivalence_needs_the_whole_interval_inside_the_margin(self):
+        from research_service.rq_analysis import equivalence
+        self.assertTrue(equivalence([-.04, .03], .05)["equivalent"])
+        self.assertFalse(equivalence([-.07, .003], .05)["equivalent"])  # RQ1-like: lower bound below -5 pp
+        self.assertFalse(equivalence([-.05, .01], .05)["equivalent"])
+        self.assertIsNone(equivalence(None, .2)["equivalent"])
 
     def test_seed_sharpe_interactions_match_hand_calculation(self):
         values, dates, returns, days = self.fixture()

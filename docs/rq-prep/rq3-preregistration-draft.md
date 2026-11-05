@@ -1,5 +1,7 @@
 # RQ3 事前登記草稿：領域分工辯論（Domain-Specialized Debate）
 
+> 2026-11-05 設計決策（研究者依[設計決策表](design-decisions-20261105.md)的建議採用，**待指導教授確認**）：辯論改用交鋒機制 `debate_clash`（立論／反駁／結辯，第 2 輪起逐字引用並反駁對立立場的一個主張、不能重講自己上一輪、不再要求 `strongest_counterpoint`，裁決者對每個交鋒回合給 `clash_verdicts`）；次要分析加等效檢定（準確率差 ±5 個百分點、Sharpe 差 ±0.2，90% 信賴區間完全落在邊界內才算等效，不進 Holm family）；區塊長度敏感性照原計畫；正式分析另加排除 27 個開發案例的敏感性分析（[development-cases-20261105.md](development-cases-20261105.md)）。RQ3 另外：**決策 1A**，只跑固定立場（C、C_domain、C_budget、C_partition），研究問題改述為「領域分工架構相對於通才、同算力、同資訊切分的差異」，**不檢驗立場交換**，資訊異質性的 2×2 列為後續研究；**決策 6A**，通才組與領域辯論都用交鋒機制，領域裁判也要逐條判定；**決策 7A**，RQ3 只用 qwen3:32b，上下文改為 16384，讓 C_budget 彙整 28 份提案時不被截斷（實驗室 pilot 要確認記憶體與速度）。
+
 > **草稿，尚未作為新版正式登記或產出正式結果。** 2026-10-15 更新：Domain Debate Module 與 Final Aggregator 已實作且有合成測試；下方保留舊方案選項與預算。v7 主要比較限定固定立場、每領域另有 View judge（29 呼叫），並要求資源對齊通才、資訊切分不辯論兩項對照；舊 V=0 與 optional control 建議不能直接作正式方案。`views` 實際仍提供 View 引用的 evidence 與基準率，全無引用時會退回全證據，須納入新版規則。見 [研究狀態](../research-status.md)。正式登記後只追加偏離說明。
 
 ## 研究問題

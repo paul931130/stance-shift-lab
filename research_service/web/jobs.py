@@ -90,7 +90,7 @@ def prepare(ctx, payload, model_probe=None, route_probe=None):
         missing_data_policy=payload.missing_data_policy,
         allow_point_fundamental=payload.allow_point_fundamental,
         allow_small_model=payload.allow_small_model,
-        **{key: value for key in ("model_context_length", "ollama_parallel")
+        **{key: value for key in ("model_context_length", "ollama_parallel", "debate_clash")
            if (value := getattr(payload, key, None)) is not None}, **router_fields)
     if protocol.sentiment_indicators and data.get("kind") == "historical" and rules.get("news_item_limit") != "uncapped":
         raise PreflightError("news_capped", "此資料集的新聞在蒐集時被截斷（每來源最多 50 筆）；v3-0930 之後的協議需要窗口內的全部標題，"
@@ -207,7 +207,8 @@ def clone_request(ctx, original):
         missing_data_policy=p.get("missing_data_policy", "allow_decision"),
         allow_point_fundamental=allow_point_fundamental,
         allow_small_model=allow_small, allow_low_quality_sentiment=allow_low_quality,
-        **{key: p[key] for key in ("debate_model_a", "debate_model_b", "debate_assignments", "model_endpoints")
+        **{key: p[key] for key in ("debate_model_a", "debate_model_b", "debate_assignments", "model_endpoints",
+                                   "debate_clash")
            if p.get(key) is not None},
         **({"domain_debate": old["domain_debate"]} if old.get("domain_debate") is not None else {}))
     migration = ({"from_protocol_version": p.get("version", "unknown"),
