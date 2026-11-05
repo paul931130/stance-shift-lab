@@ -6,7 +6,9 @@ section 3. Read-only: the SQLite file is opened with mode=ro and a leftover -wal
 No model, network or GPU is touched.
 
 Example: python scripts/check_pilot.py work/pilot-rq2 [--output work/pilot-rq2-check.json]
-Exit code 0 only if every check passes (not_applicable does not fail).
+Exit code 0 only if every check passes (not_applicable and info do not fail).
+Unbound numbers that the protocol keeps on record (accepted_as_output, unsupported_numbers)
+are reported as a rate (info), not as a failure.
 """
 import argparse
 from contextlib import closing
@@ -26,6 +28,9 @@ RQ2_ASSIGNMENTS = ("AA", "AB", "BA", "BB")
 DEFAULT_CONTEXT = 8192
 FORMAL_CASES = 180
 MAX_DETAIL = 6
+# Reference rate: share of model calls whose output was kept with unbound numbers on record,
+# counted on the complete jobs of work/preformal-20261017/rq1-source-backup.sqlite3 (2026-11-05).
+REFERENCE_UNBOUND = (2940, 9702)
 
 
 def find_database(path):
@@ -185,17 +190,37 @@ def check_failures_and_degradation(jobs, degraded_rows):
             output, audit = record.get("output") or {}, record.get("audit") or {}
             if output.get("invalid_evidence_ids"):
                 problems.append(f"{tag}/{key}: invalid evidence ids (citation/namespace)")
+            # Removing numbers changes the output: a failure. Keeping unbound numbers on record
+            # is protocol behaviour and is reported by check_unbound_numbers instead.
             if (output.get("redacted_numbers") or output.get("numeric_claims_removed")
-                    or audit.get("numeric_redaction") or audit.get("unsupported_numbers")):
-                problems.append(f"{tag}/{key}: numeric redaction/unsupported numbers")
+                    or audit.get("numeric_redaction")):
+                problems.append(f"{tag}/{key}: numeric redaction")
             if audit.get("fallback"):
                 problems.append(f"{tag}/{key}: audit fallback {audit['fallback']!r}")
-            if any(item.get("accepted_as_output") for item in audit.get("validation_retries") or []):
-                problems.append(f"{tag}/{key}: validation failure accepted as output")
     ok_text = "no degraded, fallback, redaction or invalid-citation outputs"
     if recovered:
         ok_text += f" ({recovered} provider failure(s) were retried and completed)"
     return row("no_citation_schema_namespace_failures_or_degradation", not problems, summarize(problems, ok_text))
+
+
+def unbound(record):
+    audit = record.get("audit") or {}
+    return bool(audit.get("unsupported_numbers")) or any(
+        item.get("accepted_as_output") for item in audit.get("validation_retries") or [])
+
+
+def check_unbound_numbers(jobs):
+    """Rate of calls kept with unbound numbers on record; reported, never a failure."""
+    calls = [record for job in jobs for _, record in model_calls(job["state"])]
+    flagged = sum(unbound(record) for record in calls)
+    ref_flagged, ref_calls = REFERENCE_UNBOUND
+    rate = f"{flagged}/{len(calls)} ({flagged / len(calls):.1%})" if calls else "0/0"
+    detail = (f"{rate} model calls kept with unbound numbers on record; "
+              f"RQ1 source snapshot {ref_flagged}/{ref_calls} ({ref_flagged / ref_calls:.1%})")
+    result = row("unbound_numbers_recorded", True, detail, "info")
+    result.update(calls=len(calls), flagged=flagged, rate=round(flagged / len(calls), 4) if calls else None,
+                  reference_rate=round(ref_flagged / ref_calls, 4))
+    return result
 
 
 def check_budget_prompt(jobs):
@@ -325,7 +350,8 @@ def check_pilot(path):
     jobs, degraded_rows, manifest = load(path)
     per_job, usage_problems = tally(jobs)
     rows = [check_complete_and_arms(jobs, manifest), check_traceable(jobs),
-            check_failures_and_degradation(jobs, degraded_rows), check_budget_prompt(jobs),
+            check_failures_and_degradation(jobs, degraded_rows), check_unbound_numbers(jobs),
+            check_budget_prompt(jobs),
             check_usage(per_job, usage_problems), check_digests(jobs), check_memory(jobs)]
     return {"checks": rows, "timing": timing_summary(jobs, per_job),
             "passed": all(item["status"] != "fail" for item in rows)}
