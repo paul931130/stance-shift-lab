@@ -125,7 +125,8 @@ class DebateClashTests(unittest.TestCase):
         listed = messages_for(judge, REPORT, records, [], p)[0]["content"]
         self.assertIn('the clash turns are ["c-r2-agent-a", "c-r2-agent-b"]', listed)
         self.assertIsNone(clash_verdict_turns(protocol(), judge, records))
-        verdict = lambda key: {"turn": key, "supports": "BULL", "reason": "Cash flow outweighs the revenue dip."}
+        def verdict(key):
+            return {"turn": key, "supports": "BULL", "reason": "Cash flow outweighs the revenue dip."}
         validate_clash_verdicts({"clash_verdicts": [verdict(k) for k in turns]}, turns)
         for bad in ([verdict("c-r2-agent-a")], [verdict(k) for k in turns] + [verdict("c-r2-agent-a")],
                     [verdict("c-r3-agent-a"), verdict("c-r2-agent-b")]):
