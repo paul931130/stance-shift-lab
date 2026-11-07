@@ -14,7 +14,7 @@ dependencies = [
   "uvicorn==0.52.4",
   "langgraph==1.2.14",
   "litellm==1.100.4",
-  "yfinance==1.7.0",
+  "yfinance==1.8.0",
   "pandas==3.0.1",
   "numpy==2.3.5",
   "scipy==1.18.1",
