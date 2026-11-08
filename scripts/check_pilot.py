@@ -28,6 +28,8 @@ RQ2_ASSIGNMENTS = ("AA", "AB", "BA", "BB")
 DEFAULT_CONTEXT = 8192
 FORMAL_CASES = 180
 MAX_DETAIL = 6
+# Attempt errors raised after a response arrived (its tokens were billed and must be recorded).
+RESPONSE_ERRORS = ("ValidationError", "JSONDecodeError", "ValueError")
 # Reference rate: share of model calls whose output was kept with unbound numbers on record,
 # counted on the complete jobs of work/preformal-20261017/rq1-source-backup.sqlite3 (2026-11-05).
 REFERENCE_UNBOUND = (2940, 9702)
@@ -89,10 +91,18 @@ def call_audits(audit):
 
 def attempt_usages(audit):
     """One usage dict per provider attempt of one logical audit."""
+    return [usage for usage, _ in attempt_records(audit)]
+
+
+def attempt_records(audit):
+    """(usage, failed_without_response) per provider attempt; the flag marks a transport or
+    provider error (e.g. HTTP 503, timeout) where no response came back, so no tokens exist."""
     attempts = audit.get("attempts")
     if attempts:
-        return [item.get("usage") or {} for item in attempts]
-    return [audit.get("usage") or {}] * max(int(audit.get("provider_attempts") or 1), 1)
+        return [(item.get("usage") or {},
+                 item.get("status") == "failed" and item.get("error_type") not in RESPONSE_ERRORS)
+                for item in attempts]
+    return [(audit.get("usage") or {}, False)] * max(int(audit.get("provider_attempts") or 1), 1)
 
 
 def number(value):
@@ -190,10 +200,12 @@ def check_failures_and_degradation(jobs, degraded_rows):
             output, audit = record.get("output") or {}, record.get("audit") or {}
             if output.get("invalid_evidence_ids"):
                 problems.append(f"{tag}/{key}: invalid evidence ids (citation/namespace)")
-            # Removing numbers changes the output: a failure. Keeping unbound numbers on record
-            # is protocol behaviour and is reported by check_unbound_numbers instead.
+            # Removing numbers or numeric claims changes the output: a failure. Keeping unbound
+            # numbers on record is protocol behaviour and is reported by check_unbound_numbers.
+            # v3-1002.3+ keeps the prose but drops invalid numeric_claims, recording the count
+            # only in the audit (keep_prose pops it from the output).
             if (output.get("redacted_numbers") or output.get("numeric_claims_removed")
-                    or audit.get("numeric_redaction")):
+                    or audit.get("numeric_redaction") or audit.get("numeric_claims_removed")):
                 problems.append(f"{tag}/{key}: numeric redaction")
             if audit.get("fallback"):
                 problems.append(f"{tag}/{key}: audit fallback {audit['fallback']!r}")
@@ -221,6 +233,45 @@ def check_unbound_numbers(jobs):
     result.update(calls=len(calls), flagged=flagged, rate=round(flagged / len(calls), 4) if calls else None,
                   reference_rate=round(ref_flagged / ref_calls, 4))
     return result
+
+
+def check_all_prompts(jobs):
+    """Every Ollama call must leave the output cap free in the context window, or it was truncated.
+
+    Cloud models (e.g. gemini/...) have no such window in the protocol; their largest prompt is
+    reported as info so a cloud trial still shows how close a lab run would come.
+    """
+    name = "all_prompts_within_context"
+    if not jobs:
+        return row(name, False, "no jobs in database")
+    problems, local, cloud = [], [], []
+    for job in jobs:
+        tag, protocol = job["id"][:8], job["config"].get("protocol") or {}
+        context = protocol.get("model_context_length") or DEFAULT_CONTEXT
+        limit = context - (protocol.get("max_output_tokens") or 0)
+        for key, record in model_calls(job["state"]):
+            audit = record.get("audit") or {}
+            model = ((audit.get("model_route") or {}).get("model") or audit.get("model")
+                     or protocol.get("model") or "")
+            tokens = [u.get("prompt_tokens") for a in call_audits(audit) for u in attempt_usages(a)]
+            tokens = [t for t in tokens if number(t)]
+            if not tokens:
+                continue
+            item = (max(tokens), f"{tag}/{key}", limit)
+            (local if str(model).startswith("ollama/") else cloud).append(item)
+            if str(model).startswith("ollama/") and item[0] >= limit:
+                problems.append(f"{tag}/{key}: prompt_tokens {item[0]} >= context {context} - output cap = {limit}")
+    if problems:
+        return row(name, False, summarize(problems, ""))
+    if local:
+        top = max(local)
+        return row(name, True, f"{len(local)} Ollama calls; largest {top[1]} {top[0]} < limit {top[2]} "
+                               f"(headroom {top[2] - top[0]})")
+    if cloud:
+        top = max(cloud)
+        return row(name, True, f"cloud models only: largest {top[1]} {top[0]} prompt tokens; an Ollama run "
+                               f"would need it below {top[2]} (provider token counts differ)", "info")
+    return row(name, True, "prompt_tokens not recorded", "not_applicable")
 
 
 def check_budget_prompt(jobs):
@@ -260,31 +311,35 @@ def tally(jobs):
     """Per-job usage totals over every model call, plus the problems that make them incomplete."""
     problems, per_job = [], {}
     for job in jobs:
-        totals = {"calls": 0, "attempts": 0, "prompt": 0, "completion": 0, "seconds": 0.0}
+        totals = {"calls": 0, "attempts": 0, "prompt": 0, "completion": 0, "seconds": 0.0, "no_response": 0}
         for key, record in model_calls(job["state"]):
             totals["calls"] += 1
             audit = record.get("audit") or {}
             if not isinstance(audit.get("provider_attempts"), int) or audit["provider_attempts"] < 1:
                 problems.append(f"{job['id'][:8]}/{key}: no provider_attempts")
             for call_audit in call_audits(audit):
-                for usage in attempt_usages(call_audit):
+                for usage, no_response in attempt_records(call_audit):
                     totals["attempts"] += 1
+                    totals["no_response"] += no_response
                     for field, name in (("prompt_tokens", "prompt"), ("completion_tokens", "completion"),
                                         ("client_elapsed_seconds", "seconds")):
                         if number(usage.get(field)):
                             totals[name] += usage[field]
-                        else:
+                        elif not (no_response and field != "client_elapsed_seconds"):
+                            # A failed attempt with no response has no tokens, but its time still counts.
                             problems.append(f"{job['id'][:8]}/{key}: missing {field}")
         per_job[job["id"]] = totals
     return per_job, problems
 
 
 def check_usage(per_job, problems):
-    total = {key: sum(t[key] for t in per_job.values())
-             for key in ("calls", "attempts", "prompt", "completion", "seconds")}
+    total = {key: sum(t.get(key, 0) for t in per_job.values())
+             for key in ("calls", "attempts", "prompt", "completion", "seconds", "no_response")}
     text = (f"{total['calls']} calls, {total['attempts']} provider attempts, "
             f"{total['attempts'] - total['calls']} retries, prompt {total['prompt']} / "
             f"completion {total['completion']} tokens, {total['seconds']:.1f}s")
+    if total["no_response"]:
+        text += f" ({total['no_response']} failed attempt(s) without a response, so without tokens)"
     return row("tokens_retries_latency_recorded", not problems and total["calls"] > 0,
                summarize(problems, text))
 
@@ -351,7 +406,7 @@ def check_pilot(path):
     per_job, usage_problems = tally(jobs)
     rows = [check_complete_and_arms(jobs, manifest), check_traceable(jobs),
             check_failures_and_degradation(jobs, degraded_rows), check_unbound_numbers(jobs),
-            check_budget_prompt(jobs),
+            check_all_prompts(jobs), check_budget_prompt(jobs),
             check_usage(per_job, usage_problems), check_digests(jobs), check_memory(jobs)]
     return {"checks": rows, "timing": timing_summary(jobs, per_job),
             "passed": all(item["status"] != "fail" for item in rows)}
