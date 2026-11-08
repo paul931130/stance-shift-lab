@@ -67,6 +67,21 @@ class MemoryOrderTests(unittest.TestCase):
                                  owner=job["owner"], generation=job["lease_generation"])
         self.assertEqual(claimed, ["2023-12-29", "2024-06-28", "2024-12-31"])
 
+    def test_second_worker_waits_for_an_earlier_running_case_of_the_same_ticker(self):
+        earlier = self.create("2024-01-01", ticker="AAPL")
+        later = self.create("2024-10-01", ticker="AAPL")
+        other = self.create("2024-10-01", ticker="NVDA")
+        first = self.store.claim("worker:a")
+        self.assertEqual(first["id"], earlier["id"])
+        # Worker b must not start the later AAPL case; another ticker is fine.
+        self.assertEqual(self.store.claim("worker:b")["id"], other["id"])
+        self.assertIsNone(self.store.claim("worker:c"))
+        self.store.save_step(first["id"], {**first["state"], "finished": True},
+                             owner=first["owner"], generation=first["lease_generation"])
+        resumed = self.store.claim("worker:c")
+        self.assertEqual(resumed["id"], later["id"])
+        self.assertEqual(self.store.memory_audit(resumed["config"])["pending_earlier_cases"], [])
+
     def test_memory_audit_lists_unfinished_earlier_cases_only(self):
         earlier = self.create("2023-12-29")
         self.create("2023-09-29", ticker="AAPL")  # other ticker: irrelevant to NVDA memory

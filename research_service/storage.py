@@ -323,8 +323,18 @@ class Store:
             # memory only contains earlier matured cases of the same protocol,
             # so processing earlier dates first makes that memory independent
             # of the order in which a batch happened to be queued.
+            # Date order alone is not enough with several workers: while an
+            # earlier same-ticker case of this protocol is still running, a
+            # later one would freeze its memory before that result exists.
+            # Wait for it; other tickers still run in parallel.
             row = db.execute("""SELECT * FROM jobs AS candidate
                 WHERE candidate.status='queued' AND candidate.wants_run=1 AND candidate.owner=''
+                  AND NOT EXISTS (
+                      SELECT 1 FROM jobs AS earlier
+                      WHERE earlier.id != candidate.id AND earlier.status='running'
+                        AND json_extract(earlier.config, '$.protocol_hash')=json_extract(candidate.config, '$.protocol_hash')
+                        AND json_extract(earlier.config, '$.ticker')=json_extract(candidate.config, '$.ticker')
+                        AND json_extract(earlier.config, '$.analysis_date') < json_extract(candidate.config, '$.analysis_date'))
                   AND (json_extract(candidate.config, '$.execution_purpose') IN ('qualification', 'report_bank')
                        OR NOT EXISTS (
                            SELECT 1 FROM preregistrations AS registration

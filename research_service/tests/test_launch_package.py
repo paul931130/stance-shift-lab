@@ -100,7 +100,9 @@ class LaunchPackageTests(unittest.TestCase):
             self.assertEqual({case["inference_seed"] for case in first}, {905})
             self.assertEqual(manifest["seed_scope"]["rq2_formal_seeds"], [905, 906, 907])
             code_root = Path(__file__).resolve().parents[2]
-            for script in ("scripts/analyze_rq2_snapshot.py", "scripts/analyze_rq3_snapshot.py"):
+            for script in ("scripts/analyze_rq2_snapshot.py", "scripts/analyze_rq3_snapshot.py",
+                           "research_service/statistics.py", "research_service/rq_analysis.py",
+                           "research_service/rq3_inference.py"):
                 self.assertEqual(manifest["pipeline_sha256"][script], file_hash(code_root / script))
             self.assertFalse(list(files.glob("rq3-formal.seed-*.cases.json")))
             self.assertEqual(set(json.loads((files / "rq2-pilot.cases.json").read_text())["cases"][0]

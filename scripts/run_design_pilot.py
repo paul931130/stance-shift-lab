@@ -164,7 +164,12 @@ def main():
     try:
         result = run(args)
     except Exception as error:
-        parser.exit(1, f"Stopped: {type(error).__name__}; inspect manifest.json if created.\n")
+        # The console keeps only the error type; the full traceback goes to a
+        # local file beside the output (work/ is never published).
+        import traceback
+        trace = args.output.with_name(args.output.name + ".error.txt")
+        trace.write_text(traceback.format_exc(), encoding="utf-8")
+        parser.exit(1, f"Stopped: {type(error).__name__}; see {trace} and manifest.json if created.\n")
     print(json.dumps({"status": result["status"], "cases": len(result["cases"]), "formal_launch_ready": False}))
 
 

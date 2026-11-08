@@ -170,10 +170,16 @@ def prepare_launch(source_db, registration_hash, plan_path, output, model_a_base
     for name in ("scripts/run_design_pilot.py", "scripts/analyze_rq2_snapshot.py",
                  "scripts/analyze_rq3_snapshot.py", "scripts/prepare_experiment_launch.py",
                  "scripts/bind_rq2_launch.py", "scripts/check_experiment_environment.py",
-                 "docs/rq-prep/analysis-plan-20261015.json"):
+                 "docs/rq-prep/analysis-plan-20261015.json",
+                 # Statistics code is outside the protocol source digest, so the
+                 # launch manifest pins it (RQ1 promotion-audit gap 11).
+                 "research_service/statistics.py", "research_service/rq_analysis.py",
+                 "research_service/rq_repeats.py", "research_service/rq_study.py",
+                 "research_service/rq3_inference.py", "research_service/rq3_reporting.py",
+                 "research_service/reporting.py"):
         path = root / name
         if not path.is_file():
-            if name.startswith("scripts/"):
+            if name.startswith(("scripts/", "research_service/")):
                 raise ValueError(f"Required pipeline script is missing: {name}")
             continue
         pipeline[name] = file_hash(path)
