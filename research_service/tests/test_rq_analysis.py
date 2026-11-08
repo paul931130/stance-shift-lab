@@ -3,6 +3,7 @@ import unittest
 import numpy as np
 
 from research_service.rq_analysis import (
+    EQUIVALENCE_BOUNDS, EQUIVALENCE_CONFIDENCE, equivalence_verdict,
     date_block_bootstrap, date_block_indices, domain_agreement_distribution, interaction_mde,
     performance_cost_table, pooled_assignment_returns, rq2_accuracy_interaction, rq2_case_contrasts,
     rq2_sharpe_interaction, rq3_rule_matched_contrasts, sharpe_block_sensitivity, sharpe_combination_test,
@@ -239,6 +240,26 @@ class PlanningPowerTests(unittest.TestCase):
         self.assertEqual(result["minimum_detectable_interaction"], .3)
         with self.assertRaises(ValueError):
             simulate_interaction_power(interaction=.5, discordance_rate=.3)
+
+
+class EquivalenceVerdictTests(unittest.TestCase):
+    def test_constants(self):
+        self.assertEqual(EQUIVALENCE_BOUNDS, {"accuracy": 0.05, "sharpe": 0.2})
+        self.assertEqual(EQUIVALENCE_CONFIDENCE, 0.90)
+
+    def test_inside_crossing_boundary_and_missing(self):
+        inside = equivalence_verdict([-0.03, 0.04], 0.05)
+        self.assertEqual(inside["status"], "equivalent")
+        self.assertEqual(inside["bounds"], [-0.05, 0.05])
+        self.assertEqual(inside["confidence_level"], 0.90)
+        self.assertEqual(inside["method"], "tost_via_90pct_interval")
+        self.assertIs(inside["in_holm_family"], False)
+        self.assertEqual(equivalence_verdict([-0.03, 0.06], 0.05)["status"], "not_equivalent")
+        self.assertEqual(equivalence_verdict([-0.06, 0.01], 0.05)["status"], "not_equivalent")
+        self.assertEqual(equivalence_verdict([-0.05, 0.01], 0.05)["status"], "not_equivalent")
+        missing = equivalence_verdict(None, 0.2)
+        self.assertEqual(missing["status"], "not_estimable")
+        self.assertIsNone(missing["confidence_interval"])
 
 
 if __name__ == "__main__":

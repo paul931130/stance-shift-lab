@@ -29,6 +29,25 @@ class LaunchPackageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             validate_plan(plan)
 
+    def test_rejects_missing_or_altered_equivalence_plan(self):
+        validate_plan(deepcopy(DEFAULT_PLAN))
+        plan = deepcopy(DEFAULT_PLAN)
+        del plan["analysis"]["equivalence"]
+        with self.assertRaises(ValueError):
+            validate_plan(plan)
+        for key, value in (("accuracy_bound", 0.1), ("sharpe_bound", 0.3), ("confidence_level", 0.95),
+                           ("in_holm_family", True), ("method", "other")):
+            plan = deepcopy(DEFAULT_PLAN)
+            plan["analysis"]["equivalence"][key] = value
+            with self.assertRaises(ValueError):
+                validate_plan(plan)
+
+    def test_shipped_analysis_plan_passes_validation(self):
+        path = Path(__file__).resolve().parents[2] / "docs" / "rq-prep" / "analysis-plan-20261015.json"
+        shipped = json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(shipped["analysis"]["equivalence"]["accuracy_bound"], 0.05)
+        self.assertIs(shipped["analysis"]["equivalence"]["in_holm_family"], False)
+
     def test_rejects_url_secrets(self):
         for url in ("https://user:secret@host", "https://host/?token=abc", "https://host/#key",
                     "file:///tmp/model", "http://host/path?q=1"):

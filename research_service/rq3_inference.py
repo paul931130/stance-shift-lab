@@ -10,13 +10,16 @@ import numpy as np
 from .data import digest
 from .protocol import QUARTER_DATES, STUDY_TICKERS
 from .reporting import stable_model_identity
-from .rq_analysis import date_block_bootstrap, sharpe_combination_test
+from .rq_analysis import (EQUIVALENCE_BOUNDS, EQUIVALENCE_CONFIDENCE, date_block_bootstrap,
+                          equivalence_verdict, sharpe_combination_test)
 from .rq_study import select_cases
 from .rq3_reporting import rq3_study_report
 from .statistics import holm_adjust
 
 ARMS = ("C", "C_domain", "C_budget", "C_partition")
 BASELINES = ("C", "C_budget", "C_partition")
+EQUIVALENCE_RULE = ("Secondary TOST: equivalent iff the 90% interval lies strictly inside accuracy +/-0.05 "
+                    "or annualized Sharpe +/-0.2; not in the Holm family; bounds fixed before results.")
 
 
 def _primary(row):
@@ -99,6 +102,13 @@ def infer_panel(panel, *, date_block_length, daily_block_length, replicates=1999
                                         replicates=replicates, seed=bootstrap_seed)["contrasts"]
     except ValueError as error:
         accuracy = [_not_estimable(error) for _ in BASELINES]
+    equivalence_alpha = round(1 - EQUIVALENCE_CONFIDENCE, 10)
+    try:
+        accuracy_90 = [row["confidence_interval"] for row in date_block_bootstrap(
+            contrasts, panel["date_ids"], block_length=date_block_length, replicates=replicates,
+            seed=bootstrap_seed, alpha=equivalence_alpha)["contrasts"]]
+    except ValueError:
+        accuracy_90 = [None for _ in BASELINES]
     results, pvalues = {}, []
     for index, arm in enumerate(BASELINES):
         try:
@@ -110,7 +120,16 @@ def infer_panel(panel, *, date_block_length, daily_block_length, replicates=1999
         if sharpe.get("pvalue") is None and sharpe.get("status") != "not_estimable":
             sharpe = {**sharpe, "status": "not_estimable", "reason": "degenerate standard error"}
         acc = accuracy[index]
-        results[arm] = {"accuracy": acc, "sharpe": sharpe}
+        try:
+            sharpe_90 = sharpe_combination_test(returns[:, [1, ARMS.index(arm)]], (1., -1.),
+                                                block_length=daily_block_length, replicates=replicates,
+                                                seed=bootstrap_seed, alpha=equivalence_alpha
+                                                ).get("confidence_interval")
+        except ValueError:
+            sharpe_90 = None
+        equivalence = {"accuracy": equivalence_verdict(accuracy_90[index], EQUIVALENCE_BOUNDS["accuracy"]),
+                       "sharpe": equivalence_verdict(sharpe_90, EQUIVALENCE_BOUNDS["sharpe"])}
+        results[arm] = {"accuracy": acc, "sharpe": sharpe, "equivalence": equivalence}
         pvalues.extend((acc["pvalue"], sharpe["pvalue"]))
     # Plan rule report_not_estimable_no_family_reduction: Holm keeps all six
     # tests. A not-estimable endpoint enters as p=1, which leaves every other
@@ -127,7 +146,7 @@ def infer_panel(panel, *, date_block_length, daily_block_length, replicates=1999
             "case_ids": panel["case_ids"], "trading_dates": panel["trading_dates"], "contrasts": results,
             "family": [f"C_domain-minus-{arm}:{endpoint}" for arm in BASELINES for endpoint in ("accuracy", "sharpe")],
             "family_status": "conservative_proposal_requires_prior_registration",
-            "family_size": 6, "not_estimable": not_estimable,
+            "family_size": 6, "not_estimable": not_estimable, "equivalence_rule": EQUIVALENCE_RULE,
             "overall_superiority_claim_allowed": not not_estimable,
             "date_block_length": date_block_length, "daily_block_length": daily_block_length,
             "replicates": replicates, "bootstrap_seed": bootstrap_seed,

@@ -110,6 +110,31 @@ class RQ3InferenceTests(unittest.TestCase):
         self.assertAlmostEqual(min(result["contrasts"][arm]["accuracy"]["holm_pvalue"] for arm in BASELINES),
                                min(1., 6 * smallest))
 
+    def test_equivalence_secondary_keys_and_not_estimable(self):
+        result = infer_panel(build_panel(self.fixture()), date_block_length=1, daily_block_length=10,
+                             replicates=199)
+        self.assertIn("equivalence_rule", result)
+        self.assertEqual(result["family_size"], 6)
+        for arm in BASELINES:
+            row = result["contrasts"][arm]
+            eq = row["equivalence"]
+            self.assertEqual(eq["accuracy"]["bounds"], [-0.05, 0.05])
+            self.assertEqual(eq["sharpe"]["bounds"], [-0.2, 0.2])
+            self.assertIs(eq["accuracy"]["in_holm_family"], False)
+            low90, high90 = eq["accuracy"]["confidence_interval"]
+            low95, high95 = row["accuracy"]["confidence_interval"]
+            self.assertGreaterEqual(low90, low95)
+            self.assertLessEqual(high90, high95)
+        jobs = self.fixture()
+        for job in jobs:
+            for row in job["state"]["daily"]:
+                row["return"] = 0.
+        flat = infer_panel(build_panel(jobs), date_block_length=1, daily_block_length=10, replicates=199)
+        self.assertFalse(flat["overall_superiority_claim_allowed"])
+        for arm in BASELINES:
+            self.assertEqual(flat["contrasts"][arm]["equivalence"]["sharpe"]["status"], "not_estimable")
+            self.assertIsNone(flat["contrasts"][arm]["equivalence"]["sharpe"]["confidence_interval"])
+
     def test_duplicate_case_rejected(self):
         jobs = self.fixture()
         jobs.append(deepcopy(jobs[0]))

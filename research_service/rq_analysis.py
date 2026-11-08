@@ -42,6 +42,24 @@ RQ2_ACCURACY_ARMS = ("C_homo", "D_homo", "C_hetero_AB", "D_hetero_AB", "C_hetero
 HETERO_OPTIONS = ("separate", "mean")
 SHARPE_HETERO_OPTIONS = ("separate", "pooled_half_weight")
 BINARY_DIRECTIONS = ("Buy", "Sell")
+# Secondary TOST equivalence analysis (decided 2026-11-09). Not part of any Holm
+# family; bounds are fixed before results. TOST at alpha .05 per side is the same
+# as the 90% two-sided interval lying strictly inside (-bound, +bound).
+EQUIVALENCE_BOUNDS = {"accuracy": 0.05, "sharpe": 0.2}
+EQUIVALENCE_CONFIDENCE = 0.90
+
+
+def equivalence_verdict(interval, bound) -> dict:
+    """TOST verdict from a 90% two-sided interval; ``None`` means not estimable."""
+    status = "not_estimable"
+    if interval is not None:
+        lower, upper = float(interval[0]), float(interval[1])
+        status = "equivalent" if -bound < lower and upper < bound else "not_equivalent"
+    return {"method": "tost_via_90pct_interval", "bounds": [-bound, bound],
+            "confidence_level": EQUIVALENCE_CONFIDENCE,
+            "confidence_interval": None if interval is None else [float(interval[0]), float(interval[1])],
+            "status": status, "in_holm_family": False}
+
 
 
 # ---------------------------------------------------------------------------

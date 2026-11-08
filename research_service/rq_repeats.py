@@ -5,9 +5,13 @@ experiment and does not merge protocol hashes on its own.
 """
 import numpy as np
 
-from .rq_analysis import date_block_bootstrap, sharpe_combination_test
+from .rq_analysis import (EQUIVALENCE_BOUNDS, EQUIVALENCE_CONFIDENCE, date_block_bootstrap,
+                          equivalence_verdict, sharpe_combination_test)
 from .rq_study import matched_seed_inputs
 from .statistics import holm_adjust
+
+EQUIVALENCE_RULE = ("Secondary TOST: equivalent iff the 90% interval lies strictly inside accuracy +/-0.05 "
+                    "or annualized Sharpe +/-0.2; not in the Holm family; bounds fixed before results.")
 
 
 def rq2_repeated_inference(correct_by_seed, dates_by_seed, returns_by_seed, trading_dates_by_seed, *,
@@ -26,6 +30,10 @@ def rq2_repeated_inference(correct_by_seed, dates_by_seed, returns_by_seed, trad
     # The same date draw is used for every seed, stock, arm and baseline.
     accuracy = date_block_bootstrap(per_seed.mean(axis=0), frame["date_ids"],
                                     block_length=date_block_length, replicates=replicates, seed=bootstrap_seed)
+    equivalence_alpha = round(1 - EQUIVALENCE_CONFIDENCE, 10)
+    accuracy_90 = date_block_bootstrap(per_seed.mean(axis=0), frame["date_ids"],
+                                       block_length=date_block_length, replicates=replicates,
+                                       seed=bootstrap_seed, alpha=equivalence_alpha)
     reference_days = list(trading_dates_by_seed[seeds[0]])
     if not reference_days or reference_days != sorted(set(reference_days)):
         raise ValueError("Trading days must be unique and sorted")
@@ -49,6 +57,15 @@ def rq2_repeated_inference(correct_by_seed, dates_by_seed, returns_by_seed, trad
         sharpe = sharpe_combination_test(daily, (1., -1., -1., 1.), block_length=daily_block_length,
                                          replicates=replicates, seed=bootstrap_seed)
         acc = accuracy["contrasts"][index]
+        try:
+            sharpe_90 = sharpe_combination_test(daily, (1., -1., -1., 1.), block_length=daily_block_length,
+                                                replicates=replicates, seed=bootstrap_seed,
+                                                alpha=equivalence_alpha).get("confidence_interval")
+        except ValueError:
+            sharpe_90 = None
+        equivalence = {"accuracy": equivalence_verdict(accuracy_90["contrasts"][index]["confidence_interval"],
+                                                       EQUIVALENCE_BOUNDS["accuracy"]),
+                       "sharpe": equivalence_verdict(sharpe_90, EQUIVALENCE_BOUNDS["sharpe"])}
         if sharpe.get("pvalue") is None:
             raise ValueError("All four family endpoints must be estimable")
         pvalues.extend((acc["pvalue"], sharpe["pvalue"]))
@@ -74,7 +91,8 @@ def rq2_repeated_inference(correct_by_seed, dates_by_seed, returns_by_seed, trad
                                "seed_accuracy_sd": float(by_seed.std(ddof=1)),
                                "seed_sharpe_interactions": seed_sharpe,
                                "seed_sharpe_sd": sharpe_sd,
-                               "seed_sharpe_observed_count": len(observed_sharpe)}
+                               "seed_sharpe_observed_count": len(observed_sharpe),
+                               "equivalence": equivalence}
     adjusted = holm_adjust(pvalues)
     for index, baseline in enumerate(("AA", "BB")):
         contrasts[baseline]["accuracy"]["holm_pvalue"] = adjusted[2 * index]
@@ -84,6 +102,7 @@ def rq2_repeated_inference(correct_by_seed, dates_by_seed, returns_by_seed, trad
             "n_analysis_dates": len(set(frame["date_ids"])), "trading_days": len(reference_days),
             "seeds": seeds, "contrasts": contrasts,
             "family": [f"{baseline}:{endpoint}" for baseline in ("AA", "BB") for endpoint in ("accuracy", "sharpe")],
+            "equivalence_rule": EQUIVALENCE_RULE,
             "date_block_length": date_block_length, "daily_block_length": daily_block_length,
             "replicates": replicates, "bootstrap_seed": bootstrap_seed,
             "estimand": "Within-case mean correctness and equal-weight mean-seed/assignment portfolio",

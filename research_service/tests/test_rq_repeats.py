@@ -34,6 +34,27 @@ class RepeatedInferenceTests(unittest.TestCase):
         self.assertEqual(result["contrasts"]["AA"]["seed_sharpe_sd"], 0)
         self.assertEqual(result["contrasts"]["AA"]["seed_sharpe_observed_count"], 3)
 
+    def test_equivalence_is_secondary_and_90pct_interval_is_inside_95pct(self):
+        values, dates, returns, days = self.fixture()
+        result = rq2_repeated_inference(values, dates, returns, days, replicates=199)
+        self.assertIn("equivalence_rule", result)
+        self.assertEqual(len(result["family"]), 4)
+        for baseline in ("AA", "BB"):
+            row = result["contrasts"][baseline]
+            eq = row["equivalence"]
+            self.assertEqual(set(eq), {"accuracy", "sharpe"})
+            self.assertEqual(eq["accuracy"]["bounds"], [-0.05, 0.05])
+            self.assertEqual(eq["sharpe"]["bounds"], [-0.2, 0.2])
+            for endpoint in ("accuracy", "sharpe"):
+                self.assertIs(eq[endpoint]["in_holm_family"], False)
+                self.assertIn(eq[endpoint]["status"], ("equivalent", "not_equivalent"))
+            low90, high90 = eq["accuracy"]["confidence_interval"]
+            low95, high95 = row["accuracy"]["confidence_interval"]
+            self.assertGreaterEqual(low90, low95)
+            self.assertLessEqual(high90, high95)
+            self.assertIn("holm_pvalue", row["accuracy"])
+            self.assertIn("holm_pvalue", row["sharpe"])
+
     def test_seed_sharpe_interactions_match_hand_calculation(self):
         values, dates, returns, days = self.fixture()
         rng = np.random.default_rng(2026)

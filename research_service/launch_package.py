@@ -10,6 +10,7 @@ from urllib.parse import urlsplit
 from .data import digest
 from .protocol import QUARTER_DATES, STUDY_TICKERS
 from .readiness import coverage
+from .rq_analysis import EQUIVALENCE_BOUNDS, EQUIVALENCE_CONFIDENCE
 from .run_manifest import source_fingerprint
 
 SCHEMA = "stance-shift-experiment-plan/v1"
@@ -23,7 +24,11 @@ DEFAULT_PLAN = {
     "model_context_length": 8192, "ollama_parallel": 1,
     "analysis": {"alpha": 0.05, "date_block_length": 2, "daily_block_length": 20,
                  "replicates": 1999, "bootstrap_seed": 905,
-                 "rq2_family": RQ2_FAMILY, "rq3_family": RQ3_FAMILY},
+                 "rq2_family": RQ2_FAMILY, "rq3_family": RQ3_FAMILY,
+                 "equivalence": {"method": "tost_via_90pct_interval",
+                                 "accuracy_bound": EQUIVALENCE_BOUNDS["accuracy"],
+                                 "sharpe_bound": EQUIVALENCE_BOUNDS["sharpe"],
+                                 "confidence_level": EQUIVALENCE_CONFIDENCE, "in_holm_family": False}},
 }
 
 
@@ -69,6 +74,14 @@ def validate_plan(plan):
     for family, expected in (("rq2_family", RQ2_FAMILY), ("rq3_family", RQ3_FAMILY)):
         if analysis.get(family) != expected:
             raise ValueError(f"Incomplete or reordered {family}")
+    equivalence = analysis.get("equivalence")
+    if (not isinstance(equivalence, dict)
+            or equivalence.get("method") != "tost_via_90pct_interval"
+            or equivalence.get("accuracy_bound") != EQUIVALENCE_BOUNDS["accuracy"]
+            or equivalence.get("sharpe_bound") != EQUIVALENCE_BOUNDS["sharpe"]
+            or equivalence.get("confidence_level") != EQUIVALENCE_CONFIDENCE
+            or equivalence.get("in_holm_family") is not False):
+        raise ValueError("Missing or altered equivalence analysis plan")
     if analysis.get("alpha") != .05:
         raise ValueError("alpha must be 0.05")
     for key in ("date_block_length", "daily_block_length", "replicates"):

@@ -1,6 +1,6 @@
 {
   "schema": "stance-shift-experiment-plan/v1",
-  "plan_id": "rq2-rq3-20261015.1",
+  "plan_id": "rq2-rq3-20261015.2",
   "status": "prepared_pending_runtime_review_and_registration",
   "scope": "retrospective_extension_of_previously_seen_180_cases",
   "model_a": "ollama/qwen3:32b",
@@ -34,6 +34,15 @@
       "C_partition:accuracy",
       "C_partition:sharpe"
     ],
+    "equivalence": {
+      "method": "tost_via_90pct_interval",
+      "accuracy_bound": 0.05,
+      "sharpe_bound": 0.2,
+      "confidence_level": 0.9,
+      "in_holm_family": false,
+      "decided": "2026-11-09",
+      "rule": "Secondary analysis. Bounds are fixed before any formal result and may not be changed afterwards; does not affect the primary superiority rule."
+    },
     "date_block_sensitivity": [
       1,
       2,

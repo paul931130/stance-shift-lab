@@ -2,6 +2,18 @@
 
 研究台可以用 `stance-shift` CLI、Python API 或網頁研究台（Docker、pip、Codespaces）操作，三者共用同一套流程與資料庫。每個協議版本變更都會產生新的 protocol hash；舊版工作保留為可稽核紀錄，但不可續跑，也不能與新版本合併統計。
 
+## RQ2／RQ3 登記前設計決策定案（2026-11-09，未啟動正式實驗）
+
+- 研究者定案 [design-decisions-20261105.md](docs/rq-prep/design-decisions-20261105.md) 的四項決策：
+  1. RQ3 只跑固定立場，不檢驗立場交換。
+  2. 加 TOST 等效為次要分析。
+  3. 區塊敏感性照現行計畫。
+  4. D_noswap 消融在 RQ2 之後另行登記。
+- 分析計畫 `analysis.equivalence`：準確率 ±0.05、Sharpe ±0.2，90% 雙尾區間，不進 Holm family；`validate_plan` 要求此區塊與程式常數一致。
+- `rq_analysis.equivalence_verdict`：RQ2（`rq2_repeated_inference`）與 RQ3（`infer_panel`）每個 family 端點多輸出 `equivalence`，用同一個 seed 以 alpha=0.10 重算 90% 區間。原有的 p 值、Holm 值、family 與判定規則都不變。
+- 統計模組與分析計畫檔的 SHA-256 會跟著改變，launch manifest 和離線封裝要重做。
+- RQ2／RQ3 登記草稿、研究狀態與報告 v11 同步寫入決策：報告英文摘要不再寫「RQ1 addresses role-switching itself」，並加入事前訂定的等效界線。PDF 尚未重新編譯。
+
 ## 10/22 審查的三個程式問題（2026-11-04，未啟動正式實驗）
 
 - 排程：同一 protocol hash、同一 ticker 有較早日期的案例還在 running 時，worker 不再領取較晚案例，記憶不再依執行競速改變；不同 ticker 照常平行。新增雙 worker 回歸測試。

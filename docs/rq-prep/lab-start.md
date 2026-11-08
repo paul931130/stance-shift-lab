@@ -22,7 +22,7 @@
 | ✅ 已修 P1 | 同 ticker／protocol 較早案例還在 running 時，另一個 worker 可領取較晚案例，記憶順序會依競速改變（預設 4 個 worker 就會觸發） | `research_service/storage.py` claim | 較早同 ticker 案例 running 時不領較晚案例；不同 ticker 照常平行。測試 `test_second_worker_waits_for_an_earlier_running_case_of_the_same_ticker` |
 | ✅ 已修 P1 | RQ3 同一案四組在同一天一起缺報酬時仍通過，缺的那天被當成 0 | `research_service/rq3_inference.py` build_panel | 每組須剛好有 entry 到 maturity 的 61 個交易日，且窗口內其他案例有交易的日子都要有；RQ1 實際 720 組全部符合 |
 | ✅ 已修 P2 | Sharpe 不可估時整個推論拋錯，和分析計畫 `report_not_estimable_no_family_reduction` 不符 | `research_service/rq3_inference.py` infer_panel | 標 `not_estimable`，Holm 仍以六項計算，輸出 `overall_superiority_claim_allowed=false` |
-| 必改 | 報告寫「RQ1 回答立場交換本身」，但 D 同時改了立場交換、隔離對手、強制引用、驗證重試 | `site/sources/application-meeting-20261020_v11.tex:143,209` | 改成「比較整套立場交換流程與固定立場流程」 |
+| ✅ 已改 | 報告寫「RQ1 回答立場交換本身」，但 D 同時改了立場交換、隔離對手、強制引用、驗證重試 | `site/sources/application-meeting-20261020_v11.tex`（中文 209 行先前已改；英文摘要 155 行 2026-11-09 改） | 改成「比較整套立場交換流程與固定立場流程」；PDF 尚未重新編譯 |
 | 必改 | RQ1 升格稽核列的缺口（登記回執、統計程式不在 protocol hash、研究者確認） | `docs/rq-prep/rq1-promotion-audit.md` | 正式登記 RQ2/RQ3 時把統計程式與 Ollama 版本 digest 一起鎖定 |
 
 這次改了 `storage.py`（source digest 的模組之一），source digest 已變：舊的凍結工作不能用新程式續跑，10/17 的離線封裝要重做（第五節步驟 4）。
