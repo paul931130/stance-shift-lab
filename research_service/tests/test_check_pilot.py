@@ -58,7 +58,7 @@ class CheckPilotTests(unittest.TestCase):
                 for target in (output, output / "data"):
                     result = check_pilot.check_pilot(target)
                     self.assertTrue(result["passed"], result["checks"])
-                    self.assertEqual(len(result["checks"]), 7)
+                    self.assertEqual(len(result["checks"]), 8)
                 statuses = self.statuses(output)
                 self.assertEqual(statuses["c_budget_aggregation_prompt_not_truncated"],
                                  "pass" if rq3 else "not_applicable")
@@ -101,6 +101,24 @@ class CheckPilotTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             output = self.build(directory, False)
             mutate(output, lambda c, s: s["records"][0]["output"].update(invalid_evidence_ids=["E99"]))
+            self.assertEqual(self.failing(output), ["no_citation_schema_namespace_failures_or_degradation"])
+
+    def test_unbound_numbers_are_a_reported_rate_not_a_failure(self):
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.build(directory, False)
+            def keep(config, state):
+                state["records"][0]["audit"]["validation_retries"] = [{"accepted_as_output": True}]
+                state["records"][1]["audit"]["unsupported_numbers"] = [{"value": "12.3"}]
+            mutate(output, keep)
+            result = check_pilot.check_pilot(output)
+            self.assertTrue(result["passed"], result["checks"])
+            item = next(c for c in result["checks"] if c["check"] == "unbound_numbers_recorded")
+            self.assertEqual((item["status"], item["flagged"]), ("info", 2))
+            self.assertIn("RQ1 source snapshot", item["detail"])
+            self.assertGreater(item["calls"], 2)
+        with tempfile.TemporaryDirectory() as directory:
+            output = self.build(directory, False)
+            mutate(output, lambda c, s: s["records"][0]["audit"].update(numeric_redaction=["12.3"]))
             self.assertEqual(self.failing(output), ["no_citation_schema_namespace_failures_or_degradation"])
 
     def test_budget_prompt_at_context_limit_fails(self):
