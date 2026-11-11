@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#101f34">
+<title>Group 8 • Mobile Presentation Script</title>
+<style>
+:root {color-scheme:light;--ink:#182a3d;--muted:#526479;--navy:#101f34;--blue:#235b95;--cyan:#dceaf5;--bg:#f3f6fa;--line:#dce4ed;--fs:18px;}
+*{box-sizing:border-box}html{scroll-behavior:smooth}body{margin:0;background:var(--bg);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Arial,sans-serif;font-size:16px;-webkit-text-size-adjust:100%;}button,input{font:inherit}button{cursor:pointer}
+.top{background:var(--navy);color:white;padding:27px max(20px,env(safe-area-inset-left)) 21px}.top-inner{max-width:750px;margin:auto}.overline{font-size:11px;letter-spacing:1.2px;font-weight:750;color:#9ed2fb}h1{font-size:27px;line-height:1.16;letter-spacing:-.6px;margin:8px 0 8px}.subtitle{color:#d0dceb;font-size:14px;line-height:1.5;margin:0}.toolbar{background:#fff;position:sticky;top:0;z-index:5;box-shadow:0 3px 13px #101f3413;border-bottom:1px solid var(--line)}.toolbar-inner{max-width:750px;margin:auto;padding:8px 12px}.tabs{display:flex;gap:5px}.tab{flex:1;border:0;border-radius:9px;background:transparent;color:#516479;padding:11px 4px;font-size:12px;font-weight:800}.tab[aria-selected="true"]{background:var(--navy);color:white}.actions{display:flex;gap:6px;justify-content:flex-end;align-items:center;margin-top:8px}.action{border:1px solid #cad6e3;color:#283f55;background:white;border-radius:8px;padding:5px 12px;font-size:14px;font-weight:750}.progress{font-size:12px;color:#63758a;margin-right:auto}main{max-width:750px;margin:0 auto;padding:21px 14px 40px}.panel[hidden]{display:none}.section-head{margin:3px 4px 20px}.eyebrow{text-transform:uppercase;letter-spacing:1.5px;color:#52749b;font-weight:800;font-size:11px}h2{font-size:24px;line-height:1.2;margin:7px 0}.section-desc{color:#56697e;font-size:14px;margin:8px 0;line-height:1.5}.step,.num-card,.qa{background:white;border:1px solid var(--line);border-radius:15px;box-shadow:0 3px 9px #182a3d07;margin:0 0 15px;overflow:hidden}.step{padding:19px 18px 14px}.step-meta{display:flex;justify-content:space-between;align-items:center;gap:8px}.step-index{font-size:11px;font-weight:850;letter-spacing:1.2px;color:var(--blue)}.duration{font-size:12px;background:#e8f1fa;color:#1b5288;border-radius:30px;padding:6px 11px;font-weight:800}.step h3{font-size:21px;line-height:1.25;margin:10px 0 12px}.cue{background:#f2f6fa;border-left:3px solid #88b7de;border-radius:4px;padding:9px 11px;font-size:12px;color:#445971;line-height:1.45;margin-bottom:14px}.cue span{display:block;font-size:10px;color:#6b7d90;font-weight:800;letter-spacing:.6px;margin-bottom:3px}.script{font-size:var(--fs);line-height:1.7;letter-spacing:.05px;color:#17283b}.script p{margin:0 0 13px}.script p:last-child{margin-bottom:6px}.done{display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding-top:14px;margin-top:15px;color:#6d7d8e;font-size:13px;cursor:pointer}.done input{accent-color:#235b95;width:17px;height:17px}.step:has(input:checked){border-color:#b1ccdf}.handoff{text-align:center;border:1px dashed #a5bace;border-radius:12px;padding:16px 13px;font-size:14px;color:#456074;font-weight:700;margin:18px 0}.num-card{padding:18px}.num-card h3{font-size:18px;margin:0 0 13px}.num-pair,.num-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.num-pair>div,.num-grid>div{background:#f4f7fb;border-radius:9px;padding:12px 10px}.num-card small{display:block;letter-spacing:.4px;font-size:10px;color:#6b7b8d;font-weight:750;margin-bottom:5px}.num-card b{font-size:16px;line-height:1.3}.num-card p{font-size:14px;color:#435971;line-height:1.55;margin:13px 0 0}.subhead{font-size:19px;margin:28px 2px 15px}.qa summary{cursor:pointer;list-style:none;display:flex;align-items:flex-start;gap:10px;padding:18px 14px;line-height:1.4}.qa summary::-webkit-details-marker{display:none}.qa-n{color:#20609a;font-weight:850;font-size:14px;min-width:25px}.qa-q{font-size:16px;font-weight:750;flex:1}.qa-tag{background:#eaf0f7;border-radius:30px;padding:4px 8px;color:#45627f;font-size:11px;font-weight:800;flex-shrink:0}.qa-answer{font-size:var(--fs);line-height:1.65;border-top:1px solid var(--line);padding:17px 19px 21px;color:#1f3348}.qa[open]{border-color:#bbd0e2}.footer{max-width:750px;margin:0 auto;color:#7c8b9c;text-align:center;padding:0 16px 32px;font-size:12px}@media(min-width:800px){.tab{font-size:14px}.top{padding:32px 20px}h1{font-size:35px}.step{padding:24px}}@media print{.toolbar,.done{display:none}.panel[hidden]{display:block}body{background:white}.step{break-inside:avoid}}
+</style></head><body>
+<header class="top"><div class="top-inner"><div class="overline">DATA SCIENCE · HW3 · GROUP 8</div><h1>English Presentation Script</h1><p class="subtitle">Q3: Hierarchical Clustering · Q5: Container Forecasting<br>~7 minutes of speaking in a 12-minute team presentation</p></div></header>
+<nav class="toolbar"><div class="toolbar-inner"><div class="tabs" role="tablist" aria-label="Sections"><button class="tab" role="tab" aria-selected="true" data-tab="q3">Q3 Script</button><button class="tab" role="tab" aria-selected="false" data-tab="q5">Q5 Script</button><button class="tab" role="tab" aria-selected="false" data-tab="numbers">Numbers</button><button class="tab" role="tab" aria-selected="false" data-tab="qa">Q&amp;A</button></div><div class="actions"><span class="progress" id="progress">0/11 steps rehearsed</span><button class="action" id="smaller" aria-label="Reduce text size">A−</button><button class="action" id="larger" aria-label="Increase text size">A+</button></div></div></nav>
+<main><section class="panel" id="panel-q3" role="tabpanel"><div class="section-head"><div class="eyebrow">PART 1 · 3 MIN 20 SEC</div><h2>Q3 · Hierarchical Clustering</h2><p class="section-desc">gender_outlier.csv · 5 steps. Read each card from top to bottom, using the slide cues above the spoken text.</p></div><article class="step" id="q3-step-1">
+      <div class="step-meta"><span class="step-index">STEP 1 / 5</span><span class="duration">◷ 0:15</span></div>
+      <h3>Opening</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report page 1: title</div>
+      <div class="script"><p>Hello everyone. We are Group 8. I will present Question 3: hierarchical clustering on the gender_outlier data. In short, the best score came from one extreme person, not from real groups.</p></div>
+      <label class="done"><input type="checkbox" data-done="q3-1" /> Rehearsed this step</label>
+    </article><article class="step" id="q3-step-2">
+      <div class="step-meta"><span class="step-index">STEP 2 / 5</span><span class="duration">◷ 0:40</span></div>
+      <h3>Data and Methods</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report page 1: section 3.1</div>
+      <div class="script"><p>The data has 146 people and three body measurements: height, weight, and waist. We kept everyone. We did not use Gender to make the clusters. We only used it later to describe them.</p>
+<p>First, we standardized the three measurements. Weight has a much bigger spread, so without this step, weight would control the distance.</p>
+<p>We tried four ways to join clusters. Single linkage uses the closest two points. Complete linkage uses the farthest two points. Group average uses the average of all pairs. Ward joins the two clusters that keep the groups as tight as possible.</p></div>
+      <label class="done"><input type="checkbox" data-done="q3-2" /> Rehearsed this step</label>
+    </article><article class="step" id="q3-step-3">
+      <div class="step-meta"><span class="step-index">STEP 3 / 5</span><span class="duration">◷ 0:45</span></div>
+      <h3>Choosing the Number of Clusters</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report page 4: Figure 1, the DB index chart</div>
+      <div class="script"><p>To choose the number of clusters, from two to eight, we used the Davies-Bouldin index, or DB. It compares how spread out each cluster is with how far apart the clusters are. Lower is better.</p>
+<p>Each method picks the k with its lowest DB. Single linkage picks three clusters, with a DB of 0.279. Complete picks four, with 0.616. Group average picks two, with 0.269. Ward picks eight, with 0.750. Group average with two clusters is the lowest overall.</p></div>
+      <label class="done"><input type="checkbox" data-done="q3-3" /> Rehearsed this step</label>
+    </article><article class="step" id="q3-step-4">
+      <div class="step-meta"><span class="step-index">STEP 4 / 5</span><span class="duration">◷ 1:00</span></div>
+      <h3>What the Clusters Mean</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report page 4: Figure 2. Then pages 2–3: the table in section 3.3</div>
+      <div class="script"><p>But look at this winner. One cluster has 145 people. The other cluster has only one person: a man with height 200, weight 130, and waist 40. So this split tells us nothing about gender.</p>
+<p>Single and complete linkage also split off one or two extreme people. Ward gives more useful groups. For example, one Ward cluster has 56 people: 52 women and 4 men. On average, they are about 161 centimeters tall and weigh about 49 kilograms.</p></div>
+      <label class="done"><input type="checkbox" data-done="q3-4" /> Rehearsed this step</label>
+    </article><article class="step" id="q3-step-5">
+      <div class="step-meta"><span class="step-index">STEP 5 / 5</span><span class="duration">◷ 0:40</span></div>
+      <h3>Robustness and Conclusion</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report page 3: section 3.4. Then page 2: the supplementary table without singletons</div>
+      <div class="script"><p>Ward&#x27;s choice of eight clusters is not stable. Eight is the largest k we tried. With a different way to measure spread, Ward picks two instead.</p>
+<p>To conclude: by DB, the answer is group average with two clusters. But a one-person cluster has no spread, so it can make the score look good. So we should always check the cluster sizes and centers too. If every cluster must have at least two people, Ward with two clusters gives the best split: 57 people who are almost all women, and 89 people who are almost all men. Thank you.</p></div>
+      <label class="done"><input type="checkbox" data-done="q3-5" /> Rehearsed this step</label>
+    </article><div class="handoff">Pause — Hand over to teammate for Question 4</div></section>
+<section class="panel" id="panel-q5" role="tabpanel" hidden><div class="section-head"><div class="eyebrow">PART 2 · 3 MIN 40 SEC</div><h2>Q5 · Container Forecasting</h2><p class="section-desc">container.csv · 6 steps. Begin after your teammate finishes Question 4.</p></div><article class="step" id="q5-step-1">
+      <div class="step-meta"><span class="step-index">STEP 1 / 6</span><span class="duration">◷ 0:20</span></div>
+      <h3>Opening</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>After Question 4. Report page 5: start of Question 5</div>
+      <div class="script"><p>Thank you. Now I will present Question 5. We used last month&#x27;s indicators to forecast Container, and compared two models: multiple linear regression, or MLR, and MARS. In short, MARS predicted the test years better, but simply repeating last month&#x27;s value was even better.</p></div>
+      <label class="done"><input type="checkbox" data-done="q5-1" /> Rehearsed this step</label>
+    </article><article class="step" id="q5-step-2">
+      <div class="step-meta"><span class="step-index">STEP 2 / 6</span><span class="duration">◷ 0:35</span></div>
+      <h3>Data and Split</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report page 5: section 5.1</div>
+      <div class="script"><p>The data has 180 months. To forecast a month, we use each indicator&#x27;s value from the month before, because that is what we would know in advance. The season index is a calendar factor, so it uses the same month.</p>
+<p>The first month has no earlier data, so training uses February 2011 to 2020, which is 119 months, and testing uses 2021 to 2025, which is 60 months. HSI is missing for all 48 months from 2022 to 2025, so we removed it. That leaves 16 possible predictors.</p></div>
+      <label class="done"><input type="checkbox" data-done="q5-2" /> Rehearsed this step</label>
+    </article><article class="step" id="q5-step-3">
+      <div class="step-meta"><span class="step-index">STEP 3 / 6</span><span class="duration">◷ 0:45</span></div>
+      <h3>Identifying the KPIs</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report pages 5–6: the KPI table in section 5.2</div>
+      <div class="script"><p>We used only the training data to find the KPIs. MLR found nine important variables, and MARS chose seven. All seven MARS variables were also chosen by MLR: GCTI, SCFI, the EU and US retail indices, plastic exports, machine imports, and the season index.</p>
+<p>So the union is the same nine variables, and we used them in both final models. We tuned MARS with yearly checks inside the training period, and it chose degree 2 and penalty 3.</p></div>
+      <label class="done"><input type="checkbox" data-done="q5-3" /> Rehearsed this step</label>
+    </article><article class="step" id="q5-step-4">
+      <div class="step-meta"><span class="step-index">STEP 4 / 6</span><span class="duration">◷ 1:00</span></div>
+      <h3>Performance and Plot</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report page 6: the performance table in section 5.3. Then page 7: Figure 3</div>
+      <div class="script"><p>On the training data, MARS was better, with a MAPE of 4.3 percent against 5.3 for MLR. On the test data, MARS was also better on all three measures. Its MAPE was 11.0 percent, against 12.5 for MLR, and its RMSE was about 279 million, against 470 million.</p>
+<p>But a very simple forecast, just repeating last month&#x27;s value, had a MAPE of 8.6 percent. That is better than both models.</p>
+<p>In the plot, the red line shows where the test period starts. During the big jump in 2021 and 2022, MARS followed the real values closely, but MLR predicted only about 80 percent of them. Later, MARS dropped too early at the end of 2022.</p></div>
+      <label class="done"><input type="checkbox" data-done="q5-4" /> Rehearsed this step</label>
+    </article><article class="step" id="q5-step-5">
+      <div class="step-meta"><span class="step-index">STEP 5 / 6</span><span class="duration">◷ 0:40</span></div>
+      <h3>Managerial Insights</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report page 6: section 5.4</div>
+      <div class="script"><p>What does this mean for managers? The report has four points. Here I group them into three.</p>
+<p>First, watch last month&#x27;s SCFI and GCTI, because both methods chose them as early signals. MARS shows a much stronger push when SCFI is above about 1,200. This is useful for planning, but it is not a strict rule.</p>
+<p>Second, look at the EU and US retail indices together, as one signal of consumer demand, because they move closely together.</p>
+<p>Third, use the models together with last month&#x27;s value, and keep extra capacity for sudden peaks, because no single forecast is reliable at the peak.</p></div>
+      <label class="done"><input type="checkbox" data-done="q5-5" /> Rehearsed this step</label>
+    </article><article class="step" id="q5-step-6">
+      <div class="step-meta"><span class="step-index">STEP 6 / 6</span><span class="duration">◷ 0:20</span></div>
+      <h3>Limits and Conclusion</h3>
+      <div class="cue"><span>SLIDE / REPORT CUE</span>Report page 6: the limits paragraph at the end of section 5.4</div>
+      <div class="script"><p>One limit: we only tested a one-month lag, and some data may be released later than that. To conclude, MARS had the lower test error of the two models, but last month&#x27;s value was even better. So the models should support that simple forecast, and be checked again when new data comes in. Thank you.</p></div>
+      <label class="done"><input type="checkbox" data-done="q5-6" /> Rehearsed this step</label>
+    </article></section>
+<section class="panel" id="panel-numbers" role="tabpanel" hidden><div class="section-head"><div class="eyebrow">QUICK REFERENCE</div><h2>Key numbers</h2><p class="section-desc">Same summary values as the original script. Cards replace the wide tables for easier mobile reading.</p></div><h3 class="subhead">Q3 · Linkage comparison</h3><article class="num-card"><h3>Group Average</h3><div class="num-pair"><div><small>BEST k</small><b>k = 2</b></div><div><small>LOWEST DB</small><b>0.269</b></div></div><p>Overall DB winner, but splits 145 people vs. 1 outlier (200 cm, 130 kg, 40 waist)</p></article><article class="num-card"><h3>Single / Complete</h3><div class="num-pair"><div><small>BEST k</small><b>k = 3 / k = 4</b></div><div><small>LOWEST DB</small><b>0.279 / 0.616</b></div></div><p>Also isolate 1 or 2 extreme individuals into singleton clusters</p></article><article class="num-card"><h3>Ward (ward.D2)</h3><div class="num-pair"><div><small>BEST k</small><b>k = 8 (or k = 2)</b></div><div><small>LOWEST DB</small><b>0.750 (0.841 at k=2)</b></div></div><p>Without singletons, k = 2 cleanly separates 57 (53F/4M) vs. 89 (3F/86M)</p></article><h3 class="subhead">Q5 · Forecasting comparison</h3><article class="num-card"><h3>MLR (9 union KPIs)</h3><div class="num-grid"><div><small>TRAIN MAPE (n=119)</small><b>5.3%</b></div><div><small>TEST MAPE (n=60)</small><b>12.50%</b></div><div><small>TEST RMSE</small><b>469.95M</b></div><div><small>TEST MAE</small><b>338.90M</b></div></div></article><article class="num-card"><h3>MARS (degree = 2, penalty = 3)</h3><div class="num-grid"><div><small>TRAIN MAPE (n=119)</small><b>4.3%</b></div><div><small>TEST MAPE (n=60)</small><b>10.96%</b></div><div><small>TEST RMSE</small><b>278.59M</b></div><div><small>TEST MAE</small><b>221.04M</b></div></div></article><article class="num-card"><h3>Last Month Benchmark (Naive)</h3><div class="num-grid"><div><small>TRAIN MAPE (n=119)</small><b>—</b></div><div><small>TEST MAPE (n=60)</small><b>8.55%</b></div><div><small>TEST RMSE</small><b>270.66M</b></div><div><small>TEST MAE</small><b>204.37M</b></div></div></article></section>
+<section class="panel" id="panel-qa" role="tabpanel" hidden><div class="section-head"><div class="eyebrow">PART 3 · REHEARSAL</div><h2>13 prepared questions</h2><p class="section-desc">Tap a question to reveal the prepared English answer.</p></div><details class="qa" id="qa-1"><summary><span class="qa-n">01</span><span class="qa-q">Why did you exclude Gender?</span><span class="qa-tag">Q3</span></summary><div class="qa-answer">We use Gender to describe the clusters. If we also used it to build them, the comparison would be circular.</div></details>
+<details class="qa" id="qa-2"><summary><span class="qa-n">02</span><span class="qa-q">Why standardize? The question did not ask for it.</span><span class="qa-tag">Q3</span></summary><div class="qa-answer">It is our choice, because weight has a much bigger spread and would control the distance. It does change the result: with raw units, the chosen k changes for three of the four methods.</div></details>
+<details class="qa" id="qa-3"><summary><span class="qa-n">03</span><span class="qa-q">Why does DB favor a one-person cluster?</span><span class="qa-tag">Q3</span></summary><div class="qa-answer">One point has zero spread. If it is also far from the other cluster, the DB score becomes small and looks good, even though the groups are not useful. That is why we also checked splits with no one-person clusters: Ward with two clusters separates 57 people, 53 of them women, from 89 people, 86 of them men.</div></details>
+<details class="qa" id="qa-4"><summary><span class="qa-n">04</span><span class="qa-q">Which DB formula did you use?</span><span class="qa-tag">Q3</span></summary><div class="qa-answer">We measured spread as the root mean square distance to the cluster center. This is the q equals 2 setting in clusterSim. With q equals 1, only Ward changes, from eight clusters to two.</div></details>
+<details class="qa" id="qa-5"><summary><span class="qa-n">05</span><span class="qa-q">Why ward.D2 rather than ward.D?</span><span class="qa-tag">Q3</span></summary><div class="qa-answer">ward.D2 uses Ward&#x27;s method correctly with normal Euclidean distances, because it squares the distances inside the function.</div></details>
+<details class="qa" id="qa-6"><summary><span class="qa-n">06</span><span class="qa-q">Do these clusters predict gender?</span><span class="qa-tag">Q3</span></summary><div class="qa-answer">No. This is unsupervised clustering. The tables only describe gender in each cluster. We did not build or test a classifier.</div></details>
+<details class="qa" id="qa-7"><summary><span class="qa-n">07</span><span class="qa-q">Why use last month&#x27;s indicators?</span><span class="qa-tag">Q5</span></summary><div class="qa-answer">To forecast a month, we can only use what is known before it starts. This month&#x27;s indicators are not published yet, so we use last month&#x27;s values.</div></details>
+<details class="qa" id="qa-8"><summary><span class="qa-n">08</span><span class="qa-q">Why is the season index not lagged?</span><span class="qa-tag">Q5</span></summary><div class="qa-answer">It is a calendar factor for each month, so next month&#x27;s value is known in advance. Using last month&#x27;s factor would match the wrong season.</div></details>
+<details class="qa" id="qa-9"><summary><span class="qa-n">09</span><span class="qa-q">Why not impute HSI?</span><span class="qa-tag">Q5</span></summary><div class="qa-answer">HSI is missing for 48 of the 60 test months. If we filled it in, 80 percent of the test period would get the same made-up value, which adds no real information. If we deleted those rows instead, only the 12 months of 2021 would be left for testing.</div></details>
+<details class="qa" id="qa-10"><summary><span class="qa-n">10</span><span class="qa-q">Why did MARS win this time?</span><span class="qa-tag">Q5</span></summary><div class="qa-answer">In 2021 and 2022, freight rates rose to new highs. MARS can bend at thresholds, such as SCFI near 1,200, so it followed the surge. MLR uses straight lines and fell short. This explains the pattern, but our results do not prove the reason.</div></details>
+<details class="qa" id="qa-11"><summary><span class="qa-n">11</span><span class="qa-q">Why do the models lose to last month&#x27;s value?</span><span class="qa-tag">Q5</span></summary><div class="qa-answer">Container changes slowly from month to month, so last month&#x27;s value is a strong guess. The indicators help mainly at turning points: in 2021, MARS beat the simple forecast, 5.2 percent against 6.6 percent.</div></details>
+<details class="qa" id="qa-12"><summary><span class="qa-n">12</span><span class="qa-q">Could the season index leak future information?</span><span class="qa-tag">Q5</span></summary><div class="qa-answer">Maybe, but we cannot prove it. It repeats the same values every year, and the file does not say how it was made. It may have been built from the full Container series. A real model should rebuild it from training data only.</div></details>
+<details class="qa" id="qa-13"><summary><span class="qa-n">13</span><span class="qa-q">What are the units of Container?</span><span class="qa-tag">Q5</span></summary><div class="qa-answer">The file does not say, so we report the original values and do not guess the unit. MAPE has no unit, so it is the easiest measure to compare.</div></details></section></main><footer class="footer">Mobile reading edition · Full English wording retained from the uploaded PDF · Offline-friendly</footer>
+<script>
+(() => {
+ const tabBtns=[...document.querySelectorAll('[data-tab]')];
+ const panels=[...document.querySelectorAll('.panel')];
+ function show(id,updateHash=true){
+  tabBtns.forEach(x=>x.setAttribute('aria-selected',String(x.dataset.tab===id)));
+  panels.forEach(x=>x.hidden=x.id!==`panel-${id}`);
+  if(updateHash)history.replaceState(null,'',`#${id}`);
+  window.scrollTo({top:0,behavior:'instant'});
+ }
+ tabBtns.forEach(x=>x.addEventListener('click',()=>show(x.dataset.tab)));
+ const existingHash=location.hash.slice(1);
+ if(['q3','q5','numbers','qa'].includes(existingHash))show(existingHash,false);
+ const key='g8-mobile-reader-v1';
+ let data={};try{data=JSON.parse(localStorage.getItem(key)||'{}')}catch{}
+ let fontsize=Number(data.fontSize)||18;
+ function setFont(n){fontsize=Math.max(16,Math.min(27,n));document.documentElement.style.setProperty('--fs',fontsize+'px');save()}
+ function save(){try{localStorage.setItem(key,JSON.stringify(data))}catch{}}
+ function updateProgress(){const done=document.querySelectorAll('[data-done]:checked').length;document.getElementById('progress').textContent=`${done}/11 steps rehearsed`}
+ document.querySelectorAll('[data-done]').forEach(x=>{x.checked=!!data[x.dataset.done];x.addEventListener('change',()=>{data[x.dataset.done]=x.checked;save();updateProgress()})});
+ document.getElementById('smaller').addEventListener('click',()=>{data.fontSize=Math.max(16,fontsize-2);setFont(data.fontSize)});
+ document.getElementById('larger').addEventListener('click',()=>{data.fontSize=Math.min(27,fontsize+2);setFont(data.fontSize)});
+ setFont(fontsize);updateProgress();
+})();
+</script></body></html>
