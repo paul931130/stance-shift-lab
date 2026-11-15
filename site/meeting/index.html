@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="zh-Hant-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Stance Shift Lab 的互動簡報：立場交換辯論的 180 案回溯比較、RQ1 結果，以及 RQ2／RQ3 的設計與進度。">
+<title>Stance Shift Lab · 立場流場</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;900&display=swap">
+<link rel="stylesheet" href="meeting.css">
+<script src="meeting.js" defer></script>
+</head>
+<body>
+<canvas id="field" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+<header class="bar">
+  <a class="mark" href="../" title="回到研究故事首頁">STANCE<i>⇄</i>SHIFT LAB</a>
+  <span class="where" id="where" aria-live="polite"></span>
+  <div class="tools">
+    <button type="button" id="btn-theme" title="切換深色／淺色（T）" aria-label="切換深色或淺色">◐</button>
+    <button type="button" id="btn-over" title="總覽（O）">總覽</button>
+    <button type="button" id="btn-deck" class="go" title="簡報模式（P）">▶ 簡報模式</button>
+  </div>
+</header>
+
+<nav class="rail" id="rail" aria-label="章節"></nav>
+
+<main id="stage">
+
+<!-- 00 -->
+<section class="scene" id="cover" data-field="drift" data-title="封面"
+  data-notes="開場先請大家押 C 或 D，背景流場會跟著變。押完按 → 進入問題。">
+  <div class="in">
+    <p class="kicker">研究進度 · 2026 年 11 月</p>
+    <h1>讓 AI <em class="swap">換邊</em><br>反駁自己，<br>決策真的會更好嗎？</h1>
+    <p class="lede">固定立場與立場交換辯論的 180 案回溯比較，以及接下來的兩個問題。</p>
+    <div class="bet" role="group" aria-label="先押你的直覺">
+      <span class="bet-q">先押你的直覺</span>
+      <button type="button" data-bet="C"><b>C</b><span>固定立場<small>各守看多、看空，辯到底</small></span></button>
+      <button type="button" data-bet="D"><b>D</b><span>立場交換<small>中途換邊，引用並反駁自己</small></span></button>
+    </div>
+    <p class="hint" id="bet-note">不計分。選了之後，看背景的兩股流怎麼走。</p>
+  </div>
+</section>
+
+<!-- 01 -->
+<section class="scene" id="why" data-field="same" data-title="問題"
+  data-notes="重點：兩個角色只差提示詞。背景兩種顏色走同一條河，就是這個意思。">
+  <div class="in two">
+    <div>
+      <p class="kicker">01 · 問題</p>
+      <h2>給了兩個角色，<br>不代表有兩種想法。</h2>
+      <p>新聞一片樂觀，財報卻在衰退。面對互相矛盾的資料，「看多」和「看空」兩個代理人會重新衡量證據，還是只把原本的立場說得更有說服力？</p>
+      <p class="punch" data-step="1">所以讓其中一組在中途<strong>換邊，反駁自己</strong>。</p>
+    </div>
+    <ul class="same">
+      <li><span>同一個</span><b>模型</b><small>qwen3:32b</small></li>
+      <li><span>同一份</span><b>中性報告</b><small>技術、基本面、情緒、總經</small></li>
+      <li class="diff"><span>只有</span><b>提示詞</b><small>不同</small></li>
+    </ul>
+  </div>
+</section>
+
+<!-- 02 -->
+<section class="scene" id="design" data-field="fixed" data-title="C 與 D"
+  data-notes="按 → 逐步走：C 全貌 → D 第 1 輪 → 第 2 輪換邊（看不到對手）→ 第 3 輪 → 裁決。">
+  <div class="in">
+    <p class="kicker">02 · 實驗設計</p>
+    <div class="head-row">
+      <h2>換的是立場，<br>比的是整套流程。</h2>
+      <div class="seg" role="group" aria-label="切換流程">
+        <button type="button" data-arm="C" aria-pressed="true">C 固定立場</button>
+        <button type="button" data-arm="D" aria-pressed="false">D 立場交換</button>
+      </div>
+    </div>
+    <div class="arena" id="arena" data-arm="C" data-round="0">
+      <span class="ch"></span><span class="ch">第 1 輪</span><span class="ch">第 2 輪</span><span class="ch">第 3 輪</span><span class="ch">裁決</span>
+      <span class="who">代理人甲<small>原本看多</small></span>
+      <span class="nd" data-agent="0" data-r="1"></span><span class="nd" data-agent="0" data-r="2"></span><span class="nd" data-agent="0" data-r="3"></span>
+      <span class="judge" data-r="4">裁決者<small>核對證據<br>買進或賣出</small></span>
+      <span class="who mid"></span>
+      <span class="lk" data-r="1"></span><span class="lk" data-r="2"></span><span class="lk" data-r="3"></span>
+      <span class="who">代理人乙<small>原本看空</small></span>
+      <span class="nd" data-agent="1" data-r="1"></span><span class="nd" data-agent="1" data-r="2"></span><span class="nd" data-agent="1" data-r="3"></span>
+    </div>
+    <div class="arena-foot">
+      <p id="round-text" aria-live="polite"></p>
+      <div class="steps" role="group" aria-label="逐輪檢視">
+        <button type="button" data-round="0" aria-pressed="true">全貌</button>
+        <button type="button" data-round="1" aria-pressed="false">1</button>
+        <button type="button" data-round="2" aria-pressed="false">2</button>
+        <button type="button" data-round="3" aria-pressed="false">3</button>
+        <button type="button" data-round="4" aria-pressed="false">裁決</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="scene" id="method" data-field="swap" data-title="比較邊界"
+  data-notes="先講樣本與判準，再按 → 帶出：D 同時改了四件事，所以只能說是整套流程的比較。">
+  <div class="in">
+    <p class="kicker">03 · 比較的邊界</p>
+    <h2>同樣的資料，同樣 7 次呼叫。</h2>
+    <dl class="facts">
+      <div><dt>180</dt><dd>案例<small>9 檔美國大型股 × 20 個季末，2021–2025</small></dd></div>
+      <div><dt>60</dt><dd>個交易日<small>分析日後第一個交易日開盤進場，60 日後開盤出場</small></dd></div>
+      <div><dt>7</dt><dd>次預定決策呼叫<small>三輪各兩次，加裁決一次；C、D 都用 qwen3:32b</small></dd></div>
+      <div><dt>2</dt><dd>項主要指標<small>方向準確率與年化 Sharpe；兩項差異都為正、Holm 校正後 p &lt; 0.05 才算 D 較好</small></dd></div>
+    </dl>
+    <div class="bundle" data-step="1">
+      <span class="lab">D 相對於 C，同時改了</span>
+      <div class="chips"><b>立場交換</b><i>+</i><b>隔離對手</b><i>+</i><b>強制引用自己</b><i>+</i><b>驗證與重試</b></div>
+      <p>所以 RQ1 比較的是<strong>整套 D 流程</strong>與整套 C 流程，不能單獨說成「交換立場」的效果。主要指標用守門員之前的候選決策。</p>
+    </div>
+  </div>
+</section>
+
+<!-- 04 -->
+<section class="scene" id="results" data-field="fixed" data-title="RQ1 結果"
+  data-notes="按 → 揭曉。準確率 D−C = −3.3 個百分點，Holm p = 0.42；Sharpe −0.05，Holm p = 0.80。條紋是事後參照，不是主要比較。">
+  <div class="in">
+    <p class="kicker">04 · RQ1 結果</p>
+    <div class="sealed" id="sealed">
+      <h2>研究會支持你的直覺嗎？</h2>
+      <p id="bet-echo">還沒押也可以直接看。</p>
+      <button type="button" class="cta" id="reveal">揭曉結果</button>
+    </div>
+    <div class="opened" id="opened" hidden>
+      <div class="head-row">
+        <h2>數字沒有支持<br>D 比 C 更好。</h2>
+        <div class="seg" role="group" aria-label="切換指標">
+          <button type="button" data-metric="acc" aria-pressed="true">方向準確率</button>
+          <button type="button" data-metric="sharpe" aria-pressed="false">年化 Sharpe</button>
+        </div>
+      </div>
+      <div class="duel">
+        <div class="side c"><span>C 固定立場</span><b id="num-c">0</b></div>
+        <div class="delta"><span>D − C</span><b id="num-d-c"></b><small id="num-p"></small></div>
+        <div class="side d"><span>D 立場交換</span><b id="num-d">0</b></div>
+      </div>
+      <div class="bars" id="bars" aria-hidden="true"></div>
+      <p class="fine" id="metric-note"></p>
+    </div>
+  </div>
+</section>
+
+<!-- 05 -->
+<section class="scene" id="map" data-field="converge" data-title="分歧地圖"
+  data-notes="180 格只有 16 格亮：這 16 案 C、D 方向不同。點 INTC 2024-03 和 AAPL 2023-03 講兩個相反的例子。">
+  <div class="in two wide-left">
+    <div>
+      <p class="kicker">05 · 分歧地圖</p>
+      <h2>180 案裡，只有 16 案<br>兩組看法不同。</h2>
+      <div class="grid-wrap">
+        <div class="grid" id="grid" role="group" aria-label="180 個案例，亮起的是 C 與 D 方向不同的案例"></div>
+        <div class="years" aria-hidden="true"><span>2021</span><span>2022</span><span>2023</span><span>2024</span><span>2025</span></div>
+      </div>
+      <div class="seg small" role="group" aria-label="篩選分歧案例">
+        <button type="button" data-win="all" aria-pressed="true">全部 16</button>
+        <button type="button" data-win="C" aria-pressed="false">C 對 11</button>
+        <button type="button" data-win="D" aria-pressed="false">D 對 5</button>
+      </div>
+    </div>
+    <aside class="panel" id="case-panel" aria-live="polite"></aside>
+  </div>
+</section>
+
+<!-- 06 -->
+<section class="scene" id="tost" data-field="converge" data-title="不顯著 ≠ 相同"
+  data-notes="這頁解釋為什麼要加 TOST：RQ1 的區間跨過 0，也超出 −5，所以兩種話都不能說。">
+  <div class="in two">
+    <div>
+      <p class="kicker">06 · 怎麼讀這個結果</p>
+      <h2>不顯著，<br>也不能說兩組一樣。</h2>
+      <p>把 RQ1 的準確率差放到事先畫好的等效範圍（±5 個百分點）裡看：區間跨過 0，也超出下界。</p>
+      <ul class="verdicts">
+        <li data-step="1"><b>跨過 0</b>沒有證據說 D 較好或較差</li>
+        <li data-step="2"><b>下限低於 −5</b>也不能判定兩組等效</li>
+        <li data-step="3"><b>檢定力有限</b>180 案要偵測 5 個百分點的差，檢定力粗估只有 23–32%；10 個百分點約 69–85%</li>
+      </ul>
+    </div>
+    <figure class="plot">
+      <svg viewBox="0 0 640 260" role="img" aria-label="D 減 C 的準確率差為負 3.3 個百分點，90% 區間約負 7.0 到正 0.3，等效範圍為正負 5 個百分點">
+        <rect class="band" x="180" y="40" width="280" height="150"/>
+        <text class="t-band" x="320" y="30" text-anchor="middle">等效範圍 ±5 個百分點</text>
+        <line class="axis" x1="40" y1="190" x2="600" y2="190"/>
+        <g class="ticks"><line x1="40" y1="190" x2="40" y2="198"/><line x1="180" y1="190" x2="180" y2="198"/><line x1="320" y1="190" x2="320" y2="198"/><line x1="460" y1="190" x2="460" y2="198"/><line x1="600" y1="190" x2="600" y2="198"/></g>
+        <g class="tl" text-anchor="middle"><text x="40" y="216">−10</text><text x="180" y="216">−5</text><text x="320" y="216">0</text><text x="460" y="216">+5</text><text x="600" y="216">+10</text></g>
+        <line class="zero" x1="320" y1="40" x2="320" y2="190"/>
+        <line class="ci" x1="124" y1="115" x2="328.4" y2="115"/>
+        <line class="cap" x1="124" y1="103" x2="124" y2="127"/><line class="cap" x1="328.4" y1="103" x2="328.4" y2="127"/>
+        <circle class="pt" cx="227.6" cy="115" r="8"/>
+        <text class="t-pt" x="227.6" y="92" text-anchor="middle">−3.3</text>
+        <text class="t-end" x="124" y="150" text-anchor="middle">−7.0</text><text class="t-end" x="328.4" y="150" text-anchor="middle">+0.3</text>
+        <text class="t-ax" x="320" y="246" text-anchor="middle">D − C 方向準確率差（百分點）</text>
+      </svg>
+      <figcaption>配對 90% 區間為近似值，取自 11/05 設計決策單的 RQ1 示例。</figcaption>
+    </figure>
+  </div>
+</section>
+
+<!-- 07 -->
+<section class="scene" id="rq2" data-field="hetero" data-title="RQ2 模型異質"
+  data-notes="RQ1 之後的問題：兩邊其實是同一個模型。RQ2 讓看多、看空用不同模型，看 D−C 會不會變。點格子講 AB／BA 為什麼兩種都跑。">
+  <div class="in two">
+    <div>
+      <p class="kicker">07 · RQ2 <span class="tag">已實作 · 尚未資格檢查與登記</span></p>
+      <h2>換一個不同的模型<br>來當對手，D−C 會變嗎？</h2>
+      <p class="formula">Δ = (D − C)<sub>異質</sub> − (D − C)<sub>同質</sub></p>
+      <ul class="plain">
+        <li>A = qwen3:32b，B = gemma3:27b；裁決者與研究代理人固定用 A</li>
+        <li>D 的第 2 輪只換立場，不換模型</li>
+        <li>每個條件至少三個 seed；先跑 905，再補 906、907</li>
+        <li>結果只適用這一組 A、B，不能說成「異質性」的一般效果</li>
+      </ul>
+    </div>
+    <div>
+      <div class="matrix" id="matrix" role="group" aria-label="模型配置">
+        <span class="mh"></span><span class="mh">看空 = A</span><span class="mh">看空 = B</span>
+        <span class="mh">看多 = A</span>
+        <button type="button" data-cell="AA" aria-pressed="true"><b>AA</b><small>同質基準</small></button>
+        <button type="button" data-cell="AB" aria-pressed="false"><b>AB</b><small>異質</small></button>
+        <span class="mh">看多 = B</span>
+        <button type="button" data-cell="BA" aria-pressed="false"><b>BA</b><small>異質</small></button>
+        <button type="button" data-cell="BB" aria-pressed="false"><b>BB</b><small>同質控制</small></button>
+      </div>
+      <p class="panel slim" id="matrix-text" aria-live="polite"></p>
+    </div>
+  </div>
+</section>
+
+<!-- 08 -->
+<section class="scene" id="rq3" data-field="domains" data-title="RQ3 領域分工"
+  data-notes="RQ3 只跑固定立場，不檢驗立場交換。三個對照各排除一種解釋：架構、算力、資訊切分。">
+  <div class="in">
+    <p class="kicker">08 · RQ3 <span class="tag">已實作 · 尚未資格檢查與登記</span></p>
+    <h2>四個領域各自辯論，<br>比一個通才辯論好嗎？</h2>
+    <div class="pipe" aria-hidden="true">
+      <div class="doms"><span>技術面</span><span>基本面</span><span>情緒面</span><span>總經面</span></div>
+      <i>→</i><div class="box">各自多空辯論<small>三輪 × 四個領域</small></div>
+      <i>→</i><div class="box">Domain View<small>每個領域一個觀點</small></div>
+      <i>→</i><div class="box hot">Final Aggregator<small>整合成一個決策</small></div>
+      <i>→</i><div class="box">Gatekeeper<small>與 RQ1 相同</small></div>
+    </div>
+    <div class="arms">
+      <div class="seg col" role="group" aria-label="RQ3 的四個組別" id="arms">
+        <button type="button" data-rq3="C_domain" aria-pressed="true">C_domain</button>
+        <button type="button" data-rq3="C" aria-pressed="false">C 通才</button>
+        <button type="button" data-rq3="C_budget" aria-pressed="false">C_budget</button>
+        <button type="button" data-rq3="C_partition" aria-pressed="false">C_partition</button>
+      </div>
+      <div class="panel" id="arm-text" aria-live="polite"></div>
+    </div>
+    <p class="fine">RQ3 只跑固定立場，<strong>不檢驗立場交換</strong>；「資訊分工會不會改變 D−C」列為後續研究。</p>
+  </div>
+</section>
+
+<!-- 09 -->
+<section class="scene" id="decisions" data-field="pipeline" data-title="四項決策"
+  data-notes="11/09 定案的四項登記前決策，按 → 一項一項出現。">
+  <div class="in">
+    <p class="kicker">09 · 登記前的設計決策 <span class="tag ok">2026-11-09 定案</span></p>
+    <h2>正式登記前，先把四件事定下來。</h2>
+    <ol class="cards">
+      <li data-step="1"><span class="q">RQ3 要不要也檢驗立場交換？</span><b>只跑固定立場</b><p>C、C_domain、C_budget、C_partition。資訊面的 2×2 留給後續研究。</p></li>
+      <li data-step="2"><span class="q">「沒有差異」能說得更精確嗎？</span><b>加 TOST 等效檢定</b><p>次要分析：準確率 ±5 個百分點、Sharpe ±0.2，90% 區間。不進 Holm family，邊界已鎖定。</p></li>
+      <li data-step="3"><span class="q">區塊長度會不會影響結論？</span><b>照現行計畫</b><p>日期區塊 1／2／4、日報酬區塊 10／20／40，與主要結果並列報告，不拿來挑結果。</p></li>
+      <li data-step="4"><span class="q">怎麼拆出「立場交換本身」？</span><b>RQ2 之後另做 D_noswap</b><p>保留隔離對手、強制引用與驗證重試，只是不換立場。另行登記，標為探索性。</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- 10 -->
+<section class="scene" id="progress" data-field="pipeline" data-title="進度與下一步"
+  data-notes="上半是 10/20 之後做完的事，下半是還沒做的：目前沒有任何真實模型的資格檢查、pilot、登記或結果。">
+  <div class="in">
+    <p class="kicker">10 · 進度與下一步</p>
+    <h2>程式與流程就緒，<br>真實模型還沒開跑。</h2>
+    <ol class="done">
+      <li><time>11/04</time><b>修掉審查列出的三個程式問題</b><span>排程競速、RQ3 缺日、Sharpe 不可估；全套 499 項測試通過</span></li>
+      <li><time>11/04–05</time><b>改用實驗室 GPU</b><span>程式留在本機，經 SSH 通道用實驗室的 Ollama；一個指令跑完檢查到 pilot</span></li>
+      <li><time>11/05</time><b>pilot 自動驗收</b><span>check_pilot.py 逐項檢查並估算 180 案時間；RQ2／RQ3 離線 pilot 已跑通（不呼叫模型）</span></li>
+      <li><time>11/09</time><b>四項設計決策定案</b><span>分析程式新增 TOST 等效輸出</span></li>
+    </ol>
+    <div class="track" data-step="1">
+      <span class="here">目前在這裡</span>
+      <ol>
+        <li>開通道<small>核對兩個模型權重</small></li>
+        <li>模型資格<small>A、B 記憶探針與 canary</small></li>
+        <li>三案 pilot<small>真實模型，只看完整性</small></li>
+        <li>驗收與凍結<small>重做離線封裝</small></li>
+        <li>事前登記<small>鎖報告庫與分析計畫</small></li>
+        <li>RQ2 正式<small>seed 905 → 906、907</small></li>
+        <li>RQ3 正式<small>C、C_domain 先跑</small></li>
+        <li>D_noswap<small>探索性消融</small></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- 11 -->
+<section class="scene" id="open" data-field="calm" data-title="待討論"
+  data-notes="這四項是文件裡還開著的問題，會議上想聽意見。">
+  <div class="in">
+    <p class="kicker">11 · 還開著的問題</p>
+    <h2>登記前想先討論的四件事。</h2>
+    <ol class="asks">
+      <li data-step="1"><b>C_budget 的提示太長</b><p>彙整提示約 9,968 tokens（Gemini 計數），超過 8192 上下文扣掉輸出上限後可用的 6,144，在實驗室上可能被截斷。要縮提示、加大上下文，還是調整設計？</p></li>
+      <li data-step="2"><b>檢定力不足時怎麼下結論</b><p>180 案偵測 5 個百分點的檢定力粗估只有 23–32%。主要靠信賴區間與 TOST 描述，這樣夠嗎？</p></li>
+      <li data-step="3"><b>RQ1 升格稽核的缺口</b><p>登記回執、統計程式不在 protocol hash 內、研究者確認。打算在 RQ2／RQ3 正式登記時，把統計程式與 Ollama 版本一起鎖定。</p></li>
+      <li data-step="4"><b>已見樣本的限制</b><p>180 案在前導時都看過，RQ2／RQ3 仍是回溯比較。確認性的結論需要模型知識截止日之後的新案例。</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- 12 -->
+<section class="scene" id="end" data-field="calm" data-title="目前能說的"
+  data-notes="收尾：只說到證據支持的範圍。">
+  <div class="in">
+    <p class="kicker">12 · 目前能說的</p>
+    <h1 class="closing">在這批樣本與流程下，<br>還沒找到 D 優於 C 的證據。</h1>
+    <p class="lede">這是有限的回溯比較，不是一般化的投資方法，也不是已完整重現的確認性研究；不宣稱能獲利、勝過市場，也不是投資建議。RQ2、RQ3 目前只有設計與程式，還沒有結果。</p>
+    <nav class="links" aria-label="延伸閱讀">
+      <a href="../sources/application-meeting-20261020_v11.pdf">研究報告 v11（PDF）</a>
+      <a href="../">研究故事</a>
+      <a href="../demo/">逐輪案例展示</a>
+      <a href="../app/">研究台唯讀展示</a>
+      <a href="https://github.com/paul931130/stance-shift-lab">GitHub</a>
+    </nav>
+    <p class="fine">數值依報告 v11 四捨五入；16 個分歧案例取自 180 案凍結證據包的靜態匯出。本頁不呼叫模型、不抓行情、不下單。</p>
+  </div>
+</section>
+
+</main>
+
+<footer class="hud" id="hud" aria-label="簡報控制">
+  <button type="button" id="hud-prev" aria-label="上一步">‹</button>
+  <span class="count" id="hud-count"></span>
+  <span class="ttl" id="hud-title"></span>
+  <span class="keys">← → 翻頁 · O 總覽 · N 提示 · F 全螢幕 · Esc 離開</span>
+  <button type="button" class="clock" id="hud-clock" title="點一下歸零">00:00</button>
+  <button type="button" id="hud-next" aria-label="下一步">›</button>
+  <i class="prog" id="hud-prog"></i>
+</footer>
+<aside class="notes" id="notes" hidden></aside>
+<div class="over" id="over" hidden role="dialog" aria-label="總覽"><ol id="over-list"></ol></div>
+</body>
+</html>
