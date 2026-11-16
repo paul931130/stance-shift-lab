@@ -47,12 +47,12 @@
 
 <!-- 01 -->
 <section class="scene" id="why" data-field="same" data-title="問題"
-  data-notes="重點：兩個角色只差提示詞。背景兩種顏色走同一條河，就是這個意思。">
+  data-notes="重點：看多、看空兩個角色只差提示詞（這裡講的是兩個角色，不是 C 與 D 的差別）。背景兩種顏色走同一條河，就是這個意思。">
   <div class="in two">
     <div>
       <p class="kicker">01 · 問題</p>
       <h2>給了兩個角色，<br>不代表有兩種想法。</h2>
-      <p>新聞一片樂觀，財報卻在衰退。面對互相矛盾的資料，「看多」和「看空」兩個代理人會重新衡量證據，還是只把原本的立場說得更有說服力？</p>
+      <p>資料互相矛盾時，兩個代理人會重新衡量證據，還是只把原本的立場講得更漂亮？</p>
       <p class="punch" data-step="1">所以讓其中一組在中途<strong>換邊，反駁自己</strong>。</p>
     </div>
     <ul class="same">
@@ -100,20 +100,20 @@
 
 <!-- 03 -->
 <section class="scene" id="method" data-field="swap" data-title="比較邊界"
-  data-notes="先講樣本與判準，再按 → 帶出：D 同時改了四件事，所以只能說是整套流程的比較。">
+  data-notes="先講樣本與判準：C、D 都用 qwen3:32b；兩項差異都為正、Holm 校正後 p < 0.05 才算 D 較好；主要指標用守門員之前的候選決策。再按 → 帶出：D 同時改了四件事，所以只能說是整套流程的比較。">
   <div class="in">
     <p class="kicker">03 · 比較的邊界</p>
-    <h2>同樣的資料，同樣 7 次呼叫。</h2>
+    <h2>同樣的資料，同樣 7 次預定呼叫。</h2>
     <dl class="facts">
       <div><dt>180</dt><dd>案例<small>9 檔美國大型股 × 20 個季末，2021–2025</small></dd></div>
-      <div><dt>60</dt><dd>個交易日<small>分析日後第一個交易日開盤進場，60 日後開盤出場</small></dd></div>
-      <div><dt>7</dt><dd>次預定決策呼叫<small>三輪各兩次，加裁決一次；C、D 都用 qwen3:32b</small></dd></div>
-      <div><dt>2</dt><dd>項主要指標<small>方向準確率與年化 Sharpe；兩項差異都為正、Holm 校正後 p &lt; 0.05 才算 D 較好</small></dd></div>
+      <div><dt>60</dt><dd>個交易日<small>隔日開盤進場，60 日後開盤出場</small></dd></div>
+      <div><dt>7</dt><dd>次預定決策呼叫<small>三輪各兩次，加裁決一次</small></dd></div>
+      <div><dt>2</dt><dd>項主要指標<small>方向準確率、年化 Sharpe；兩項都顯著才算 D 較好</small></dd></div>
     </dl>
     <div class="bundle" data-step="1">
       <span class="lab">D 相對於 C，同時改了</span>
       <div class="chips"><b>立場交換</b><i>+</i><b>隔離對手</b><i>+</i><b>強制引用自己</b><i>+</i><b>驗證與重試</b></div>
-      <p>所以 RQ1 比較的是<strong>整套 D 流程</strong>與整套 C 流程，不能單獨說成「交換立場」的效果。主要指標用守門員之前的候選決策。</p>
+      <p>RQ1 比的是<strong>整套流程</strong>，不能說成「交換立場」單一因素的效果。</p>
     </div>
   </div>
 </section>
@@ -170,16 +170,16 @@
 
 <!-- 06 -->
 <section class="scene" id="tost" data-field="converge" data-title="不顯著 ≠ 相同"
-  data-notes="這頁解釋為什麼要加 TOST：RQ1 的區間跨過 0，也超出 −5，所以兩種話都不能說。">
+  data-notes="這頁解釋為什麼要加 TOST：RQ1 的區間跨過 0，也超出 −5，所以兩種話都不能說。檢定力：180 案偵測 5 個百分點約 23–32%，10 個百分點約 69–85%；這是假設不一致比例 0.2–0.3 的常態近似粗估，RQ1 實際不一致是 16／180。">
   <div class="in two">
     <div>
       <p class="kicker">06 · 怎麼讀這個結果</p>
       <h2>不顯著，<br>也不能說兩組一樣。</h2>
-      <p>把 RQ1 的準確率差放到事先畫好的等效範圍（±5 個百分點）裡看：區間跨過 0，也超出下界。</p>
+      <p>把準確率差放進等效範圍（±5 個百分點）裡看。</p>
       <ul class="verdicts">
         <li data-step="1"><b>跨過 0</b>沒有證據說 D 較好或較差</li>
         <li data-step="2"><b>下限低於 −5</b>也不能判定兩組等效</li>
-        <li data-step="3"><b>檢定力有限</b>180 案要偵測 5 個百分點的差，檢定力粗估只有 23–32%；10 個百分點約 69–85%</li>
+        <li data-step="3"><b>檢定力有限</b>偵測 5 個百分點的差，粗估只有 23–32%</li>
       </ul>
     </div>
     <figure class="plot">
@@ -203,18 +203,38 @@
 </section>
 
 <!-- 07 -->
+<section class="scene" id="clash" data-field="same" data-title="辯論有在辯嗎"
+  data-notes="RQ1 的 C 組第 3 輪共 360 次發言：63.3% 一字不差；對方有新證據的 337 次只有 0.6% 採用。按 → 提案：相似度達 0.8 退回重寫，裁決者逐回合判定，D 的隔離換邊輪不變。再按 → Gemini 20 案（2.5 Flash 與 3.5 Flash，不是正式模型）：準確率 C 45.0% → 42.5%、D 45.0% 不變。試跑看過 180 案裡 27 案的結果，正式分析會加排除這 27 案的敏感性分析。這頁要請老師決定要不要採用。">
+  <div class="in">
+    <p class="kicker">07 · 回頭看 RQ1 的辯論紀錄 <span class="tag">提案 · 待老師確認</span></p>
+    <h2>固定立場辯到第三輪，<br>多半在重複自己。</h2>
+    <dl class="facts">
+      <div><dt>63.3%</dt><dd>一字不差<small>C 組第 3 輪的理由和上一輪完全相同</small></dd></div>
+      <div><dt>0.6%</dt><dd>採用對方的證據<small>對方有新證據時，真的拿來用</small></dd></div>
+      <div><dt>0.89</dt><dd>和自己上一輪的相似度<small>C 組第 3 輪；D 組是 0.14</small></dd></div>
+      <div><dt>1.4%</dt><dd>明確提到對方<small>看不到對方的第 1 輪也有 3.1%</small></dd></div>
+    </dl>
+    <div class="bundle" data-step="1">
+      <span class="lab">提案：強制交鋒（debate_clash）· 三輪改成立論 → 反駁 → 結辯</span>
+      <p>第 2 輪起必須<strong>逐字引用對方一句話</strong>再反駁；和自己上一輪太像就退回重寫。</p>
+    </div>
+    <p class="fine" data-step="2">Gemini 試跑 20 案：相似度 0.57 → 0.18，採用對方證據 4% → 24%，準確率看不出差異。</p>
+  </div>
+</section>
+
+<!-- 08 -->
 <section class="scene" id="rq2" data-field="hetero" data-title="RQ2 模型異質"
   data-notes="RQ1 之後的問題：兩邊其實是同一個模型。RQ2 讓看多、看空用不同模型，看 D−C 會不會變。點格子講 AB／BA 為什麼兩種都跑。">
   <div class="in two">
     <div>
-      <p class="kicker">07 · RQ2 <span class="tag">已實作 · 尚未資格檢查與登記</span></p>
+      <p class="kicker">08 · RQ2 <span class="tag">已實作 · 尚未資格檢查與登記</span></p>
       <h2>換一個不同的模型<br>來當對手，D−C 會變嗎？</h2>
       <p class="formula">Δ = (D − C)<sub>異質</sub> − (D − C)<sub>同質</sub></p>
       <ul class="plain">
-        <li>A = qwen3:32b，B = gemma3:27b；裁決者與研究代理人固定用 A</li>
+        <li>A = qwen3:32b，B = gemma3:27b；裁決者固定用 A</li>
         <li>D 的第 2 輪只換立場，不換模型</li>
-        <li>每個條件至少三個 seed；先跑 905，再補 906、907</li>
-        <li>結果只適用這一組 A、B，不能說成「異質性」的一般效果</li>
+        <li>每個條件至少三個 seed</li>
+        <li>結果只適用這一組 A、B</li>
       </ul>
     </div>
     <div>
@@ -232,11 +252,11 @@
   </div>
 </section>
 
-<!-- 08 -->
+<!-- 09 -->
 <section class="scene" id="rq3" data-field="domains" data-title="RQ3 領域分工"
-  data-notes="RQ3 只跑固定立場，不檢驗立場交換。三個對照各排除一種解釋：架構、算力、資訊切分。">
+  data-notes="RQ3 只跑固定立場，不檢驗立場交換。三個對照各對應一種解釋：架構、算力（只按呼叫數對齊）、資訊切分。">
   <div class="in">
-    <p class="kicker">08 · RQ3 <span class="tag">已實作 · 尚未資格檢查與登記</span></p>
+    <p class="kicker">09 · RQ3 <span class="tag">已實作 · 尚未資格檢查與登記</span></p>
     <h2>四個領域各自辯論，<br>比一個通才辯論好嗎？</h2>
     <div class="pipe" aria-hidden="true">
       <div class="doms"><span>技術面</span><span>基本面</span><span>情緒面</span><span>總經面</span></div>
@@ -258,37 +278,38 @@
   </div>
 </section>
 
-<!-- 09 -->
+<!-- 10 -->
 <section class="scene" id="decisions" data-field="pipeline" data-title="四項決策"
-  data-notes="11/09 定案的四項登記前決策，按 → 一項一項出現。">
+  data-notes="11/09 定案的四項，按 → 一項一項出現。RQ3 四組：C、C_domain、C_budget、C_partition。TOST 是次要分析，90% 區間，不進 Holm family。區塊長度：日期 1／2／4、日報酬 10／20／40。D_noswap 保留隔離對手、強制引用與驗證重試，另行登記。">
   <div class="in">
-    <p class="kicker">09 · 登記前的設計決策 <span class="tag ok">2026-11-09 定案</span></p>
+    <p class="kicker">10 · 登記前的設計決策 <span class="tag ok">2026-11-09 定案</span></p>
     <h2>正式登記前，先把四件事定下來。</h2>
     <ol class="cards">
-      <li data-step="1"><span class="q">RQ3 要不要也檢驗立場交換？</span><b>只跑固定立場</b><p>C、C_domain、C_budget、C_partition。資訊面的 2×2 留給後續研究。</p></li>
-      <li data-step="2"><span class="q">「沒有差異」能說得更精確嗎？</span><b>加 TOST 等效檢定</b><p>次要分析：準確率 ±5 個百分點、Sharpe ±0.2，90% 區間。不進 Holm family，邊界已鎖定。</p></li>
-      <li data-step="3"><span class="q">區塊長度會不會影響結論？</span><b>照現行計畫</b><p>日期區塊 1／2／4、日報酬區塊 10／20／40，與主要結果並列報告，不拿來挑結果。</p></li>
-      <li data-step="4"><span class="q">怎麼拆出「立場交換本身」？</span><b>RQ2 之後另做 D_noswap</b><p>保留隔離對手、強制引用與驗證重試，只是不換立場。另行登記，標為探索性。</p></li>
+      <li data-step="1"><span class="q">RQ3 要不要也檢驗立場交換？</span><b>只跑固定立場</b><p>資訊面的 2×2 留給後續研究。</p></li>
+      <li data-step="2"><span class="q">「沒有差異」能說得更精確嗎？</span><b>加 TOST 等效檢定</b><p>準確率 ±5 個百分點、Sharpe ±0.2；邊界已鎖定。</p></li>
+      <li data-step="3"><span class="q">區塊長度會不會影響結論？</span><b>照現行計畫</b><p>敏感性與主要結果並列報告，不拿來挑結果。</p></li>
+      <li data-step="4"><span class="q">怎麼拆出「立場交換本身」？</span><b>RQ2 之後另做 D_noswap</b><p>其他都保留，只是不換立場；標為探索性。</p></li>
     </ol>
+    <p class="fine">待老師確認的三項：強制交鋒、RQ3 是否採用、C_budget 上下文。</p>
   </div>
 </section>
 
-<!-- 10 -->
+<!-- 11 -->
 <section class="scene" id="progress" data-field="pipeline" data-title="進度與下一步"
-  data-notes="上半是 10/20 之後做完的事，下半是還沒做的：目前沒有任何真實模型的資格檢查、pilot、登記或結果。">
+  data-notes="上半是 10/20 之後做完的事（三個程式問題是排程競速、RQ3 缺日、Sharpe 不可估；程式留在本機，經 SSH 通道用實驗室的 Ollama），下半是還沒做的：正式模型（qwen3:32b、gemma3:27b）還沒有資格檢查、pilot、登記或結果。Gemini 只用來試跑交鋒機制。">
   <div class="in">
-    <p class="kicker">10 · 進度與下一步</p>
-    <h2>程式與流程就緒，<br>真實模型還沒開跑。</h2>
+    <p class="kicker">11 · 進度與下一步</p>
+    <h2>程式與流程就緒，<br>正式模型還沒開跑。</h2>
     <ol class="done">
-      <li><time>11/04</time><b>修掉審查列出的三個程式問題</b><span>排程競速、RQ3 缺日、Sharpe 不可估；全套 499 項測試通過</span></li>
-      <li><time>11/04–05</time><b>改用實驗室 GPU</b><span>程式留在本機，經 SSH 通道用實驗室的 Ollama；一個指令跑完檢查到 pilot</span></li>
-      <li><time>11/05</time><b>pilot 自動驗收</b><span>check_pilot.py 逐項檢查並估算 180 案時間；RQ2／RQ3 離線 pilot 已跑通（不呼叫模型）</span></li>
+      <li><time>11/04</time><b>修掉審查列出的三個程式問題</b><span>全套 499 項測試，0 失敗</span></li>
+      <li><time>11/04–05</time><b>改用實驗室 GPU，pilot 自動驗收</b><span>一個指令從檢查跑到 pilot；離線 pilot 已跑通</span></li>
+      <li><time>11/05–06</time><b>辯論交鋒機制試跑</b><span>Gemini 跑 3 案、20 案與 RQ3 的 5 案</span></li>
       <li><time>11/09</time><b>四項設計決策定案</b><span>分析程式新增 TOST 等效輸出</span></li>
     </ol>
     <div class="track" data-step="1">
       <span class="here">目前在這裡</span>
       <ol>
-        <li>開通道<small>核對兩個模型權重</small></li>
+        <li>確認機制、開通道<small>交鋒定案，核對兩個模型權重</small></li>
         <li>模型資格<small>A、B 記憶探針與 canary</small></li>
         <li>三案 pilot<small>真實模型，只看完整性</small></li>
         <li>驗收與凍結<small>重做離線封裝</small></li>
@@ -301,28 +322,28 @@
   </div>
 </section>
 
-<!-- 11 -->
+<!-- 12 -->
 <section class="scene" id="open" data-field="calm" data-title="待討論"
-  data-notes="這四項是文件裡還開著的問題，會議上想聽意見。">
+  data-notes="前兩項要老師明確同意才能動工。交鋒（決策 5、6）：不採用的話，把辯論後段重複自己列為 RQ1 的發現。C_budget（決策 7）：8192 上下文扣掉輸出上限剩 6,144；實驗室記憶體或速度不夠就改成縮短每份提案。後兩項想聽意見：確認性的結論要等知識截止日之後的新案例；RQ1 缺口是登記回執、統計程式不在 protocol hash 內、研究者確認。">
   <div class="in">
-    <p class="kicker">11 · 還開著的問題</p>
+    <p class="kicker">12 · 還開著的問題</p>
     <h2>登記前想先討論的四件事。</h2>
     <ol class="asks">
-      <li data-step="1"><b>C_budget 的提示太長</b><p>彙整提示約 9,968 tokens（Gemini 計數），超過 8192 上下文扣掉輸出上限後可用的 6,144，在實驗室上可能被截斷。要縮提示、加大上下文，還是調整設計？</p></li>
-      <li data-step="2"><b>檢定力不足時怎麼下結論</b><p>180 案偵測 5 個百分點的檢定力粗估只有 23–32%。主要靠信賴區間與 TOST 描述，這樣夠嗎？</p></li>
-      <li data-step="3"><b>RQ1 升格稽核的缺口</b><p>登記回執、統計程式不在 protocol hash 內、研究者確認。打算在 RQ2／RQ3 正式登記時，把統計程式與 Ollama 版本一起鎖定。</p></li>
-      <li data-step="4"><b>已見樣本的限制</b><p>180 案在前導時都看過，RQ2／RQ3 仍是回溯比較。確認性的結論需要模型知識截止日之後的新案例。</p></li>
+      <li data-step="1"><b>要不要採用強制交鋒</b><p>建議 RQ2、RQ3 都用。代價是封裝與資格檢查要重做，而且機制是看過 27 案結果後定的。</p></li>
+      <li data-step="2"><b>C_budget 的提示太長</b><p>約 9,968 tokens，超過可用的 6,144，會被截斷。建議 RQ3 改用 16384 上下文。</p></li>
+      <li data-step="3"><b>檢定力不足、樣本又看過</b><p>打算報信賴區間與 TOST，標為探索性回溯。這樣夠嗎？</p></li>
+      <li data-step="4"><b>RQ1 升格稽核的缺口</b><p>打算在 RQ2／RQ3 登記時，把統計程式與 Ollama 版本一起鎖定。</p></li>
     </ol>
   </div>
 </section>
 
-<!-- 12 -->
+<!-- 13 -->
 <section class="scene" id="end" data-field="calm" data-title="目前能說的"
   data-notes="收尾：只說到證據支持的範圍。">
   <div class="in">
-    <p class="kicker">12 · 目前能說的</p>
+    <p class="kicker">13 · 目前能說的</p>
     <h1 class="closing">在這批樣本與流程下，<br>還沒找到 D 優於 C 的證據。</h1>
-    <p class="lede">這是有限的回溯比較，不是一般化的投資方法，也不是已完整重現的確認性研究；不宣稱能獲利、勝過市場，也不是投資建議。RQ2、RQ3 目前只有設計與程式，還沒有結果。</p>
+    <p class="lede">這是有限的回溯比較，不是投資建議。RQ2、RQ3 目前只有設計與程式，還沒有結果。</p>
     <nav class="links" aria-label="延伸閱讀">
       <a href="../sources/application-meeting-20261020_v11.pdf">研究報告 v11（PDF）</a>
       <a href="../">研究故事</a>
@@ -330,7 +351,7 @@
       <a href="../app/">研究台唯讀展示</a>
       <a href="https://github.com/paul931130/stance-shift-lab">GitHub</a>
     </nav>
-    <p class="fine">數值依報告 v11 四捨五入；16 個分歧案例取自 180 案凍結證據包的靜態匯出。本頁不呼叫模型、不抓行情、不下單。</p>
+    <p class="fine">數值依報告 v11 四捨五入；16 個分歧案例取自 180 案凍結證據包的靜態匯出；辯論紀錄與交鋒試跑的數字取自 11/05 的紀錄分析與試跑（PR #71）。本頁不呼叫模型、不抓行情、不下單。</p>
   </div>
 </section>
 
