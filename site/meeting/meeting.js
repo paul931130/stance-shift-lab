@@ -292,16 +292,6 @@ addEventListener('touchend', e => {
   touch = null;
 }, { passive: true });
 
-/* ───────── 00 封面：押注 ───────── */
-let bet = null;
-$$('[data-bet]').forEach(b => b.addEventListener('click', () => {
-  bet = b.dataset.bet;
-  $$('[data-bet]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-  $('#bet-echo').textContent = `你押的是 ${bet}。`;
-  $('#results').dataset.field = bet === 'C' ? 'fixed' : 'swap';
-  refreshField();
-}));
-
 /* ───────── 02 辯論場 ───────── */
 const arena = $('#arena');
 const ROUND_TEXT = {
