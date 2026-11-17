@@ -6,6 +6,9 @@
 <meta name="description" content="多代理人立場交換辯論應用於投資決策：資料快照、研究代理人、四組決策機制、守門員、回測與配對統計。">
 <title>立場交換研究室</title>
 <script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="theme-color" content="#06080c">
+<link rel="icon" type="image/png" sizes="192x192" href="../assets/app/icon-192.png">
 <link rel="preload" href="../assets/fonts/noto-sans-tc-400-0.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts/fonts.css">
 <style>html{scrollbar-gutter:stable}
@@ -351,5 +354,6 @@ html,body{background:#06080c;color:#ece6d8;color-scheme:dark}
 </div>
 </main>
 <footer>國立陽明交通大學管理科學系專題研究 · 僅供學術研究與教學使用，不執行交易，不構成任何投資建議</footer>
+<script>if('serviceWorker' in navigator)addEventListener('load',function(){navigator.serviceWorker.register('../sw.js',{scope:'../'}).catch(function(){});});</script>
 </body>
 </html>

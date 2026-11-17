@@ -107,7 +107,7 @@ def rewrite_index(html):
                   '<span>格式範本下載請使用完整研究台。</span>', html, flags=re.S)
     html = re.sub(r'(<script\b[^>]*type="module")', '<script src="demo-data.js" defer></script>\n\\1', html, count=1)
     # Set the saved theme before stylesheets can paint the default theme.
-    head_init = "<script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>\n<link rel=\"preload\" href=\"../assets/fonts/noto-sans-tc-400-0.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n<link rel=\"stylesheet\" href=\"../assets/fonts/fonts.css\">"
+    head_init = "<script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>\n<link rel=\"manifest\" href=\"../manifest.webmanifest\">\n<meta name=\"theme-color\" content=\"#06080c\">\n<link rel=\"icon\" type=\"image/png\" sizes=\"192x192\" href=\"../assets/app/icon-192.png\">\n<link rel=\"preload\" href=\"../assets/fonts/noto-sans-tc-400-0.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n<link rel=\"stylesheet\" href=\"../assets/fonts/fonts.css\">"
     html = re.sub(r"(?=<(?:link|style)\b)", lambda _: head_init + "\n" + f"<style>{SITENAV_STYLE}</style>\n", html, count=1)
     banner = (
         f'<div id="static-demo-banner" style="{BANNER_STYLE}">{BANNER_TEXT} '
@@ -115,6 +115,9 @@ def rewrite_index(html):
         '<a href="../demo/" style="color:inherit;font-weight:600">播放真實案例</a></div>'
     )
     html = re.sub(r"(<body\b[^>]*>)", lambda m: m.group(1) + "\n" + sitenav("../", "研究台預覽") + "\n" + banner, html, count=1)
+    # Register the site's service worker so this page also opens offline.
+    html = html.replace("</body>", "<script>if('serviceWorker' in navigator)addEventListener('load',function(){"
+                        "navigator.serviceWorker.register('../sw.js',{scope:'../'}).catch(function(){});});</script>\n</body>", 1)
     return html
 
 

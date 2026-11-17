@@ -1,0 +1,52 @@
+{
+  "name": "多代理人辯論機制應用於投資決策",
+  "short_name": "Stance Shift",
+  "description": "多代理人辯論機制應用於投資決策：研究計畫、RQ1 結果、案例回放與研究台預覽。",
+  "lang": "zh-Hant-TW",
+  "start_url": "./",
+  "scope": "./",
+  "id": "/stance-shift-lab/",
+  "display": "standalone",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone"
+  ],
+  "background_color": "#06080c",
+  "theme_color": "#06080c",
+  "icons": [
+    {
+      "src": "assets/app/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/app/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "assets/app/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "研究計畫",
+      "url": "meeting/"
+    },
+    {
+      "name": "研究故事",
+      "url": "rq1/"
+    },
+    {
+      "name": "案例回放",
+      "url": "demo/"
+    },
+    {
+      "name": "研究台預覽",
+      "url": "app/"
+    }
+  ]
+}

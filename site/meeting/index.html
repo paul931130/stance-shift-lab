@@ -6,6 +6,10 @@
 <meta name="description" content="多代理人辯論機制應用於投資決策的研究計畫：三個研究問題、實驗方法、RQ1 的發現，以及 RQ2、RQ3 的預期結果。">
 <script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
 <title>多代理人辯論機制應用於投資決策 · 研究計畫</title>
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="theme-color" content="#06080c">
+<link rel="icon" type="image/png" sizes="192x192" href="../assets/app/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/app/icon-192.png">
 <link rel="preload" href="../assets/fonts/noto-sans-tc-400-0.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts/fonts.css">
 <link rel="stylesheet" href="meeting.css">
@@ -433,5 +437,6 @@
 </footer>
 <aside class="notes" id="notes" hidden></aside>
 <div class="over" id="over" hidden role="dialog" aria-label="總覽"><ol id="over-list"></ol></div>
+<script>if('serviceWorker' in navigator)addEventListener('load',function(){navigator.serviceWorker.register('../sw.js',{scope:'../'}).catch(function(){});});</script>
 </body>
 </html>
