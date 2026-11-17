@@ -6,9 +6,8 @@
 <title>立場交換辯論 · 系統展示</title>
 <meta name="description" content="用兩個真實案例，看多代理人辯論如何在固定立場與立場交換下得出不同的投資判斷。真實模型輸出（RQ1 回溯比較）。">
 <script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<link rel="preload" href="../assets/fonts/noto-sans-tc-400-0.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="../assets/fonts/fonts.css">
 <style>
 :root{--navy:#c4d9ed;--ink:#ece6d8;--muted:#a6b7c2;--faint:#8c9ca8;--rule:#2c3d48;--bg:#06080c;--card:#0c1219;--teal:#78c9bd;--teal-l:#15272b;--gray:#5b6b78;--orange:#eab56a;--orange-l:#302416;--topbar:#142337;--soft:#15202b;--selected:#142a29;--bar-bg:rgba(6,8,12,.92)}
 :root[data-theme=light]{--navy:#1F3A5F;--ink:#1A2233;--muted:#5B6472;--faint:#8A919C;--rule:#D9DCE1;--bg:#FAFAF7;--card:#FFFFFF;--teal:#0F766E;--teal-l:#E7F1EF;--gray:#C5CAD1;--orange:#B45309;--orange-l:#FDF1E3;--topbar:#1f3a5f;--soft:#eef0f3;--selected:#f6faf9;--bar-bg:rgba(250,250,247,.96)}
@@ -151,6 +150,7 @@ html,body{background:#06080c;color:#ece6d8;color-scheme:dark}
 #btn-theme:hover{border-color:var(--ink)}
 #btn-theme:focus-visible{outline:2px solid var(--teal);outline-offset:4px}
 </style>
+<script type="speculationrules">{"prefetch":[{"where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":"*.pdf"}}]},"eagerness":"moderate"}]}</script>
 </head>
 <body>
 <nav class="sitenav" aria-label="網站導覽"><a class="sitenav-brand" href="../">STANCE SHIFT LAB</a><a href="../">首頁</a><a href="../meeting/">研究計畫</a><a href="../rq1/">研究故事</a><a href="./" aria-current="page">案例回放</a><a href="../app/">研究台預覽</a><a href="../sources/application-meeting-20261020_v11.pdf">研究報告</a><a href="https://github.com/paul931130/stance-shift-lab">GitHub</a><button type="button" id="btn-theme" aria-label="切換深色或淺色" aria-pressed="false">◐</button></nav>

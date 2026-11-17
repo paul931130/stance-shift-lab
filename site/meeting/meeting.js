@@ -20,7 +20,7 @@ const Field = (() => {
     W = innerWidth; H = innerHeight;
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    const n = Math.round(Math.max(420, Math.min(1700, W * H / 1000)));
+    const n = Math.round(Math.max(360, Math.min(1000, W * H / 1300)));
     P = [];
     for (let i = 0; i < n; i++) {
       const x = Math.random() * W, y = Math.random() * H;
