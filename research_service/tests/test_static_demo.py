@@ -38,7 +38,7 @@ class StaticDemoBuildTests(unittest.TestCase):
             self.assertIn('"key": "/api/jobs"', data)
             self.assertIn("job-<\\/x>", data)
             html = (out / "index.html").read_text(encoding="utf-8")
-            self.assertLess(html.index('<script src="demo-data.js"></script>'), html.index('type="module"'))
+            self.assertLess(html.index('<script src="demo-data.js" defer></script>'), html.index('type="module"'))
             self.assertNotIn("/static/", html)
             self.assertIsNone(re.search(r'(?:src|href)="/assets/', html))
             self.assertIn('src="js/app.js"', html)

@@ -105,9 +105,9 @@ def rewrite_index(html):
     # Pages has no API server; do not leave a download pointing at a 404.
     html = re.sub(r'<a\b[^>]*href="/api/template"[^>]*>.*?</a>',
                   '<span>格式範本下載請使用完整研究台。</span>', html, flags=re.S)
-    html = re.sub(r'(<script\b[^>]*type="module")', '<script src="demo-data.js"></script>\n\\1', html, count=1)
+    html = re.sub(r'(<script\b[^>]*type="module")', '<script src="demo-data.js" defer></script>\n\\1', html, count=1)
     # Set the saved theme before stylesheets can paint the default theme.
-    head_init = "<script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap\">"
+    head_init = "<script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>\n<link rel=\"preload\" href=\"../assets/fonts/noto-sans-tc-400-0.woff2\" as=\"font\" type=\"font/woff2\" crossorigin>\n<link rel=\"stylesheet\" href=\"../assets/fonts/fonts.css\">"
     html = re.sub(r"(?=<(?:link|style)\b)", lambda _: head_init + "\n" + f"<style>{SITENAV_STYLE}</style>\n", html, count=1)
     banner = (
         f'<div id="static-demo-banner" style="{BANNER_STYLE}">{BANNER_TEXT} '

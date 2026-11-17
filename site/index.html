@@ -2,9 +2,8 @@
 <html lang="zh-Hant-TW">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="兩個 AI 代理人用同一個模型、讀同一份資料辯論，容易流於形式。本專題比較三種讓辯論真的不一樣的做法：換立場、換模型、分資訊。"><title>多代理人辯論機制應用於投資決策</title>
 <script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<link rel="preload" href="assets/fonts/noto-sans-tc-400-0.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/fonts/fonts.css">
 <style>
 :root{
   --bg:#06080c; --ink:#ece6d8; --dim:rgba(236,230,216,.66); --faint:rgba(236,230,216,.34);
@@ -71,7 +70,8 @@ h2{font-size:clamp(1.5rem,2.8vw,2.2rem);line-height:1.4;margin:4rem 0 1.5rem}
 .links a:hover{color:var(--d)}
 footer{margin:3rem 0 2.5rem;color:var(--dim);font-size:.875rem}
 @media(max-width:700px){.status,.cards{grid-template-columns:1fr}.wrap{padding:0 1.25rem}h1{margin-top:3rem}.card{padding:1.4rem}h2{margin-top:3rem}}
-</style></head>
+</style><script type="speculationrules">{"prefetch":[{"where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":"*.pdf"}}]},"eagerness":"moderate"}]}</script>
+</head>
 <body>
 <nav class="sitenav" aria-label="網站導覽"><a class="sitenav-brand" href="./">STANCE SHIFT LAB</a><a href="./" aria-current="page">首頁</a><a href="meeting/">研究計畫</a><a href="rq1/">研究故事</a><a href="demo/">案例回放</a><a href="app/">研究台預覽</a><a href="sources/application-meeting-20261020_v11.pdf">研究報告</a><a href="https://github.com/paul931130/stance-shift-lab">GitHub</a><button type="button" id="btn-theme" aria-label="切換深色或淺色" aria-pressed="false">◐</button></nav>
 <main class="wrap">
