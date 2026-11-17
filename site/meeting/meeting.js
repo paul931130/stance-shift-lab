@@ -119,6 +119,7 @@ const Field = (() => {
   function toggle(force) {
     off = force ?? !off;
     root.classList.toggle('nofield', off);
+    $('#hud-field').setAttribute('aria-pressed', String(!off));
     if (off) stop(); else { start(); if (REDUCED) still(); }
     try { localStorage.setItem('ssl-field', off ? 'off' : 'on'); } catch { /* 無法儲存就算了 */ }
   }
@@ -200,6 +201,7 @@ function setDeck(on) {
     $$('[data-step]').forEach(el => el.classList.remove('shown'));
     scenes.forEach(s => s.classList.remove('on'));
     $('#notes').hidden = true;
+    $('#hud-notes').setAttribute('aria-pressed', 'false');
     if (document.fullscreenElement) document.exitFullscreen?.();
     scenes[state.i].scrollIntoView({ behavior: 'instant' });
     onScroll();
@@ -208,12 +210,19 @@ function setDeck(on) {
 function toggleOver(force) {
   const el = $('#over'); const open = force ?? el.hidden;
   el.hidden = !open;
+  $$('#btn-over, #hud-over').forEach(b => b.setAttribute('aria-expanded', String(open)));
   if (open) $('button[aria-current]', el)?.focus();
+  else $(state.deck ? '#hud-over' : '#btn-over').focus();
 }
-function toggleNotes() { $('#notes').hidden = !$('#notes').hidden; }
+function toggleNotes() {
+  const notes = $('#notes');
+  notes.hidden = !notes.hidden;
+  $('#hud-notes').setAttribute('aria-pressed', String(!notes.hidden));
+}
 function toggleTheme() {
   const lightNow = root.dataset.theme === 'light';
   if (lightNow) delete root.dataset.theme; else root.dataset.theme = 'light';
+  $$('#btn-theme, #hud-theme').forEach(b => b.setAttribute('aria-pressed', String(!lightNow)));
   try { localStorage.setItem('ssl-theme', lightNow ? 'dark' : 'light'); } catch { /* 無法儲存就算了 */ }
   Field.colors();
 }
@@ -244,6 +253,8 @@ $('#hud-exit').addEventListener('click', () => setDeck(false));
 $('#hud-next').addEventListener('click', next);
 $('#hud-prev').addEventListener('click', back);
 $('#hud-clock').addEventListener('click', () => { state.t0 = Date.now(); tick(); });
+$$('#hud button').forEach(b => b.addEventListener('click', () => b.blur()));
+$$('#btn-theme, #hud-theme').forEach(b => b.setAttribute('aria-pressed', String(root.dataset.theme === 'light')));
 $('#over').addEventListener('click', e => { if (e.target.id === 'over') toggleOver(false); });
 function tick() {
   if (!state.t0) return;
@@ -265,8 +276,8 @@ addEventListener('keydown', e => {
   if (k === 'f' || k === 'F') { document.fullscreenElement ? document.exitFullscreen?.() : root.requestFullscreen?.().catch(() => {}); return; }
   if (!state.deck || !$('#over').hidden) return;
   if (k === 'n' || k === 'N') return toggleNotes();
-  // 焦點在按鈕上時，空白鍵與 Enter 留給按鈕
-  if ((k === ' ' || k === 'Enter') && (tag === 'BUTTON' || tag === 'A')) return;
+  // 焦點在按鈕上時，Enter 留給按鈕；簡報模式的空白鍵一律換頁
+  if (k === 'Enter' && (tag === 'BUTTON' || tag === 'A')) return;
   if (k === 'ArrowRight' || k === 'PageDown' || k === ' ' || k === 'ArrowDown' || k === 'Enter') { e.preventDefault(); next(); }
   else if (k === 'ArrowLeft' || k === 'PageUp' || k === 'ArrowUp' || k === 'Backspace') { e.preventDefault(); back(); }
   else if (k === 'Home') show(0);
@@ -372,11 +383,17 @@ function setRevealed(on) {
   revealed = on;
   $('#sealed').hidden = on; $('#opened').hidden = !on;
   $('#results').dataset.field = on ? 'converge' : 'fixed';
-  if (on) renderMetric();
+  if (on) {
+    renderMetric();
+    $('#opened [data-metric="acc"]').focus();
+  }
   if (scenes[state.i].id === 'results') refreshField();
 }
 $('#reveal').addEventListener('click', () => { if (state.deck) next(); else setRevealed(true); });
-$$('[data-metric]').forEach(b => b.addEventListener('click', () => renderMetric(b.dataset.metric)));
+$$('[data-metric]').forEach(b => b.addEventListener('click', () => {
+  if (state.deck) state.step = b.dataset.metric === 'sharpe' ? 2 : 1;
+  renderMetric(b.dataset.metric);
+}));
 hooks.results = { count: 2, apply: k => { setRevealed(k >= 1); if (k >= 1) renderMetric(k === 2 ? 'sharpe' : 'acc'); } };
 
 /* ───────── 05 分歧地圖 ─────────

@@ -1,7 +1,7 @@
 /* Stance Shift Lab — 立場流場（互動簡報）
    暖色 = 看多、冷色 = 看空；白 = C、萊姆 = D。所有尺寸用 rem，簡報模式只改 html 字級。 */
 :root{
-  --bg:#06080c; --ink:#ece6d8; --dim:rgba(236,230,216,.66); --faint:rgba(236,230,216,.34);
+  --bg:#06080c; --ink:#ece6d8; --dim:rgba(236,230,216,.66); --faint:rgba(236,230,216,.52);
   --line:rgba(236,230,216,.16); --panel:rgba(10,13,19,.66); --panel2:rgba(236,230,216,.06);
   --bull:#ff6b3d; --bear:#3fc8ff; --c:#ece6d8; --d:#d4f250; --on-d:#141a00;
   --serif:"Noto Serif TC","Songti TC","PMingLiU",serif;
@@ -10,7 +10,7 @@
   color-scheme:dark;
 }
 :root[data-theme=light]{
-  --bg:#f2ede2; --ink:#12161d; --dim:rgba(18,22,29,.72); --faint:rgba(18,22,29,.42);
+  --bg:#f2ede2; --ink:#12161d; --dim:rgba(18,22,29,.72); --faint:rgba(18,22,29,.58);
   --line:rgba(18,22,29,.18); --panel:rgba(250,247,240,.78); --panel2:rgba(18,22,29,.05);
   --bull:#d4401a; --bear:#0b78b0; --c:#12161d; --d:#5d7400; --on-d:#fff;
   color-scheme:light;
@@ -100,7 +100,7 @@ p{margin:.9rem 0;color:var(--dim);max-width:38rem;text-shadow:0 0 .35rem var(--b
 
 /* 02 辯論場 */
 .arena{display:grid;grid-template-columns:8.5rem repeat(3,1fr) 10rem;gap:.55rem .8rem;align-items:stretch}
-.ch{font-family:var(--mono);font-size:.72rem;letter-spacing:.12em;color:var(--faint);text-align:center;padding-bottom:.2rem}
+.ch{font-family:var(--mono);font-size:.78rem;letter-spacing:.12em;color:var(--dim);text-align:center;padding-bottom:.2rem}
 .who{font-weight:700;display:flex;flex-direction:column;justify-content:center;font-size:.95rem}
 .who small{font-weight:400;color:var(--faint);font-size:.75rem}
 .nd{border-radius:.9rem;padding:.85rem 1rem;min-height:4.3rem;display:flex;flex-direction:column;justify-content:center;border:1px solid var(--line);background:var(--panel);backdrop-filter:blur(8px);font-weight:700;transition:.5s cubic-bezier(.2,.7,.2,1);position:relative;overflow:hidden}
@@ -158,13 +158,13 @@ p{margin:.9rem 0;color:var(--dim);max-width:38rem;text-shadow:0 0 .35rem var(--b
 /* 05 */
 .grid-wrap{max-width:46rem}
 .grid{display:grid;grid-template-columns:3.6rem repeat(20,1fr);gap:.28rem;align-items:center}
-.grid .tk{font-family:var(--mono);font-size:.72rem;color:var(--dim)}
+.grid .tk{font-family:var(--mono);font-size:.78rem;color:var(--dim)}
 .grid .cell{aspect-ratio:1;border-radius:.22rem;background:var(--panel2);border:0;padding:0;min-width:0}
 .grid button.cell{background:var(--c);cursor:pointer;transition:transform .25s,opacity .25s,box-shadow .25s}
 .grid button.cell.dwin{background:var(--d)}
 .grid button.cell:hover,.grid button.cell[aria-pressed=true]{transform:scale(1.55);box-shadow:0 0 1.2rem var(--d);z-index:2;position:relative}
 .grid button.cell.off{opacity:.15}
-.years{display:grid;grid-template-columns:3.6rem repeat(5,1fr);font-family:var(--mono);font-size:.68rem;color:var(--faint);margin:.4rem 0 1rem}
+.years{display:grid;grid-template-columns:3.6rem repeat(5,1fr);font-family:var(--mono);font-size:.78rem;color:var(--faint);margin:.4rem 0 1rem}
 .years span:first-child{grid-column:2}
 #case-panel h3{margin:0 0 .2rem;font-family:var(--mono);font-size:1.3rem;color:var(--ink)}
 #case-panel .big{font-family:var(--mono);font-weight:700;font-size:2.6rem;line-height:1.1;color:var(--ink);margin:.6rem 0 0}
@@ -189,14 +189,14 @@ p{margin:.9rem 0;color:var(--dim);max-width:38rem;text-shadow:0 0 .35rem var(--b
 .plot .pt{fill:var(--d);stroke:var(--bg);stroke-width:3}
 .plot .t-pt{fill:var(--ink);font-size:22px;font-weight:700}
 .plot .t-end{fill:var(--dim);font-size:14px}
-.plot figcaption{font-size:.72rem;color:var(--faint);margin-top:.4rem}
+.plot figcaption{font-size:.78rem;color:var(--dim);margin-top:.4rem}
 
 /* 07 */
 .formula{font-family:var(--mono);font-size:1.15rem;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:.8rem;padding:.7rem 1.1rem;display:inline-block;backdrop-filter:blur(8px);text-shadow:none}
 .plain{padding-left:1.1rem;margin:1rem 0 0;color:var(--dim);font-size:.92rem;max-width:36rem}
 .plain li{margin:.35rem 0}
 .matrix{display:grid;grid-template-columns:6rem 1fr 1fr;gap:.6rem;align-items:center}
-.mh{font-family:var(--mono);font-size:.74rem;color:var(--dim);text-align:center}
+.mh{font-family:var(--mono);font-size:.78rem;color:var(--dim);text-align:center}
 .matrix button{border-radius:1.1rem;padding:1.5rem 1rem;background:var(--panel);backdrop-filter:blur(8px);display:flex;flex-direction:column;align-items:center}
 .matrix button b{font-family:var(--mono);font-size:2.2rem;line-height:1.1}
 .matrix button small{font-size:.76rem;opacity:.75}
@@ -210,7 +210,7 @@ p{margin:.9rem 0;color:var(--dim);max-width:38rem;text-shadow:0 0 .35rem var(--b
 .doms span:nth-child(odd){border-left:.25rem solid var(--bull)}
 .doms span:nth-child(even){border-left:.25rem solid var(--bear)}
 .box{border:1px solid var(--line);border-radius:.9rem;padding:.8rem 1.1rem;background:var(--panel);backdrop-filter:blur(8px);display:flex;flex-direction:column;justify-content:center;font-weight:700;font-size:.92rem}
-.box small{font-weight:400;color:var(--dim);font-size:.74rem}
+.box small{font-weight:400;color:var(--dim);font-size:.78rem}
 .box.hot{border-color:var(--d);color:var(--d)}
 .arms{display:grid;grid-template-columns:auto 1fr;gap:1.2rem;align-items:stretch;margin-bottom:.8rem}
 #arm-text h3{margin:0;font-family:var(--mono);color:var(--ink);font-size:1.2rem;display:flex;gap:1rem;align-items:baseline;flex-wrap:wrap}
@@ -232,11 +232,11 @@ p{margin:.9rem 0;color:var(--dim);max-width:38rem;text-shadow:0 0 .35rem var(--b
 .done b{display:block;line-height:1.45;margin:.2rem 0}
 .done span{font-size:.8rem;color:var(--dim);display:block;line-height:1.6}
 .track{position:relative;border:1px solid var(--line);border-radius:1.2rem;background:var(--panel);backdrop-filter:blur(10px);padding:2.3rem 1.4rem 1.2rem}
-.track .here{position:absolute;top:.7rem;left:1.4rem;font-family:var(--mono);font-size:.72rem;color:var(--bull)}
+.track .here{position:absolute;top:.7rem;left:1.4rem;font-family:var(--mono);font-size:.78rem;color:var(--bull)}
 .track .here::before{content:"▼ "}
 .track ol{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(8,1fr);gap:.5rem}
 .track li{font-weight:700;font-size:.86rem;border-top:2px dashed var(--faint);padding-top:.6rem;line-height:1.4}
-.track li small{display:block;font-weight:400;color:var(--dim);font-size:.72rem;margin-top:.2rem}
+.track li small{display:block;font-weight:400;color:var(--dim);font-size:.78rem;margin-top:.2rem}
 
 /* 11 */
 .asks{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;counter-reset:a}
@@ -314,7 +314,7 @@ html.deck .notes:not([hidden]){display:block;position:fixed;right:1.6rem;bottom:
 .cards.pair{grid-template-columns:1fr 1fr}
 .cards.three .q,.cards.pair .q{min-height:0}
 .cards.pair p,.cards.three p{font-size:.95rem;line-height:1.7}
-.refs{margin:0;padding-left:1.4rem;columns:2;column-gap:2.4rem;font-size:.74rem;line-height:1.55;color:var(--dim)}
+.refs{margin:0;padding-left:1.4rem;columns:2;column-gap:2.4rem;font-size:.78rem;line-height:1.55;color:var(--dim)}
 .refs li{break-inside:avoid;margin:0 0 .45rem}
 @media (max-width:900px){html:not(.deck) .cards.three,html:not(.deck) .cards.pair{grid-template-columns:1fr}html:not(.deck) .refs{columns:1}}
 html{scrollbar-gutter:stable}
@@ -346,20 +346,20 @@ html.deck .sitenav{display:none}
 .nofield #field{display:none}
 /* basis chips */
 .basis{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:1rem 0 0;font-size:.8rem;color:var(--dim);max-width:none;text-shadow:none}
-.basis>span{font-family:var(--mono);letter-spacing:.14em;font-size:.72rem;margin-right:.3rem}
+.basis>span{font-family:var(--mono);letter-spacing:.14em;font-size:.78rem;margin-right:.3rem}
 .basis cite{font-style:normal;border:1px solid var(--line);border-radius:999px;padding:.22rem .85rem;background:var(--panel);backdrop-filter:blur(8px)}
 .basis cite b{color:var(--ink);font-weight:500;margin-right:.5rem}
 /* research-question tree */
 .tree{display:grid;grid-template-columns:.75fr 2.25fr;gap:3rem;align-items:center}
 .tree .root{border:1px solid var(--line);border-radius:1.2rem;padding:1.4rem;background:var(--panel);backdrop-filter:blur(10px)}
-.tree .root span{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;color:var(--dim)}
+.tree .root span{font-family:var(--mono);font-size:.78rem;letter-spacing:.14em;color:var(--dim)}
 .tree .root b{display:block;font-family:var(--serif);font-size:1.6rem;line-height:1.35;margin:.4rem 0}
 .tree .root p{margin:0;font-size:.88rem;text-shadow:none}
 .branches{list-style:none;margin:0;padding:0;display:grid;gap:.9rem}
 .branch{position:relative;display:grid;grid-template-columns:8.5rem 1fr auto;align-items:center;gap:1.4rem;border:1px solid var(--line);border-radius:1.1rem;padding:1.05rem 1.4rem;background:var(--panel);backdrop-filter:blur(10px)}
 .branch::before{content:"";position:absolute;left:-3rem;top:50%;width:3rem;border-top:1px dashed var(--faint)}
 .branch .how{font-family:var(--serif);font-size:1.9rem;line-height:1.1;color:var(--d)}
-.branch .how small{display:block;font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;color:var(--dim);margin-bottom:.25rem}
+.branch .how small{display:block;font-family:var(--mono);font-size:.78rem;letter-spacing:.14em;color:var(--dim);margin-bottom:.25rem}
 .branch .ask{font-size:1.12rem}
 /* clash chart */
 .split{display:grid;grid-template-columns:1fr 1.05fr;gap:2.6rem;align-items:center;margin:0 0 1.3rem}
