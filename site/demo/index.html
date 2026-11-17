@@ -396,7 +396,7 @@ function takeaway(c){
  var mt='60 日後'+(mv>=0?'上漲 ':'下跌 ')+Math.abs(mv).toFixed(1)+'%';
  var cc=o.C.correct,dc=o.D.correct;
  if(C!==D&&dc===true&&cc===false)return '這個案例 D 換邊後改判'+ACT[D]+'，'+mt+'，D 正確、C 錯誤。';
- if(C!==D&&cc===true&&dc===false)return '這個案例 C 維持判'+ACT[C]+'，D 換邊後改判'+ACT[D]+'，'+mt+'，C 正確、D 錯誤——單一案例不代表整體。';
+ if(C!==D&&cc===true&&dc===false)return '這個案例 C 維持判'+ACT[C]+'，D 換邊後改判'+ACT[D]+'，'+mt+'，C 正確、D 錯誤；單一案例不代表整體。';
  var f=function(x){return x===true?'正確':x===false?'錯誤':'不計方向'};
  return '這個案例 C 判'+ACT[C]+'（'+f(cc)+'）、D 判'+ACT[D]+'（'+f(dc)+'），'+mt+'。';
 }
