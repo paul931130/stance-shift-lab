@@ -6,6 +6,7 @@ Only tracked files are inspected, so private local drafts cannot satisfy links.
 import argparse
 import re
 import subprocess
+import sys
 from html.parser import HTMLParser
 from pathlib import Path
 from urllib.parse import unquote, urlsplit
@@ -98,6 +99,12 @@ def main():
     args = parser.parse_args()
     tracked = tracked_files(ROOT)
     errors = stale_demo(ROOT, tracked, args.sync) + broken_links(ROOT, tracked)
+    # The service worker caches every published file under a content hash; a
+    # stale sw.js would keep serving old pages to installed copies of the site.
+    app = subprocess.run([sys.executable, str(ROOT / "scripts" / "build_site_app.py"), "--check"],
+                         capture_output=True, text=True)
+    if app.returncode:
+        errors += app.stderr.strip().splitlines() or ["site/sw.js: out of date; run python scripts/build_site_app.py"]
     for error in errors:
         print(error)
     if errors:

@@ -2,6 +2,10 @@
 <html lang="zh-Hant-TW">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="description" content="兩個 AI 代理人用同一個模型、讀同一份資料辯論，容易流於形式。本專題比較三種讓辯論真的不一樣的做法：換立場、換模型、分資訊。"><title>多代理人辯論機制應用於投資決策</title>
 <script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#06080c">
+<link rel="icon" type="image/png" sizes="192x192" href="assets/app/icon-192.png">
+<link rel="apple-touch-icon" href="assets/app/icon-192.png">
 <link rel="preload" href="assets/fonts/noto-sans-tc-400-0.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="assets/fonts/fonts.css">
 <style>
@@ -46,6 +50,8 @@ html,body{background:#06080c;color:#ece6d8;color-scheme:dark}
 }
 #btn-theme{margin-left:auto;flex:none;font:inherit;color:var(--ink);cursor:pointer;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:2px 10px;line-height:18px;backdrop-filter:blur(8px)}
 #btn-theme:hover{border-color:var(--ink)}
+#btn-install{margin-left:auto;flex:none;font:inherit;color:var(--bg);background:var(--d);border:1px solid var(--d);border-radius:999px;padding:2px 12px;line-height:18px;cursor:pointer;font-weight:700}
+#btn-install:not([hidden])+#btn-theme{margin-left:8px}
 .wrap{max-width:74rem;margin:0 auto;padding:0 1.5rem}
 h1,h2,.card h3{font-family:var(--serif);font-weight:900;color:var(--ink)}
 h1{font-size:clamp(2rem,4.5vw,3.75rem);line-height:1.35;letter-spacing:-.025em;max-width:19em;margin:5.5rem 0 1.5rem}
@@ -73,7 +79,7 @@ footer{margin:3rem 0 2.5rem;color:var(--dim);font-size:.875rem}
 </style><script type="speculationrules">{"prefetch":[{"where":{"and":[{"href_matches":"/*"},{"not":{"href_matches":"*.pdf"}}]},"eagerness":"moderate"}]}</script>
 </head>
 <body>
-<nav class="sitenav" aria-label="網站導覽"><a class="sitenav-brand" href="./">STANCE SHIFT LAB</a><a href="./" aria-current="page">首頁</a><a href="meeting/">研究計畫</a><a href="rq1/">研究故事</a><a href="demo/">案例回放</a><a href="app/">研究台預覽</a><a href="sources/application-meeting-20261020_v11.pdf">研究報告</a><a href="https://github.com/paul931130/stance-shift-lab">GitHub</a><button type="button" id="btn-theme" aria-label="切換深色或淺色" aria-pressed="false">◐</button></nav>
+<nav class="sitenav" aria-label="網站導覽"><a class="sitenav-brand" href="./">STANCE SHIFT LAB</a><a href="./" aria-current="page">首頁</a><a href="meeting/">研究計畫</a><a href="rq1/">研究故事</a><a href="demo/">案例回放</a><a href="app/">研究台預覽</a><a href="sources/application-meeting-20261020_v11.pdf">研究報告</a><a href="https://github.com/paul931130/stance-shift-lab">GitHub</a><button type="button" id="btn-install" hidden title="安裝成桌面 App，可離線開啟">安裝 App</button><button type="button" id="btn-theme" aria-label="切換深色或淺色" aria-pressed="false">◐</button></nav>
 <main class="wrap">
 <h1>多代理人辯論機制應用於投資決策</h1>
 <p class="intro">兩個 AI 代理人用同一個模型、讀同一份資料辯論，容易流於形式。本專題比較三種讓辯論真的不一樣的做法：換立場、換模型、分資訊。</p>
@@ -101,4 +107,6 @@ footer{margin:3rem 0 2.5rem;color:var(--dim);font-size:.875rem}
   });
 })();
 </script>
+<script>if('serviceWorker' in navigator)addEventListener('load',function(){navigator.serviceWorker.register('sw.js',{scope:'./'}).catch(function(){});});</script>
+<script>(function(){var b=document.getElementById('btn-install'),ev=null;addEventListener('beforeinstallprompt',function(e){e.preventDefault();ev=e;b.hidden=false;});b.addEventListener('click',function(){if(!ev)return;ev.prompt();ev.userChoice.finally(function(){ev=null;b.hidden=true;});});addEventListener('appinstalled',function(){b.hidden=true;});})();</script>
 </body></html>

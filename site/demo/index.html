@@ -6,6 +6,10 @@
 <title>立場交換辯論 · 系統展示</title>
 <meta name="description" content="用兩個真實案例，看多代理人辯論如何在固定立場與立場交換下得出不同的投資判斷。真實模型輸出（RQ1 回溯比較）。">
 <script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
+<link rel="manifest" href="../manifest.webmanifest">
+<meta name="theme-color" content="#06080c">
+<link rel="icon" type="image/png" sizes="192x192" href="../assets/app/icon-192.png">
+<link rel="apple-touch-icon" href="../assets/app/icon-192.png">
 <link rel="preload" href="../assets/fonts/noto-sans-tc-400-0.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="../assets/fonts/fonts.css">
 <style>
@@ -451,5 +455,6 @@ if(!CASES.length){
   });
 })();
 </script>
+<script>if('serviceWorker' in navigator)addEventListener('load',function(){navigator.serviceWorker.register('../sw.js',{scope:'../'}).catch(function(){});});</script>
 </body>
 </html>
