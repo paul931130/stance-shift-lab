@@ -355,11 +355,12 @@ const METRICS = {
 let revealed = false, metric = 'acc';
 function countUp(el, to, digits, unit) {
   if (REDUCED) { el.textContent = to.toFixed(digits) + unit; return; }
+  cancelAnimationFrame(el._raf);   // 快速切換指標時，先停掉上一段動畫
   const t0 = performance.now(), dur = 1300;
   (function f(now) {
     const k = Math.min(1, (now - t0) / dur), e = 1 - Math.pow(1 - k, 3);
     el.textContent = (to * e).toFixed(digits) + unit;
-    if (k < 1) requestAnimationFrame(f);
+    if (k < 1) el._raf = requestAnimationFrame(f);
   })(t0);
 }
 function renderMetric(key = metric) {
