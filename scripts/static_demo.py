@@ -1,18 +1,15 @@
 """Record demo-mode API responses and build a read-only static copy of the web UI.
 
   record: run the app in demo mode and save the last GET /api/* JSON response per URL plus a timed timeline of every /api/* JSON response.
-  build:  export research_service/static from git HEAD and rewrite it for GitHub Pages.
+  build:  copy research_service/static from the working tree and rewrite it for GitHub Pages.
 
-The build reads the UI from git HEAD, so commit any frontend change before building.
+The build uses the working tree, including uncommitted frontend changes.
 """
 import argparse
 import json
 import os
 import re
 import shutil
-import subprocess
-import tarfile
-import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -23,6 +20,20 @@ BANNER_STYLE = (
     "background:#fff3cd;color:#664d03;border-bottom:1px solid #e0c36a;"
     "font:13px/1.4 system-ui,sans-serif;text-align:center"
 )
+
+SITENAV_STYLE = "html{scrollbar-gutter:stable}\n.sitenav{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:0 18px;height:48px;padding:0 24px;margin:0;background:rgba(10,13,19,.88);backdrop-filter:blur(12px);border-bottom:1px solid rgba(236,230,216,.16);font:400 13px/20px \"Noto Sans TC\",\"PingFang TC\",\"Microsoft JhengHei\",system-ui,sans-serif;box-sizing:border-box}\n.sitenav a{color:rgba(236,230,216,.66);text-decoration:none;border-bottom:2px solid transparent;padding:2px 0;white-space:nowrap}\n.sitenav a:hover{color:#ece6d8}\n.sitenav .sitenav-brand{font:700 12px/20px \"JetBrains Mono\",Consolas,monospace;letter-spacing:.14em;color:#ece6d8;margin-right:6px;width:144px;flex:none}\n.sitenav a[aria-current=page]{color:#ece6d8;border-bottom-color:#d4f250;font-weight:700}\n:root[data-theme=light] .sitenav{background:rgba(250,247,240,.92);border-bottom-color:rgba(18,22,29,.18)}\n:root[data-theme=light] .sitenav a{color:rgba(18,22,29,.72)}\n:root[data-theme=light] .sitenav .sitenav-brand,:root[data-theme=light] .sitenav a:hover,:root[data-theme=light] .sitenav a[aria-current=page]{color:#12161d}\n:root[data-theme=light] .sitenav a[aria-current=page]{border-bottom-color:#5d7400}\n@view-transition{navigation:auto}\n.sitenav{view-transition-name:sitenav}\n::view-transition-old(root),::view-transition-new(root){animation-duration:180ms;animation-timing-function:ease}\n@media(prefers-reduced-motion:reduce){@view-transition{navigation:none}::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}\nhtml,body{background:#06080c;color:#ece6d8;color-scheme:dark}\n:root[data-theme=light],:root[data-theme=light] body{background:#f2ede2;color:#12161d;color-scheme:light}\n.sitenav~.topbar{top:48px}"
+
+
+def sitenav(prefix, current):
+    """Same labels and order on every public page; prefix is the relative path to the site root."""
+    links = [("首頁", prefix), ("研究計畫", prefix + "meeting/"), ("研究故事", prefix + "rq1/"), ("案例回放", prefix + "demo/"),
+             ("研究台預覽", prefix + "app/"), ("研究報告", prefix + "sources/application-meeting-20261020_v11.pdf"),
+             ("GitHub", REPO_URL)]
+    items = "".join(
+        f'<a href="{href}"' + (' aria-current="page"' if label == current else "") + f">{label}</a>"
+        for label, href in links)
+    return (f'<nav class="sitenav" aria-label="網站導覽">'
+            f'<a class="sitenav-brand" href="{prefix}">STANCE SHIFT LAB</a>{items}</nav>')
 
 
 def record(port, data_dir, out, model_delay=0.0):
@@ -82,13 +93,8 @@ def record(port, data_dir, out, model_delay=0.0):
 
 
 def export_static(dest):
-    """Copy research_service/static from git HEAD (not the working tree) into dest."""
-    with tempfile.TemporaryDirectory() as tmp:
-        archive = Path(tmp) / "static.tar"
-        subprocess.run(["git", "archive", "HEAD", "research_service/static", "-o", str(archive)], cwd=ROOT, check=True)
-        with tarfile.open(archive) as tar:
-            tar.extractall(tmp, filter="data")
-        shutil.copytree(Path(tmp) / "research_service" / "static", dest, dirs_exist_ok=True)
+    """Copy the current frontend working tree into dest."""
+    shutil.copytree(ROOT / "research_service" / "static", dest, dirs_exist_ok=True)
 
 
 def rewrite_index(html):
@@ -100,12 +106,15 @@ def rewrite_index(html):
     html = re.sub(r'<a\b[^>]*href="/api/template"[^>]*>.*?</a>',
                   '<span>格式範本下載請使用完整研究台。</span>', html, flags=re.S)
     html = re.sub(r'(<script\b[^>]*type="module")', '<script src="demo-data.js"></script>\n\\1', html, count=1)
+    # Set the saved theme before stylesheets can paint the default theme.
+    head_init = "<script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>\n<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">\n<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>\n<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap\">"
+    html = re.sub(r"(?=<(?:link|style)\b)", lambda _: head_init + "\n" + f"<style>{SITENAV_STYLE}</style>\n", html, count=1)
     banner = (
         f'<div id="static-demo-banner" style="{BANNER_STYLE}">{BANNER_TEXT} '
         f'<a href="{REPO_URL}/blob/main/docs/cloud-start.md" style="color:inherit;font-weight:600">建立雲端研究台</a> · '
         '<a href="../demo/" style="color:inherit;font-weight:600">播放真實案例</a></div>'
     )
-    html = re.sub(r"(<body\b[^>]*>)", lambda m: m.group(1) + "\n" + banner, html, count=1)
+    html = re.sub(r"(<body\b[^>]*>)", lambda m: m.group(1) + "\n" + sitenav("../", "研究台預覽") + "\n" + banner, html, count=1)
     return html
 
 

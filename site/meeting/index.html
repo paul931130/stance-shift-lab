@@ -3,57 +3,53 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta name="description" content="Stance Shift Lab 的互動簡報：立場交換辯論的 180 案回溯比較、RQ1 結果，以及 RQ2／RQ3 的設計與進度。">
-<title>Stance Shift Lab · 立場流場</title>
+<meta name="description" content="多代理人辯論機制應用於投資決策的研究計畫：三個研究問題、實驗方法、RQ1 的發現，以及 RQ2、RQ3 的預期結果。">
+<script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
+<title>多代理人辯論機制應用於投資決策 · 研究計畫</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@600;900&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
 <link rel="stylesheet" href="meeting.css">
 <script src="meeting.js" defer></script>
 </head>
 <body>
-<canvas id="field" aria-hidden="true"></canvas>
-<div class="veil" aria-hidden="true"></div>
-
-<header class="bar">
-  <a class="mark" href="../" title="回到研究故事首頁">STANCE<i>⇄</i>SHIFT LAB</a>
+<nav class="sitenav" aria-label="網站導覽"><a class="sitenav-brand" href="../">STANCE SHIFT LAB</a><a href="../">首頁</a><a href="./" aria-current="page">研究計畫</a><a href="../rq1/">研究故事</a><a href="../demo/">案例回放</a><a href="../app/">研究台預覽</a><a href="../sources/application-meeting-20261020_v11.pdf">研究報告</a><a href="https://github.com/paul931130/stance-shift-lab">GitHub</a>
   <span class="where" id="where" aria-live="polite"></span>
   <div class="tools">
     <button type="button" id="btn-theme" title="切換深色／淺色（T）" aria-label="切換深色或淺色">◐</button>
     <button type="button" id="btn-over" title="總覽（O）">總覽</button>
     <button type="button" id="btn-deck" class="go" title="簡報模式（P）">▶ 簡報模式</button>
   </div>
-</header>
+</nav>
+<canvas id="field" aria-hidden="true"></canvas>
+<div class="veil" aria-hidden="true"></div>
+
+
 
 <nav class="rail" id="rail" aria-label="章節"></nav>
 
 <main id="stage">
 
 <!-- 00 -->
-<section class="scene" id="cover" data-field="drift" data-title="封面"
-  data-notes="開場先請大家押 C 或 D，背景流場會跟著變。押完按 → 進入問題。">
+<section class="scene" id="cover" data-level="1" data-field="drift" data-title="封面"
+  data-notes="報告順序：背景、三個研究問題、RQ1 的方法與兩個發現、RQ2 與 RQ3 的方法與預期、下一步。">
   <div class="in">
-    <p class="kicker">研究進度 · 2026 年 11 月</p>
-    <h1>讓 AI <em class="swap">換邊</em><br>反駁自己，<br>決策真的會更好嗎？</h1>
-    <p class="lede">固定立場與立場交換辯論的 180 案回溯比較，以及接下來的兩個問題。</p>
-    <div class="bet" role="group" aria-label="先押你的直覺">
-      <span class="bet-q">先押你的直覺</span>
-      <button type="button" data-bet="C"><b>C</b><span>固定立場<small>各守看多、看空，辯到底</small></span></button>
-      <button type="button" data-bet="D"><b>D</b><span>立場交換<small>中途換邊，引用並反駁自己</small></span></button>
-    </div>
-    <p class="hint" id="bet-note">不計分。選了之後，看背景的兩股流怎麼走。</p>
+    <p class="kicker">研究計畫 · 2026 年 11 月</p>
+    <h1>多代理人辯論機制<br>應用於投資決策</h1>
+    <p class="lede">兩個代理人用同一個模型、讀同一份資料，辯論容易流於形式。本研究比較三種讓辯論真的不一樣的做法。</p>
   </div>
 </section>
 
 <!-- 01 -->
-<section class="scene" id="why" data-field="same" data-title="問題"
-  data-notes="重點：看多、看空兩個角色只差提示詞（這裡講的是兩個角色，不是 C 與 D 的差別）。背景兩種顏色走同一條河，就是這個意思。">
+<section class="scene" id="why" data-field="same" data-title="研究背景"
+  data-notes="TradingAgents 設有看多、看空研究員（Xiao 2024）。Du 2023 發現辯論能提高推理正確率；Smit 2023、Zhang 2025 發現辯論不一定比多問幾次再投票好。Liang 2023 指出角色會死守立場。右邊：我們的兩個角色用同一個模型、讀同一份報告，只差提示詞。">
   <div class="in two">
     <div>
-      <p class="kicker">01 · 問題</p>
+      <p class="kicker">01 · 研究背景</p>
       <h2>給了兩個角色，<br>不代表有兩種想法。</h2>
-      <p>資料互相矛盾時，兩個代理人會重新衡量證據，還是只把原本的立場講得更漂亮？</p>
-      <p class="punch" data-step="1">所以讓其中一組在中途<strong>換邊，反駁自己</strong>。</p>
+      <p>金融代理人系統常讓看多、看空兩個角色辯論。但辯論有沒有用仍有爭議，而且兩個角色往往只差提示詞。</p>
+      <p class="punch" data-step="1">怎樣才能讓兩個代理人<strong>真的不一樣</strong>？</p>
+      <p class="fine">Xiao et al., 2024；Du et al., 2023；Smit et al., 2023；Liang et al., 2023</p>
     </div>
     <ul class="same">
       <li><span>同一個</span><b>模型</b><small>qwen3:32b</small></li>
@@ -64,10 +60,27 @@
 </section>
 
 <!-- 02 -->
-<section class="scene" id="design" data-field="fixed" data-title="C 與 D"
-  data-notes="按 → 逐步走：C 全貌 → D 第 1 輪 → 第 2 輪換邊（看不到對手）→ 第 3 輪 → 裁決。">
+<section class="scene" id="rqs" data-field="swap" data-title="研究問題"
+  data-notes="三個問題的共同出發點：兩個代理人缺少異質性，這也是老師 10/06 的意見。RQ1 從立場下手，RQ2 從模型下手，RQ3 從資訊下手。和 10/06 談定的框架不同：原本以立場交換為核心，現在三者並列，要請老師確認。">
   <div class="in">
-    <p class="kicker">02 · 實驗設計</p>
+    <p class="kicker">02 · 研究問題</p>
+    <h2>三種讓辯論不一樣的做法</h2>
+    <div class="tree">
+      <div class="root"><span>出發點</span><b>同一個模型<br>同一份資料</b><p>兩個角色只差提示詞，辯論容易流於形式。</p></div>
+      <ol class="branches">
+        <li class="branch"><span class="how"><small>RQ1</small>換立場</span><span class="ask">讓代理人替反方論證，決策會更好嗎？</span><span class="tag ok">已完成</span></li>
+        <li class="branch" data-step="1"><span class="how"><small>RQ2</small>換模型</span><span class="ask">雙方用不同的模型，決策會更好嗎？</span><span class="tag">尚未執行</span></li>
+        <li class="branch" data-step="2"><span class="how"><small>RQ3</small>分資訊</span><span class="ask">四個領域各自辯論再整合，比通才好嗎？</span><span class="tag">尚未執行</span></li>
+      </ol>
+    </div>
+  </div>
+</section>
+
+<!-- 03 -->
+<section class="scene" id="design" data-field="fixed" data-title="C 與 D"
+  data-notes="按 → 逐步走：C 全貌 → D 第 1 輪 → 第 2 輪交換立場（看不到對手）→ 第 3 輪 → 裁決。">
+  <div class="in">
+    <p class="kicker">03 · RQ1 的方法</p>
     <div class="head-row">
       <h2>換的是立場，<br>比的是整套流程。</h2>
       <div class="seg" role="group" aria-label="切換流程">
@@ -95,20 +108,21 @@
         <button type="button" data-round="4" aria-pressed="false">裁決</button>
       </div>
     </div>
+    <p class="basis"><span>依據</span><cite><b>考慮相反的可能性可減少偏誤</b>Lord et al., 1984</cite><cite><b>辯論中途交換角色</b>Liu et al., 2025</cite><cite><b>角色容易死守立場</b>Liang et al., 2023</cite></p>
   </div>
 </section>
 
-<!-- 03 -->
+<!-- 04 -->
 <section class="scene" id="method" data-field="swap" data-title="比較邊界"
-  data-notes="先講樣本與判準：C、D 都用 qwen3:32b；兩項差異都為正、Holm 校正後 p < 0.05 才算 D 較好；主要指標用守門員之前的候選決策。再按 → 帶出：D 同時改了四件事，所以只能說是整套流程的比較。">
+  data-notes="9 檔美國大型股 × 20 個季末。7 次呼叫：三輪各兩次，加裁決一次，C、D 都用 qwen3:32b。股票代號與公司名稱匿名化，降低模型偷看答案的風險（Glasserman 與 Lin 2023）。兩項差異都為正、Holm 校正後 p &lt; 0.05 才算 D 較好。按 → 帶出：D 同時改了四件事，所以只能說是整套流程的比較。">
   <div class="in">
-    <p class="kicker">03 · 比較的邊界</p>
+    <p class="kicker">04 · RQ1 的實驗設定</p>
     <h2>同樣的資料，同樣 7 次預定呼叫。</h2>
     <dl class="facts">
       <div><dt>180</dt><dd>案例<small>9 檔美國大型股 × 20 個季末，2021–2025</small></dd></div>
       <div><dt>60</dt><dd>個交易日<small>隔日開盤進場，60 日後開盤出場</small></dd></div>
-      <div><dt>7</dt><dd>次預定決策呼叫<small>三輪各兩次，加裁決一次</small></dd></div>
-      <div><dt>2</dt><dd>項主要指標<small>方向準確率、年化 Sharpe；兩項都顯著才算 D 較好</small></dd></div>
+      <div><dt>7</dt><dd>次預定決策呼叫<small>兩組預定呼叫數對齊（Smit et al., 2023）</small></dd></div>
+      <div><dt>2</dt><dd>項主要指標<small>方向準確率（McNemar）、年化 Sharpe（Ledoit–Wolf）；兩項都顯著才算 D 較好</small></dd></div>
     </dl>
     <div class="bundle" data-step="1">
       <span class="lab">D 相對於 C，同時改了</span>
@@ -118,14 +132,19 @@
   </div>
 </section>
 
-<!-- 04 -->
+<!-- 05 -->
 <section class="scene" id="results" data-field="fixed" data-title="RQ1 結果"
   data-notes="按 → 揭曉。準確率 D−C = −3.3 個百分點，Holm p = 0.42；Sharpe −0.05，Holm p = 0.80。條紋是事後參照，不是主要比較。">
   <div class="in">
-    <p class="kicker">04 · RQ1 結果</p>
+    <p class="kicker">05 · 發現一：RQ1 結果</p>
     <div class="sealed" id="sealed">
-      <h2>研究會支持你的直覺嗎？</h2>
-      <p id="bet-echo">還沒押也可以直接看。</p>
+      <h2>哪一組比較好？</h2>
+      <div class="bet" role="group" aria-label="先押你的直覺">
+        <span class="bet-q">先押你的直覺</span>
+        <button type="button" data-bet="C"><b>C</b><span>固定立場<small>各守看多、看空，辯到底</small></span></button>
+        <button type="button" data-bet="D"><b>D</b><span>立場交換<small>中途交換立場，反駁自己</small></span></button>
+      </div>
+      <p class="hint" id="bet-echo">押完再揭曉，也可以直接看。</p>
       <button type="button" class="cta" id="reveal">揭曉結果</button>
     </div>
     <div class="opened" id="opened" hidden>
@@ -147,12 +166,12 @@
   </div>
 </section>
 
-<!-- 05 -->
+<!-- 06 -->
 <section class="scene" id="map" data-field="converge" data-title="分歧地圖"
   data-notes="180 格只有 16 格亮：這 16 案 C、D 方向不同。點 INTC 2024-03 和 AAPL 2023-03 講兩個相反的例子。">
   <div class="in two wide-left">
     <div>
-      <p class="kicker">05 · 分歧地圖</p>
+      <p class="kicker">06 · 發現一：分歧在哪裡</p>
       <h2>180 案裡，只有 16 案<br>兩組看法不同。</h2>
       <div class="grid-wrap">
         <div class="grid" id="grid" role="group" aria-label="180 個案例，亮起的是 C 與 D 方向不同的案例"></div>
@@ -168,12 +187,12 @@
   </div>
 </section>
 
-<!-- 06 -->
+<!-- 07 -->
 <section class="scene" id="tost" data-field="converge" data-title="不顯著 ≠ 相同"
   data-notes="這頁解釋為什麼要加 TOST：RQ1 的區間跨過 0，也超出 −5，所以兩種話都不能說。檢定力：180 案偵測 5 個百分點約 23–32%，10 個百分點約 69–85%；這是假設不一致比例 0.2–0.3 的常態近似粗估，RQ1 實際不一致是 16／180。">
   <div class="in two">
     <div>
-      <p class="kicker">06 · 怎麼讀這個結果</p>
+      <p class="kicker">07 · 怎麼讀這個結果</p>
       <h2>不顯著，<br>也不能說兩組一樣。</h2>
       <p>把準確率差放進等效範圍（±5 個百分點）裡看。</p>
       <ul class="verdicts">
@@ -202,40 +221,52 @@
   </div>
 </section>
 
-<!-- 07 -->
+<!-- 08 -->
 <section class="scene" id="clash" data-field="same" data-title="辯論有在辯嗎"
-  data-notes="RQ1 的 C 組第 3 輪共 360 次發言：63.3% 一字不差；對方有新證據的 337 次只有 0.6% 採用。按 → 提案：相似度達 0.8 退回重寫，裁決者逐回合判定，D 的隔離換邊輪不變。再按 → Gemini 20 案（2.5 Flash 與 3.5 Flash，不是正式模型）：準確率 C 45.0% → 42.5%、D 45.0% 不變。試跑看過 180 案裡 27 案的結果，正式分析會加排除這 27 案的敏感性分析。這頁要請老師決定要不要採用。">
+  data-notes="RQ1 的 C 組第 3 輪共 360 次發言：63.3% 一字不差；對方有新證據的 337 次只有 0.6% 採用。按 → 提案：相似度達 0.8 退回重寫，裁決者逐回合判定，D 的隔離交換輪不變。再按 → Gemini 20 案（2.5 Flash 與 3.5 Flash，不是正式模型）：準確率 C 45.0% → 42.5%、D 45.0% 不變。試跑看過 180 案裡 27 案的結果，正式分析會加排除這 27 案的敏感性分析。這頁要請老師決定要不要採用。">
   <div class="in">
-    <p class="kicker">07 · 回頭看 RQ1 的辯論紀錄 <span class="tag">提案 · 待老師確認</span></p>
-    <h2>固定立場辯到第三輪，<br>多半在重複自己。</h2>
-    <dl class="facts">
-      <div><dt>63.3%</dt><dd>一字不差<small>C 組第 3 輪的理由和上一輪完全相同</small></dd></div>
-      <div><dt>0.6%</dt><dd>採用對方的證據<small>對方有新證據時，真的拿來用</small></dd></div>
-      <div><dt>0.89</dt><dd>和自己上一輪的相似度<small>C 組第 3 輪；D 組是 0.14</small></dd></div>
-      <div><dt>1.4%</dt><dd>明確提到對方<small>看不到對方的第 1 輪也有 3.1%</small></dd></div>
-    </dl>
+    <p class="kicker">08 · 發現二：辯論紀錄 <span class="tag">提案 · 待老師確認</span></p>
+    <h2>固定立場辯到第三輪，多半在重複自己。</h2>
+    <div class="split">
+      <dl class="facts duo">
+        <div><dt>63.3%</dt><dd>一字不差<small>固定立場組第 3 輪的理由和上一輪完全相同</small></dd></div>
+        <div><dt>0.6%</dt><dd>採用對方的證據<small>對方有新證據時，真的拿來用</small></dd></div>
+      </dl>
+      <figure class="plot mini">
+        <svg viewBox="0 0 520 215" role="img" aria-label="和自己上一輪的相似度：固定立場組第 2 輪 0.67、第 3 輪 0.89；立場交換組第 2 輪 0.22、第 3 輪 0.14">
+          <line class="axis" x1="60" y1="175" x2="500" y2="175"/>
+          <g class="tl" text-anchor="end"><text x="52" y="180">0</text><text x="52" y="110">0.5</text><text x="52" y="40">1</text></g>
+          <line class="grid" x1="60" y1="105" x2="500" y2="105"/><line class="grid" x1="60" y1="35" x2="500" y2="35"/>
+          <rect class="bc" x="110" y="81.2" width="62" height="93.8" rx="4"/><rect class="bd" x="182" y="144.2" width="62" height="30.8" rx="4"/>
+          <rect class="bc" x="320" y="50.4" width="62" height="124.6" rx="4"/><rect class="bd" x="392" y="155.4" width="62" height="19.6" rx="4"/>
+          <g class="val" text-anchor="middle"><text x="141" y="73">0.67</text><text x="213" y="136">0.22</text><text x="351" y="42">0.89</text><text x="423" y="147">0.14</text></g>
+          <g class="tl" text-anchor="middle"><text x="177" y="198">第 2 輪</text><text x="387" y="198">第 3 輪</text></g>
+        </svg>
+        <figcaption><span class="key kc"></span>C 固定立場　<span class="key kd"></span>D 立場交換　·　和自己上一輪的相似度（RQ1，180 案）</figcaption>
+      </figure>
+    </div>
     <div class="bundle" data-step="1">
-      <span class="lab">提案：強制交鋒（debate_clash）· 三輪改成立論 → 反駁 → 結辯</span>
+      <span class="lab">提案：強制交鋒 · 三輪改成立論 → 反駁 → 結辯</span>
       <p>第 2 輪起必須<strong>逐字引用對方一句話</strong>再反駁；和自己上一輪太像就退回重寫。</p>
     </div>
     <p class="fine" data-step="2">Gemini 試跑 20 案：相似度 0.57 → 0.18，採用對方證據 4% → 24%，準確率看不出差異。</p>
   </div>
 </section>
 
-<!-- 08 -->
+<!-- 09 -->
 <section class="scene" id="rq2" data-field="hetero" data-title="RQ2 模型異質"
-  data-notes="RQ1 之後的問題：兩邊其實是同一個模型。RQ2 讓看多、看空用不同模型，看 D−C 會不會變。點格子講 AB／BA 為什麼兩種都跑。">
+  data-notes="比較量 Δ：異質配置下的 D−C 減去同質配置下的 D−C；同時也看異質配置本身（C 對 C）有沒有差。Zhang 2025 主張辯論的評估應納入模型異質性；Mixture-of-Agents（Wang 2024）讓不同模型分別提案再整合。裁決者與研究代理人固定用 A；D 的第 2 輪只交換立場，不換模型。AB、BA 都跑是為了抵銷哪個模型當看多的影響。">
   <div class="in two">
     <div>
-      <p class="kicker">08 · RQ2 <span class="tag">已實作 · 尚未資格檢查與登記</span></p>
-      <h2>換一個不同的模型<br>來當對手，D−C 會變嗎？</h2>
+      <p class="kicker">09 · RQ2 的方法</p>
+      <h2>雙方用不同的模型，<br>結果會不一樣嗎？</h2>
       <p class="formula">Δ = (D − C)<sub>異質</sub> − (D − C)<sub>同質</sub></p>
-      <ul class="plain">
-        <li>A = qwen3:32b，B = gemma3:27b；裁決者固定用 A</li>
-        <li>D 的第 2 輪只換立場，不換模型</li>
-        <li>每個條件至少三個 seed</li>
-        <li>結果只適用這一組 A、B</li>
+      <ul class="verdicts">
+        <li><b>為什麼</b>同一個模型扮演雙方，可能有相同的盲點</li>
+        <li data-step="1"><b>怎麼做</b>A = qwen3:32b、B = gemma3:27b；四種指派各跑 C 與 D，每個條件三個 seed</li>
+        <li data-step="2"><b>限制</b>結果只適用這一組 A、B</li>
       </ul>
+      <p class="basis"><span>依據</span><cite><b>不同模型可以互補</b>Zhang et al., 2025</cite><cite><b>多模型提案再整合</b>Wang et al., 2024</cite></p>
     </div>
     <div>
       <div class="matrix" id="matrix" role="group" aria-label="模型配置">
@@ -252,11 +283,11 @@
   </div>
 </section>
 
-<!-- 09 -->
+<!-- 10 -->
 <section class="scene" id="rq3" data-field="domains" data-title="RQ3 領域分工"
-  data-notes="RQ3 只跑固定立場，不檢驗立場交換。三個對照各對應一種解釋：架構、算力（只按呼叫數對齊）、資訊切分。">
+  data-notes="FinRobot（Yang 2024）把金融任務拆給專業代理人；AgentVerse（Chen 2023）討論協作結構。兩者都沒有領域辯論對通才的受控比較。三個對照各對應一種解釋：架構、呼叫數、資訊切分。RQ3 只跑固定立場，不檢驗立場交換。">
   <div class="in">
-    <p class="kicker">09 · RQ3 <span class="tag">已實作 · 尚未資格檢查與登記</span></p>
+    <p class="kicker">10 · RQ3 的方法</p>
     <h2>四個領域各自辯論，<br>比一個通才辯論好嗎？</h2>
     <div class="pipe" aria-hidden="true">
       <div class="doms"><span>技術面</span><span>基本面</span><span>情緒面</span><span>總經面</span></div>
@@ -274,39 +305,42 @@
       </div>
       <div class="panel" id="arm-text" aria-live="polite"></div>
     </div>
-    <p class="fine">RQ3 只跑固定立場，<strong>不檢驗立場交換</strong>；「資訊分工會不會改變 D−C」列為後續研究。</p>
-  </div>
-</section>
-
-<!-- 10 -->
-<section class="scene" id="decisions" data-field="pipeline" data-title="四項決策"
-  data-notes="11/09 定案的四項，按 → 一項一項出現。RQ3 四組：C、C_domain、C_budget、C_partition。TOST 是次要分析，90% 區間，不進 Holm family。區塊長度：日期 1／2／4、日報酬 10／20／40。D_noswap 保留隔離對手、強制引用與驗證重試，另行登記。">
-  <div class="in">
-    <p class="kicker">10 · 登記前的設計決策 <span class="tag ok">2026-11-09 定案</span></p>
-    <h2>正式登記前，先把四件事定下來。</h2>
-    <ol class="cards">
-      <li data-step="1"><span class="q">RQ3 要不要也檢驗立場交換？</span><b>只跑固定立場</b><p>資訊面的 2×2 留給後續研究。</p></li>
-      <li data-step="2"><span class="q">「沒有差異」能說得更精確嗎？</span><b>加 TOST 等效檢定</b><p>準確率 ±5 個百分點、Sharpe ±0.2；邊界已鎖定。</p></li>
-      <li data-step="3"><span class="q">區塊長度會不會影響結論？</span><b>照現行計畫</b><p>敏感性與主要結果並列報告，不拿來挑結果。</p></li>
-      <li data-step="4"><span class="q">怎麼拆出「立場交換本身」？</span><b>RQ2 之後另做 D_noswap</b><p>其他都保留，只是不換立場；標為探索性。</p></li>
-    </ol>
-    <p class="fine">待老師確認的三項：強制交鋒、RQ3 是否採用、C_budget 上下文。</p>
+    <p class="basis"><span>依據</span><cite><b>依領域分工的金融代理人</b>Yang et al., 2024</cite><cite><b>協作結構影響決策</b>Chen et al., 2023</cite><cite><b>缺少受控比較</b>本研究補上</cite></p>
   </div>
 </section>
 
 <!-- 11 -->
-<section class="scene" id="progress" data-field="pipeline" data-title="進度與下一步"
-  data-notes="上半是 10/20 之後做完的事（三個程式問題是排程競速、RQ3 缺日、Sharpe 不可估；程式留在本機，經 SSH 通道用實驗室的 Ollama），下半是還沒做的：正式模型（qwen3:32b、gemma3:27b）還沒有資格檢查、pilot、登記或結果。Gemini 只用來試跑交鋒機制。">
+<section class="scene" id="expect" data-field="hetero" data-title="預期結果"
+  data-notes="RQ2、RQ3 還沒有結果，這頁是依文獻與 RQ1 寫的預期，不是結果。Δ 大於 0 只代表異質配置下 D 相對 C 的效果較大。RQ3 用三個對照分辨架構、呼叫數與資訊切分。判定規則在登記前鎖定。">
   <div class="in">
-    <p class="kicker">11 · 進度與下一步</p>
-    <h2>程式與流程就緒，<br>正式模型還沒開跑。</h2>
-    <ol class="done">
-      <li><time>11/04</time><b>修掉審查列出的三個程式問題</b><span>全套 499 項測試，0 失敗</span></li>
-      <li><time>11/04–05</time><b>改用實驗室 GPU，pilot 自動驗收</b><span>一個指令從檢查跑到 pilot；離線 pilot 已跑通</span></li>
-      <li><time>11/05–06</time><b>辯論交鋒機制試跑</b><span>Gemini 跑 3 案、20 案與 RQ3 的 5 案</span></li>
-      <li><time>11/09</time><b>四項設計決策定案</b><span>分析程式新增 TOST 等效輸出</span></li>
+    <p class="kicker">11 · 預期結果 <span class="tag">依文獻推測，不是結果</span></p>
+    <h2>還沒有結果，先寫下預期。</h2>
+    <ol class="cards pair">
+      <li data-step="1"><span class="q">RQ2 · 換模型</span><b>論點差異變大；績效是否改善待檢驗</b>
+        <ul class="scen">
+          <li><i>異質 C ＞ 同質 C</i>固定立場下，異質配置表現較好</li>
+          <li><i>Δ ＞ 0</i>異質配置下，D 相對 C 的差距較大</li>
+          <li><i>都沒有差</i>未見明確的績效差異</li>
+        </ul>
+        <p class="basis"><cite><b>論證品質好不等於 Sharpe 高</b>Huang et al., 2026</cite></p></li>
+      <li data-step="2"><span class="q">RQ3 · 分資訊</span><b>分工可能改變績效；來源要靠對照組辨別</b>
+        <ul class="scen">
+          <li><i>勝過通才與兩個對照</i>領域辯論整體流程較好</li>
+          <li><i>勝過通才，和 C_budget 接近</i>優勢可能來自呼叫數</li>
+          <li><i>和通才接近</i>未見分工帶來明確差異</li>
+        </ul>
+        <p class="basis"><cite><b>比較要對齊呼叫數</b>Smit et al., 2023</cite></p></li>
     </ol>
-    <div class="track" data-step="1">
+  </div>
+</section>
+
+<!-- 12 -->
+<section class="scene" id="progress" data-field="pipeline" data-title="下一步"
+  data-notes="已完成：三個程式問題修正（499 項測試 0 失敗）、實驗室 GPU 連線與 pilot 自動驗收、Gemini 交鋒試跑、等效檢定輸出。還沒做：正式模型（qwen3:32b、gemma3:27b）的資格檢查、pilot、登記。">
+  <div class="in">
+    <p class="kicker">12 · 下一步</p>
+    <h2>程式就緒，<br>正式模型還沒開跑。</h2>
+    <div class="track">
       <span class="here">目前在這裡</span>
       <ol>
         <li>確認機制、開通道<small>交鋒定案，核對兩個模型權重</small></li>
@@ -319,39 +353,63 @@
         <li>D_noswap<small>探索性消融</small></li>
       </ol>
     </div>
-  </div>
-</section>
-
-<!-- 12 -->
-<section class="scene" id="open" data-field="calm" data-title="待討論"
-  data-notes="前兩項要老師明確同意才能動工。交鋒（決策 5、6）：不採用的話，把辯論後段重複自己列為 RQ1 的發現。C_budget（決策 7）：8192 上下文扣掉輸出上限剩 6,144；實驗室記憶體或速度不夠就改成縮短每份提案。後兩項想聽意見：確認性的結論要等知識截止日之後的新案例；RQ1 缺口是登記回執、統計程式不在 protocol hash 內、研究者確認。">
-  <div class="in">
-    <p class="kicker">12 · 還開著的問題</p>
-    <h2>登記前想先討論的四件事。</h2>
-    <ol class="asks">
-      <li data-step="1"><b>要不要採用強制交鋒</b><p>建議 RQ2、RQ3 都用。代價是封裝與資格檢查要重做，而且機制是看過 27 案結果後定的。</p></li>
-      <li data-step="2"><b>C_budget 的提示太長</b><p>約 9,968 tokens，超過可用的 6,144，會被截斷。建議 RQ3 改用 16384 上下文。</p></li>
-      <li data-step="3"><b>檢定力不足、樣本又看過</b><p>打算報信賴區間與 TOST，標為探索性回溯。這樣夠嗎？</p></li>
-      <li data-step="4"><b>RQ1 升格稽核的缺口</b><p>打算在 RQ2／RQ3 登記時，把統計程式與 Ollama 版本一起鎖定。</p></li>
-    </ol>
+    <p class="fine">D_noswap：保留 D 的其他機制，只拿掉換立場，用來拆出立場交換本身的效果。</p>
   </div>
 </section>
 
 <!-- 13 -->
-<section class="scene" id="end" data-field="calm" data-title="目前能說的"
+<section class="scene" id="open" data-field="calm" data-title="想請教的問題"
+  data-notes="第 1 項要明確答案才能動工。第 2 項：老師 10/06 的原意是資訊異質性也看 D−C，現在的 RQ3 沒有做，要確認老師接受。第 3 項：180 案偵測 5 個百分點的檢定力粗估 23–32%；等效範圍是準確率 ±5 個百分點、Sharpe ±0.2。備用問題：C_budget 提示約 9,968 tokens 超過可用的 6,144，建議 RQ3 改用 16384 上下文。">
+  <div class="in">
+    <p class="kicker">13 · 想請教的問題</p>
+    <h2>想請老師給意見的三件事。</h2>
+    <ol class="asks">
+      <li data-step="1"><b>要不要採用強制交鋒</b><p>建議 RQ2、RQ3 都用。代價是機制在看過 27 案的結果後才定。</p></li>
+      <li data-step="2"><b>三個問題並列可以嗎</b><p>換立場、換模型、分資訊三種做法並列；RQ3 不看立場交換。</p></li>
+      <li data-step="3"><b>檢定力不足、樣本又看過</b><p>打算報信賴區間與等效檢定，標為探索性回溯。這樣夠嗎？</p></li>
+    </ol>
+  </div>
+</section>
+
+<!-- 14 -->
+<section class="scene" id="end" data-level="1" data-field="calm" data-title="結論"
   data-notes="收尾：只說到證據支持的範圍。">
   <div class="in">
-    <p class="kicker">13 · 目前能說的</p>
-    <h1 class="closing">在這批樣本與流程下，<br>還沒找到 D 優於 C 的證據。</h1>
-    <p class="lede">這是有限的回溯比較，不是投資建議。RQ2、RQ3 目前只有設計與程式，還沒有結果。</p>
+    <p class="kicker">14 · 結論</p>
+    <h1 class="closing">交換立場改變了辯論內容，<br>但沒有提高準確率。</h1>
+    <p class="lede">本研究在同樣資料、對齊呼叫數的條件下，對換立場、換模型、分資訊三種做法做受控比較。RQ2、RQ3 目前只有設計，還沒有結果。</p>
     <nav class="links" aria-label="延伸閱讀">
       <a href="../sources/application-meeting-20261020_v11.pdf">研究報告 v11（PDF）</a>
-      <a href="../">研究故事</a>
+      <a href="../">首頁</a>
+      <a href="../rq1/">研究故事</a>
       <a href="../demo/">逐輪案例展示</a>
       <a href="../app/">研究台唯讀展示</a>
       <a href="https://github.com/paul931130/stance-shift-lab">GitHub</a>
     </nav>
     <p class="fine">數值依報告 v11 四捨五入；16 個分歧案例取自 180 案凍結證據包的靜態匯出；辯論紀錄與交鋒試跑的數字取自 11/05 的紀錄分析與試跑（PR #71）。本頁不呼叫模型、不抓行情、不下單。</p>
+  </div>
+</section>
+
+<!-- 15 -->
+<section class="scene" id="refs" data-field="calm" data-title="參考文獻"
+  data-notes="完整書目見研究報告 v11。">
+  <div class="in">
+    <p class="kicker">15 · 參考文獻</p>
+    <ol class="refs">
+      <li>Chen, W., et al. (2023). AgentVerse: Facilitating multi-agent collaboration and exploring emergent behaviors. arXiv:2308.10848.</li>
+      <li>Du, Y., et al. (2023). Improving factuality and reasoning in language models through multiagent debate. arXiv:2305.14325.</li>
+      <li>Glasserman, P., &amp; Lin, C. (2023). Assessing look-ahead bias in stock return predictions generated by GPT sentiment analysis. arXiv:2309.17322.</li>
+      <li>Huang, J., et al. (2026). Multi-agent debate for explainable trading. arXiv:2609.29701.</li>
+      <li>Ledoit, O., &amp; Wolf, M. (2008). Robust performance hypothesis testing with the Sharpe ratio. Journal of Empirical Finance, 15.</li>
+      <li>Liang, T., et al. (2023). Encouraging divergent thinking in large language models through multi-agent debate. arXiv:2305.19118.</li>
+      <li>Liu, Z., et al. (2025). Uncertainty-aware role-switching debate: Improving truthfulness in large language models.</li>
+      <li>Lord, C. G., Lepper, M. R., &amp; Preston, E. (1984). Considering the opposite: A corrective strategy for social judgment. Journal of Personality and Social Psychology, 47(6).</li>
+      <li>Smit, A., et al. (2023). Should we be going MAD? A look at multi-agent debate strategies for LLMs. arXiv:2311.17371.</li>
+      <li>Wang, J., et al. (2024). Mixture-of-Agents enhances large language model capabilities. arXiv:2406.04692.</li>
+      <li>Xiao, Y., et al. (2024). TradingAgents: Multi-agents LLM financial trading framework. arXiv:2412.20138.</li>
+      <li>Yang, H., et al. (2024). FinRobot: An open-source AI agent platform for financial applications using large language models. arXiv:2405.14767.</li>
+      <li>Zhang, H., et al. (2025). Stop overvaluing multi-agent debate: We must rethink evaluation and embrace model heterogeneity. arXiv:2502.08788.</li>
+    </ol>
   </div>
 </section>
 
@@ -361,7 +419,7 @@
   <button type="button" id="hud-prev" aria-label="上一步">‹</button>
   <span class="count" id="hud-count"></span>
   <span class="ttl" id="hud-title"></span>
-  <span class="keys">← → 翻頁 · O 總覽 · N 提示 · F 全螢幕 · Esc 離開</span>
+  <span class="keys">← → 翻頁 · O 總覽 · N 提示 · B 背景 · F 全螢幕 · Esc 離開</span>
   <button type="button" class="clock" id="hud-clock" title="點一下歸零">00:00</button>
   <button type="button" id="hud-next" aria-label="下一步">›</button>
   <i class="prog" id="hud-prog"></i>

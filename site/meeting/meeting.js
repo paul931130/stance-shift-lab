@@ -12,7 +12,7 @@ const REDUCED = matchMedia('(prefers-reduced-motion: reduce)').matches;
 const Field = (() => {
   const cv = $('#field'), ctx = cv.getContext('2d');
   const TAU = Math.PI * 2;
-  let W = 0, H = 0, P = [], mode = 'drift', prev = 'drift', mix = 1, t = 0, raf = 0, ptr = null, col = ['#ff6b3d', '#3fc8ff'], light = false;
+  let W = 0, H = 0, P = [], mode = 'drift', prev = 'drift', mix = 1, t = 0, raf = 0, ptr = null, col = ['#ff6b3d', '#3fc8ff'], light = false, level = 1, lv = 1, off = false;
   const sm = (a, b, x) => { const k = Math.max(0, Math.min(1, (x - a) / (b - a))); return k * k * (3 - 2 * k); };
 
   function resize() {
@@ -25,7 +25,7 @@ const Field = (() => {
     for (let i = 0; i < n; i++) {
       const x = Math.random() * W, y = Math.random() * H;
       P.push({ x, y, px: x, py: y, k: i % 2, lane: (i >> 1) % 4, off: (Math.random() + Math.random() + Math.random() - 1.5) / 1.5,
-        home: Math.random(), sp: .6 + Math.random() * .8, ph: Math.random() * TAU });
+        home: Math.random(), sp: .6 + Math.random() * .8, ph: Math.random() * TAU, n: i });
     }
     if (REDUCED) still();
   }
@@ -78,10 +78,11 @@ const Field = (() => {
   }
   function paint(alpha) {
     ctx.globalCompositeOperation = light ? 'source-over' : 'lighter';
-    ctx.globalAlpha = alpha;
+    ctx.globalAlpha = alpha * (.3 + .7 * lv);
+    const lim = P.length * (.4 + .6 * lv);   // 內容頁少畫一些粒子
     for (let k = 0; k < 2; k++) {
       ctx.beginPath();
-      for (const p of P) if (p.k === k) { ctx.moveTo(p.px, p.py); ctx.lineTo(p.x, p.y); }
+      for (const p of P) if (p.k === k && p.n < lim) { ctx.moveTo(p.px, p.py); ctx.lineTo(p.x, p.y); }
       ctx.strokeStyle = col[k];
       ctx.lineWidth = mode === 'hetero' && k ? 2.3 : 1.15;
       ctx.stroke();
@@ -89,6 +90,7 @@ const Field = (() => {
     ctx.globalAlpha = 1;
   }
   function frame() {
+    lv += (level - lv) * .04;
     step();
     ctx.globalCompositeOperation = 'destination-out';
     ctx.fillStyle = 'rgba(0,0,0,.075)';
@@ -98,10 +100,10 @@ const Field = (() => {
   }
   // 減少動態：直接算一張靜止的流線圖
   function still() {
-    ctx.clearRect(0, 0, W, H); mix = 1;
+    ctx.clearRect(0, 0, W, H); mix = 1; lv = level;
     for (let i = 0; i < 150; i++) { step(); paint(.12); }
   }
-  function start() { if (!REDUCED && !raf && !document.hidden) raf = requestAnimationFrame(frame); }
+  function start() { if (!REDUCED && !off && !raf && !document.hidden) raf = requestAnimationFrame(frame); }
   function stop() { cancelAnimationFrame(raf); raf = 0; }
   function set(m) {
     if (!m || m === mode) return;
@@ -113,7 +115,15 @@ const Field = (() => {
   addEventListener('pointerleave', () => { ptr = null; });
   document.addEventListener('visibilitychange', () => document.hidden ? stop() : start());
   colors(); resize(); start();
-  return { set, colors: () => { colors(); if (REDUCED) still(); } };
+  function setLevel(v) { level = v; root.dataset.fl = v >= 1 ? 'full' : 'dim'; if (REDUCED) still(); }
+  function toggle(force) {
+    off = force ?? !off;
+    root.classList.toggle('nofield', off);
+    if (off) stop(); else { start(); if (REDUCED) still(); }
+    try { localStorage.setItem('ssl-field', off ? 'off' : 'on'); } catch { /* 無法儲存就算了 */ }
+  }
+  try { if (localStorage.getItem('ssl-field') === 'off') toggle(true); } catch { /* 同上 */ }
+  return { set, level: setLevel, toggle, colors: () => { colors(); if (REDUCED) still(); } };
 })();
 
 /* ───────── 場景、導覽、簡報模式 ───────── */
@@ -142,7 +152,7 @@ function stepsOf(s) {
   const marks = $$('[data-step]', s).map(el => Number(el.dataset.step));
   return Math.max(0, hooks[s.id]?.count || 0, ...marks);
 }
-function refreshField() { Field.set(scenes[state.i].dataset.field); }
+function refreshField() { const d = scenes[state.i].dataset; Field.set(d.field); Field.level(Number(d.level || .3)); }
 function mark(i) {            // 目前場景改變時，同步導覽、標籤、流場
   state.i = i;
   const s = scenes[i];
@@ -206,7 +216,6 @@ function toggleTheme() {
   try { localStorage.setItem('ssl-theme', lightNow ? 'dark' : 'light'); } catch { /* 無法儲存就算了 */ }
   Field.colors();
 }
-try { if (localStorage.getItem('ssl-theme') === 'light') { root.dataset.theme = 'light'; Field.colors(); } } catch { /* 同上 */ }
 
 // 閱讀模式：捲到哪個場景就算哪個
 function onScroll() {
@@ -245,6 +254,7 @@ addEventListener('keydown', e => {
   if (k === 'Escape') { if (!$('#over').hidden) toggleOver(false); else if (state.deck) setDeck(false); return; }
   if (k === 'o' || k === 'O') return toggleOver();
   if (k === 't' || k === 'T') return toggleTheme();
+  if (k === 'b' || k === 'B') return Field.toggle();
   if (k === 'p' || k === 'P') return setDeck(!state.deck);
   if (k === 'f' || k === 'F') { document.fullscreenElement ? document.exitFullscreen?.() : root.requestFullscreen?.().catch(() => {}); return; }
   if (!state.deck || !$('#over').hidden) return;
@@ -270,9 +280,8 @@ let bet = null;
 $$('[data-bet]').forEach(b => b.addEventListener('click', () => {
   bet = b.dataset.bet;
   $$('[data-bet]').forEach(x => x.setAttribute('aria-pressed', String(x === b)));
-  $('#bet-note').textContent = bet === 'C' ? '你押 C：兩股流各走各的，從頭到尾不換邊。' : '你押 D：兩股流在中途交叉換邊，再換回來。';
   $('#bet-echo').textContent = `你押的是 ${bet}。`;
-  $('#cover').dataset.field = bet === 'C' ? 'fixed' : 'swap';
+  $('#results').dataset.field = bet === 'C' ? 'fixed' : 'swap';
   refreshField();
 }));
 
@@ -286,7 +295,7 @@ const ROUND_TEXT = {
     '裁決者讀完整場辯論與報告，逐項核對證據，選擇買進或賣出。'],
   D: ['D：流程與 C 相同，但第 2 輪兩位代理人互換立場，而且只能反駁自己。',
     '第 1 輪：與 C 相同，雙方各自提出論點並引用證據。',
-    '第 2 輪：換邊。這一輪看不到對手，只看得到自己的第 1 輪；必須引用自己的原文再反駁，引用會被驗證，不合格就重試。',
+    '第 2 輪：交換立場。這一輪看不到對手，只看得到自己的第 1 輪；必須引用自己的原文再反駁，引用會被驗證，不合格就重試。',
     '第 3 輪：換回原立場，整合前兩輪的主張與反駁，說明仍不確定的地方。模型沒有換。',
     '裁決者讀完整場辯論與報告，逐項核對證據，選擇買進或賣出。同樣是 7 次預定決策呼叫。']
 };
@@ -303,7 +312,7 @@ function renderArena(arm = arena.dataset.arm, round = Number(arena.dataset.round
     nd.className = `nd ${bull ? 'bull' : 'bear'}`;
     nd.replaceChildren(document.createTextNode(bull ? '看多' : '看空'));
     const small = document.createElement('small');
-    small.textContent = swapped ? '換邊，反駁自己第 1 輪' : arm === 'D' && r === 3 ? '換回原立場' : r === 1 ? '提出論點' : r === 2 ? '批評與回應' : '整理論點';
+    small.textContent = swapped ? '交換立場，反駁自己第 1 輪' : arm === 'D' && r === 3 ? '換回原立場' : r === 1 ? '提出論點' : r === 2 ? '批評與回應' : '整理論點';
     nd.append(small);
     if (armChanged && r === 2 && !REDUCED) { nd.classList.add('flip'); setTimeout(() => nd.classList.remove('flip'), 600); }
   });
@@ -437,7 +446,7 @@ const ARMS = {
   C_domain: ['領域分工辯論', '每案 29 次呼叫', '四個領域各自多空辯論三輪（24 次），每個領域一次 View 裁決（4 次），最後由 Final Aggregator 整合（1 次）。這是 RQ3 要檢驗的架構。'],
   C: ['通才辯論', '每案 7 次呼叫', '與 RQ1 的 C 相同：看多、看空讀同一份整合報告辯三輪。C_domain 對 C 回答的是整套架構的差，包含算力差。'],
   C_budget: ['同算力的通才', '每案 29 次呼叫', '28 次獨立提案加 1 次裁決，資訊不切分。C_domain 對 C_budget 用來排除「只是多跑了幾次」。時間不夠時優先保留這一組。'],
-  C_partition: ['切資訊但不辯論', '每案 1 次呼叫', '證據照四個領域切好，直接裁決一次。C_domain 對 C_partition 用來排除「只是把資訊分了類」。']
+  C_partition: ['切資訊但不辯論', '每案 1 次呼叫', '證據照四個領域切好，直接裁決一次。C_domain 對 C_partition 比較分工辯論與直接裁決的整體差異（兩者呼叫數不同）。']
 };
 function renderArm(key) {
   $$('[data-rq3]').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.rq3 === key)));
