@@ -16,8 +16,8 @@
 <nav class="sitenav" aria-label="網站導覽"><a class="sitenav-brand" href="../">STANCE SHIFT LAB</a><a href="../">首頁</a><a href="./" aria-current="page">研究計畫</a><a href="../rq1/">研究故事</a><a href="../demo/">案例回放</a><a href="../app/">研究台預覽</a><a href="../sources/application-meeting-20261020_v11.pdf">研究報告</a><a href="https://github.com/paul931130/stance-shift-lab">GitHub</a>
   <span class="where" id="where" aria-live="polite"></span>
   <div class="tools">
-    <button type="button" id="btn-theme" title="切換深色／淺色（T）" aria-label="切換深色或淺色">◐</button>
-    <button type="button" id="btn-over" title="總覽（O）">總覽</button>
+    <button type="button" id="btn-theme" aria-pressed="false" title="切換深色／淺色（T）" aria-label="切換深色或淺色">◐</button>
+    <button type="button" id="btn-over" aria-expanded="false" title="總覽（O）">總覽</button>
     <button type="button" id="btn-deck" class="go" title="簡報模式（P）">▶ 簡報模式</button>
   </div>
 </nav>
@@ -141,8 +141,8 @@
       <h2>哪一組比較好？</h2>
       <div class="bet" role="group" aria-label="先押你的直覺">
         <span class="bet-q">先押你的直覺</span>
-        <button type="button" data-bet="C"><b>C</b><span>固定立場<small>各守看多、看空，辯到底</small></span></button>
-        <button type="button" data-bet="D"><b>D</b><span>立場交換<small>中途交換立場，反駁自己</small></span></button>
+        <button type="button" data-bet="C" aria-pressed="false"><b>C</b><span>固定立場<small>各守看多、看空，辯到底</small></span></button>
+        <button type="button" data-bet="D" aria-pressed="false"><b>D</b><span>立場交換<small>中途交換立場，反駁自己</small></span></button>
       </div>
       <p class="hint" id="bet-echo">押完再揭曉，也可以直接看。</p>
       <button type="button" class="cta" id="reveal">揭曉結果</button>
@@ -247,7 +247,7 @@
     </div>
     <div class="bundle" data-step="1">
       <span class="lab">提案：強制交鋒 · 三輪改成立論 → 反駁 → 結辯</span>
-      <p>第 2 輪起必須<strong>逐字引用對方一句話</strong>再反駁；和自己上一輪太像就退回重寫。</p>
+      <p>第 2 輪起必須<strong>逐字引用對方一句話</strong>再反駁（D 的隔離輪除外）；和自己上一輪太像就退回重寫。</p>
     </div>
     <p class="fine" data-step="2">Gemini 試跑 20 案：相似度 0.57 → 0.18，採用對方證據 4% → 24%，準確率看不出差異。</p>
   </div>
@@ -314,7 +314,7 @@
   data-notes="RQ2、RQ3 還沒有結果，這頁是依文獻與 RQ1 寫的預期，不是結果。Δ 大於 0 只代表異質配置下 D 相對 C 的效果較大。RQ3 用三個對照分辨架構、呼叫數與資訊切分。判定規則在登記前鎖定。">
   <div class="in">
     <p class="kicker">11 · 預期結果 <span class="tag">依文獻推測，不是結果</span></p>
-    <h2>還沒有結果，先寫下預期。</h2>
+    <h2>預期論點會拉開，績效靠對照組檢驗。</h2>
     <ol class="cards pair">
       <li><span class="q">RQ2 · 換模型</span><b>論點差異變大；績效是否改善待檢驗</b>
         <ul class="scen">
@@ -395,6 +395,7 @@
   data-notes="完整書目見研究報告 v11。">
   <div class="in">
     <p class="kicker">15 · 參考文獻</p>
+    <h2>參考文獻</h2>
     <ol class="refs">
       <li>Chen, W., et al. (2023). AgentVerse: Facilitating multi-agent collaboration and exploring emergent behaviors. arXiv:2308.10848.</li>
       <li>Du, Y., et al. (2023). Improving factuality and reasoning in language models through multiagent debate. arXiv:2305.14325.</li>
@@ -420,13 +421,13 @@
   <span class="count" id="hud-count"></span>
   <span class="ttl" id="hud-title"></span>
   <div class="keys" role="group" aria-label="簡報工具">
-    <button type="button" id="hud-notes" title="提示（N）">提示</button>
-    <button type="button" id="hud-over" title="總覽（O）">總覽</button>
-    <button type="button" id="hud-theme" title="主題（T）">主題</button>
-    <button type="button" id="hud-field" title="背景（B）">背景</button>
+    <button type="button" id="hud-notes" aria-pressed="false" title="提示（N）">提示</button>
+    <button type="button" id="hud-over" aria-expanded="false" title="總覽（O）">總覽</button>
+    <button type="button" id="hud-theme" aria-pressed="false" title="主題（T）">主題</button>
+    <button type="button" id="hud-field" aria-pressed="true" title="背景（B）">背景</button>
     <button type="button" id="hud-exit" title="離開（Esc）">離開</button>
   </div>
-  <button type="button" class="clock" id="hud-clock" title="點一下歸零">00:00</button>
+  <button type="button" class="clock" id="hud-clock" aria-label="計時器，點擊歸零" title="點一下歸零">00:00</button>
   <button type="button" id="hud-next" aria-label="下一步">›</button>
   <i class="prog" id="hud-prog"></i>
 </footer>
