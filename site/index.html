@@ -54,12 +54,15 @@ h2{font-size:clamp(1.5rem,2.8vw,2.2rem);line-height:1.4;margin:4rem 0 1.5rem}
 .intro{font-size:1.125rem;max-width:42em;margin:0 0 2.25rem;color:var(--dim)}
 .status{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:1rem}
 .status li,.card{background:var(--panel);border:1px solid var(--line);border-radius:1.2rem;backdrop-filter:blur(12px)}
-.status li{padding:1.2rem 1.4rem}
+.status li{background:none;border:0;border-left:3px solid rgba(236,230,216,.25);border-radius:0;padding:.4rem 1rem;backdrop-filter:none}
+:root[data-theme=light] .status li{border-left-color:rgba(18,22,29,.25)}
 .status b{display:block;font-family:var(--mono);font-size:.9rem;letter-spacing:.05em;text-transform:uppercase;color:var(--dim);margin-bottom:.35rem}
 .status li:first-child b{color:var(--d)}
 .status span{color:var(--dim);font-size:.95rem}
 .cards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1.25rem}
 .card{display:block;padding:1.75rem;color:inherit;text-decoration:none;min-width:0}
+.cards .card:first-child{border-color:#d4f250}
+:root[data-theme=light] .cards .card:first-child{border-color:var(--d)}
 .card:hover{border-color:var(--d);background:var(--panel2)}
 .card h3{margin:0 0 .75rem;font-size:1.45rem}
 .card p{margin:0 0 1rem}
@@ -77,7 +80,7 @@ footer{margin:3rem 0 2.5rem;color:var(--dim);font-size:.875rem}
 <ul class="status"><li><b>RQ1 換立場</b><span>已完成 180 案</span></li><li><b>RQ2 換模型</b><span>設計完成，尚未執行</span></li><li><b>RQ3 分資訊</b><span>設計完成，尚未執行</span></li></ul>
 <h2>從哪裡開始看</h2>
 <div class="cards">
-<a class="card" href="meeting/"><h3>研究計畫</h3><p>三個研究問題、實驗方法、目前的發現與預期結果，可以逐頁播放當簡報。</p><p class="fit">適合：想快速了解整個研究。</p></a>
+<a class="card" href="meeting/"><h3>研究計畫（互動簡報 →）</h3><p>三個研究問題、實驗方法、目前的發現與預期結果，可以逐頁播放當簡報。</p><p class="fit">適合：想快速了解整個研究。</p></a>
 <a class="card" href="rq1/"><h3>研究故事</h3><p>用互動的方式講 RQ1：先猜哪一組比較好，再揭曉 180 案的結果。</p><p class="fit">適合：第一次接觸這個題目。</p></a>
 <a class="card" href="demo/"><h3>案例回放</h3><p>兩個真實案例（INTC、AAPL）的三輪多空辯論逐輪重播，以及 60 個交易日後的結果。</p><p class="fit">適合：想看代理人實際怎麼辯論。</p></a>
 <a class="card" href="app/"><h3>研究台預覽</h3><p>實驗系統的操作介面，唯讀展示，使用合成資料，不能新增工作。</p><p class="fit">適合：想看系統怎麼運作。</p></a>
