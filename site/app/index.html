@@ -5,6 +5,27 @@
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="description" content="多代理人立場交換辯論應用於投資決策：資料快照、研究代理人、四組決策機制、守門員、回測與配對統計。">
 <title>立場交換研究室</title>
+<script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>html{scrollbar-gutter:stable}
+.sitenav{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:0 18px;height:48px;padding:0 24px;margin:0;background:rgba(10,13,19,.88);backdrop-filter:blur(12px);border-bottom:1px solid rgba(236,230,216,.16);font:400 13px/20px "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;box-sizing:border-box}
+.sitenav a{color:rgba(236,230,216,.66);text-decoration:none;border-bottom:2px solid transparent;padding:2px 0;white-space:nowrap}
+.sitenav a:hover{color:#ece6d8}
+.sitenav .sitenav-brand{font:700 12px/20px "JetBrains Mono",Consolas,monospace;letter-spacing:.14em;color:#ece6d8;margin-right:6px;width:144px;flex:none}
+.sitenav a[aria-current=page]{color:#ece6d8;border-bottom-color:#d4f250;font-weight:700}
+:root[data-theme=light] .sitenav{background:rgba(250,247,240,.92);border-bottom-color:rgba(18,22,29,.18)}
+:root[data-theme=light] .sitenav a{color:rgba(18,22,29,.72)}
+:root[data-theme=light] .sitenav .sitenav-brand,:root[data-theme=light] .sitenav a:hover,:root[data-theme=light] .sitenav a[aria-current=page]{color:#12161d}
+:root[data-theme=light] .sitenav a[aria-current=page]{border-bottom-color:#5d7400}
+@view-transition{navigation:auto}
+.sitenav{view-transition-name:sitenav}
+::view-transition-old(root),::view-transition-new(root){animation-duration:180ms;animation-timing-function:ease}
+@media(prefers-reduced-motion:reduce){@view-transition{navigation:none}::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
+html,body{background:#06080c;color:#ece6d8;color-scheme:dark}
+:root[data-theme=light],:root[data-theme=light] body{background:#f2ede2;color:#12161d;color-scheme:light}
+.sitenav~.topbar{top:48px}</style>
 <link rel="icon" href="data:,">
 <link rel="stylesheet" href="app.css">
 <link rel="stylesheet" href="dataset.css">
@@ -14,6 +35,7 @@
 <script type="module" src="js/app.js"></script>
 </head>
 <body>
+<nav class="sitenav" aria-label="網站導覽"><a class="sitenav-brand" href="../">STANCE SHIFT LAB</a><a href="../">首頁</a><a href="../meeting/">研究計畫</a><a href="../rq1/">研究故事</a><a href="../demo/">案例回放</a><a href="../app/" aria-current="page">研究台預覽</a><a href="../sources/application-meeting-20261020_v11.pdf">研究報告</a><a href="https://github.com/paul931130/stance-shift-lab">GitHub</a></nav>
 <div id="static-demo-banner" style="margin:0;padding:6px 12px;background:#fff3cd;color:#664d03;border-bottom:1px solid #e0c36a;font:13px/1.4 system-ui,sans-serif;text-align:center">研究台介面預覽：合成錄製資料與固定回應，非研究結果，無法新增分析。想分析自己的股票，請建立私人雲端研究台。 <a href="https://github.com/paul931130/stance-shift-lab/blob/main/docs/cloud-start.md" style="color:inherit;font-weight:600">建立雲端研究台</a> · <a href="../demo/" style="color:inherit;font-weight:600">播放真實案例</a></div>
 <header class="topbar">
   <a class="brand" href="./" aria-label="立場交換研究室首頁">

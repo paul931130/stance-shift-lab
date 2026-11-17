@@ -34,7 +34,8 @@
 
 | 位置 | 網址路徑 | 內容 |
 | --- | --- | --- |
-| `site/index.html`、`story.css`、`story.js`、`story-cases.json` | `/` | 研究故事首頁 |
+| `site/index.html` | `/` | 導覽首頁：說明各分頁的用途 |
+| `site/rq1/` | `/rq1/` | 研究故事：用互動方式講 RQ1 |
 | `site/demo/` | `/demo/` | 兩個已完成 RQ1 案例的逐輪回放，不執行新分析 |
 | `site/app/` | `/app/` | 研究台的唯讀預覽，使用合成錄製資料，由 `scripts/static_demo.py` 產生 |
 | `site/meeting/` | `/meeting/` | 研究進度的互動簡報 |

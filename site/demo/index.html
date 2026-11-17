@@ -5,18 +5,20 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>立場交換辯論 · 系統展示</title>
 <meta name="description" content="用兩個真實案例，看多代理人辯論如何在固定立場與立場交換下得出不同的投資判斷。真實模型輸出（RQ1 回溯比較）。">
+<script>try{if(localStorage.getItem('ssl-theme')==='light')document.documentElement.dataset.theme='light';}catch(e){}</script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&family=Noto+Serif+TC:wght@700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-:root{--navy:#1F3A5F;--ink:#1A2233;--muted:#5B6472;--faint:#8A919C;--rule:#D9DCE1;--bg:#FAFAF7;--card:#FFFFFF;--teal:#0F766E;--teal-l:#E7F1EF;--gray:#C5CAD1;--orange:#B45309;--orange-l:#FDF1E3}
+:root{--navy:#c4d9ed;--ink:#ece6d8;--muted:#a6b7c2;--faint:#8c9ca8;--rule:#2c3d48;--bg:#06080c;--card:#0c1219;--teal:#78c9bd;--teal-l:#15272b;--gray:#5b6b78;--orange:#eab56a;--orange-l:#302416;--topbar:#142337;--soft:#15202b;--selected:#142a29;--bar-bg:rgba(6,8,12,.92)}
+:root[data-theme=light]{--navy:#1F3A5F;--ink:#1A2233;--muted:#5B6472;--faint:#8A919C;--rule:#D9DCE1;--bg:#FAFAF7;--card:#FFFFFF;--teal:#0F766E;--teal-l:#E7F1EF;--gray:#C5CAD1;--orange:#B45309;--orange-l:#FDF1E3;--topbar:#1f3a5f;--soft:#eef0f3;--selected:#f6faf9;--bar-bg:rgba(250,250,247,.96)}
 *{box-sizing:border-box;margin:0}
 html{scroll-behavior:smooth}
 body{background:var(--bg);color:var(--ink);font-family:'Noto Sans TC',system-ui,sans-serif;font-size:16px;line-height:1.7}
 a{color:var(--teal)}
 .serif{font-family:'Noto Serif TC',Georgia,serif}
 .wrap{max-width:900px;margin:0 auto;padding:0 16px}
-.topbar{background:var(--navy);color:#F4F5F2}
+.topbar{background:var(--topbar);color:#F4F5F2}
 .topbar .wrap{display:flex;justify-content:space-between;align-items:center;gap:8px 20px;flex-wrap:wrap;padding-top:14px;padding-bottom:14px}
 .topbar h1{font-family:'Noto Serif TC',Georgia,serif;font-size:19px;line-height:1.4}
 .topbar .links{display:flex;gap:16px;align-items:baseline;flex-wrap:wrap;font-size:14px}
@@ -27,20 +29,20 @@ main{padding-bottom:110px}
 .step{padding:34px 0 8px;scroll-margin-top:8px}
 .step[hidden]{display:none}
 .step h2{font-family:'Noto Serif TC',Georgia,serif;font-size:24px;color:var(--navy);line-height:1.3;display:flex;align-items:center;gap:12px;margin-bottom:6px}
-.step h2 .n{display:inline-flex;width:32px;height:32px;border-radius:50%;background:var(--navy);color:#fff;font-size:16px;align-items:center;justify-content:center;flex:none}
+.step h2 .n{display:inline-flex;width:32px;height:32px;border-radius:50%;background:var(--topbar);color:#fff;font-size:16px;align-items:center;justify-content:center;flex:none}
 .step .lead{color:var(--muted);font-size:15px;margin-bottom:16px}
 .tag{display:inline-block;font-size:12px;font-weight:700;letter-spacing:.5px;color:var(--teal);background:var(--teal-l);border-radius:3px;padding:1px 8px}
 .cases{display:grid;grid-template-columns:1fr 1fr;gap:14px}
 .case{all:unset;box-sizing:border-box;cursor:pointer;background:var(--card);border:2px solid var(--rule);border-radius:6px;padding:18px 18px 16px;display:block}
 .case:hover{border-color:var(--gray)}
 .case:focus-visible,.btn:focus-visible,.lnk:focus-visible,.chip:focus-visible,summary:focus-visible{outline:3px solid #5FB3A6;outline-offset:2px}
-.case.sel{border-color:var(--teal);background:#F6FAF9;box-shadow:0 0 0 1px var(--teal)}
+.case.sel{border-color:var(--teal);background:var(--selected);box-shadow:0 0 0 1px var(--teal)}
 .case .tk{font-family:'Noto Serif TC',Georgia,serif;font-size:38px;font-weight:700;color:var(--navy);line-height:1.1}
 .case .dt{color:var(--muted);font-size:14px;margin:2px 0 10px}
 .case .ln{font-weight:700;font-size:15px;margin-bottom:10px}
 .case[aria-disabled=true]{cursor:default;opacity:.7}
 .flow{display:grid;grid-template-columns:repeat(5,1fr);gap:8px;list-style:none;padding:0}
-.stage{position:relative;background:#EEF0F3;border:1px solid var(--rule);border-radius:6px;padding:12px 10px;color:var(--faint);transition:background .4s,color .4s,border-color .4s}
+.stage{position:relative;background:var(--soft);border:1px solid var(--rule);border-radius:6px;padding:12px 10px;color:var(--faint);transition:background .4s,color .4s,border-color .4s}
 .stage .sn{font-size:12px;font-weight:700;letter-spacing:1px}
 .stage .sh{font-weight:700;font-size:15px;line-height:1.35;margin:2px 0 4px}
 .stage .sr{font-size:13px;line-height:1.5;opacity:0;transition:opacity .5s}
@@ -51,7 +53,7 @@ main{padding-bottom:110px}
 details{background:var(--card);border:1px solid var(--rule);border-radius:6px}
 summary{cursor:pointer;padding:10px 14px;font-weight:700;font-size:15px;color:var(--navy)}
 details .bd{padding:0 14px 12px;font-size:15px}
-details .en{margin-top:8px;padding:8px 10px;background:#F3F4F6;border-radius:4px;color:var(--muted);font-size:13.5px;line-height:1.6}
+details .en{margin-top:8px;padding:8px 10px;background:var(--soft);border-radius:4px;color:var(--muted);font-size:13.5px;line-height:1.6}
 .lnk{all:unset;cursor:pointer;color:var(--teal);font-size:13px;text-decoration:underline}
 .legend{font-size:14px;color:var(--muted);margin-bottom:14px}
 .legend b{color:var(--ink)}
@@ -66,18 +68,18 @@ details .en{margin-top:8px;padding:8px 10px;background:#F3F4F6;border-radius:4px
 .cell.hl{background:var(--orange-l);border:1px dashed var(--orange);padding:8px}
 .banner{background:var(--orange);color:#fff;font-size:13.5px;font-weight:700;padding:6px 10px;border-radius:4px;line-height:1.5}
 .msg{background:var(--card);border:1px solid var(--rule);border-left:4px solid var(--gray);border-radius:6px;padding:10px 12px;font-size:14.5px;line-height:1.65}
-.msg.bull{border-left-color:var(--teal)}.msg.bear{border-left-color:var(--orange)}.msg.adj{border-left-color:var(--navy);background:#F3F6FA}
+.msg.bull{border-left-color:var(--teal)}.msg.bear{border-left-color:var(--orange)}.msg.adj{border-left-color:var(--navy);background:var(--soft)}
 .msg.pop{animation:pop .35s ease-out}
 @keyframes pop{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .mh{display:flex;flex-wrap:wrap;gap:6px 8px;align-items:center;margin-bottom:6px}
-.who{font-size:12.5px;font-weight:700;background:#EEF0F3;color:var(--navy);border-radius:10px;padding:0 9px}
+.who{font-size:12.5px;font-weight:700;background:var(--soft);color:var(--navy);border-radius:10px;padding:0 9px}
 .st{font-size:12.5px;font-weight:700;border-radius:10px;padding:0 9px}
-.st.bull{background:var(--teal-l);color:var(--teal)}.st.bear{background:#FBE7D0;color:var(--orange)}
+.st.bull{background:var(--teal-l);color:var(--teal)}.st.bear{background:var(--orange-l);color:var(--orange)}
 .act{font-size:13px;font-weight:700;color:var(--ink)}
 .chips{display:flex;flex-wrap:wrap;gap:4px;margin-top:8px}
-.chip{all:unset;cursor:pointer;font-size:12px;font-weight:700;color:var(--navy);background:#EAF0F7;border:1px solid #C9D6E6;border-radius:3px;padding:0 6px;line-height:1.6}
-.chip[aria-expanded=true]{background:var(--navy);color:#fff}
-.note{margin-top:6px;font-size:12.5px;line-height:1.55;color:var(--muted);background:#F3F4F6;border-radius:4px;padding:6px 8px;word-break:break-word}
+.chip{all:unset;cursor:pointer;font-size:12px;font-weight:700;color:var(--navy);background:var(--soft);border:1px solid var(--rule);border-radius:3px;padding:0 6px;line-height:1.6}
+.chip[aria-expanded=true]{background:var(--topbar);color:#fff}
+.note{margin-top:6px;font-size:12.5px;line-height:1.55;color:var(--muted);background:var(--soft);border-radius:4px;padding:6px 8px;word-break:break-word}
 .msg .en{margin-top:6px;font-size:13px;color:var(--muted);border-top:1px dashed var(--rule);padding-top:6px;line-height:1.55}
 .msg .lnk{display:inline-block;margin-top:6px}
 .arms{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
@@ -90,7 +92,7 @@ details .en{margin-top:8px;padding:8px 10px;background:#F3F4F6;border-radius:4px
 .votes{margin-top:8px;font-size:12.5px;color:var(--muted)}
 .vbar{display:flex;height:8px;border-radius:4px;overflow:hidden;margin-bottom:4px;background:var(--rule)}
 .vbar i{display:block}
-.big{margin-top:18px;background:var(--navy);color:#C9D3E0;border-radius:6px;padding:20px;text-align:center}
+.big{margin-top:18px;background:var(--topbar);color:#C9D3E0;border-radius:6px;padding:20px;text-align:center}
 .big .bl{font-size:14px;letter-spacing:1px}
 .big .bn{font-family:'Noto Serif TC',Georgia,serif;font-size:64px;font-weight:700;line-height:1.15}
 .big .bn.up{color:#7FD1C1}.big .bn.dn{color:#F5B97A}
@@ -100,9 +102,9 @@ details .en{margin-top:8px;padding:8px 10px;background:#F3F4F6;border-radius:4px
 .verd b{font-size:15px}
 .ok b{color:var(--teal)}.no b{color:var(--orange)}.hold b{color:var(--muted)}
 .take{margin-top:16px;border-left:4px solid var(--teal);background:var(--teal-l);padding:12px 16px;font-size:17px;font-weight:700;color:var(--navy);border-radius:0 6px 6px 0}
-.bar{position:fixed;left:0;right:0;bottom:0;background:rgba(250,250,247,.96);border-top:1px solid var(--rule);z-index:5}
+.bar{position:fixed;left:0;right:0;bottom:0;background:var(--bar-bg);border-top:1px solid var(--rule);z-index:5}
 .bar .wrap{display:flex;align-items:center;gap:14px 18px;flex-wrap:wrap;padding-top:12px;padding-bottom:12px}
-.btn{all:unset;box-sizing:border-box;cursor:pointer;background:var(--teal);color:#fff;font-weight:700;font-size:17px;padding:10px 28px;border-radius:4px;text-align:center}
+.btn{all:unset;box-sizing:border-box;cursor:pointer;background:#0f766e;color:#fff;font-weight:700;font-size:17px;padding:10px 28px;border-radius:4px;text-align:center}
 .btn:hover{background:#0B5F58}
 .btn[disabled]{background:var(--gray);color:#fff;cursor:default}
 .bar .lnk{font-size:14px}
@@ -125,9 +127,29 @@ footer p+p{margin-top:8px}
  html{scroll-behavior:auto}
  *{animation:none!important;transition:none!important}
 }
+html{scrollbar-gutter:stable}
+.sitenav{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:0 18px;height:48px;padding:0 24px;margin:0;background:rgba(10,13,19,.88);backdrop-filter:blur(12px);border-bottom:1px solid rgba(236,230,216,.16);font:400 13px/20px "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;box-sizing:border-box}
+.sitenav a{color:rgba(236,230,216,.66);text-decoration:none;border-bottom:2px solid transparent;padding:2px 0;white-space:nowrap}
+.sitenav a:hover{color:#ece6d8}
+.sitenav .sitenav-brand{font:700 12px/20px "JetBrains Mono",Consolas,monospace;letter-spacing:.14em;color:#ece6d8;margin-right:6px;width:144px;flex:none}
+.sitenav a[aria-current=page]{color:#ece6d8;border-bottom-color:#d4f250;font-weight:700}
+:root[data-theme=light] .sitenav{background:rgba(250,247,240,.92);border-bottom-color:rgba(18,22,29,.18)}
+:root[data-theme=light] .sitenav a{color:rgba(18,22,29,.72)}
+:root[data-theme=light] .sitenav .sitenav-brand,:root[data-theme=light] .sitenav a:hover,:root[data-theme=light] .sitenav a[aria-current=page]{color:#12161d}
+:root[data-theme=light] .sitenav a[aria-current=page]{border-bottom-color:#5d7400}
+@view-transition{navigation:auto}
+.sitenav{view-transition-name:sitenav}
+::view-transition-old(root),::view-transition-new(root){animation-duration:180ms;animation-timing-function:ease}
+@media(prefers-reduced-motion:reduce){@view-transition{navigation:none}::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}}
+html,body{background:#06080c;color:#ece6d8;color-scheme:dark}
+:root[data-theme=light],:root[data-theme=light] body{background:var(--bg);color:var(--ink);color-scheme:light}
+:root[data-theme=light] .btn[disabled]{color:var(--muted)}
+
+:root:not([data-theme=light]) .dh>div,:root:not([data-theme=light]) .banner{color:#06080c}
 </style>
 </head>
 <body>
+<nav class="sitenav" aria-label="網站導覽"><a class="sitenav-brand" href="../">STANCE SHIFT LAB</a><a href="../">首頁</a><a href="../meeting/">研究計畫</a><a href="../rq1/">研究故事</a><a href="./" aria-current="page">案例回放</a><a href="../app/">研究台預覽</a><a href="../sources/application-meeting-20261020_v11.pdf">研究報告</a><a href="https://github.com/paul931130/stance-shift-lab">GitHub</a></nav>
 <div class="topbar"><div class="wrap">
 <h1>立場交換辯論 · 系統展示</h1>
 <div class="links"><a href="../">← 專題首頁</a><a class="sub" href="../app/">研究台介面預覽（合成資料）</a></div>

@@ -20,7 +20,7 @@ html{font-size:clamp(15px,.55vw + 9px,19px);scroll-behavior:smooth}
 body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--sans);line-height:1.75;overflow-x:hidden;-webkit-font-smoothing:antialiased}
 #field{position:fixed;inset:0;width:100%;height:100%;z-index:0;opacity:.85}
 .veil{position:fixed;inset:0;z-index:0;pointer-events:none;background:radial-gradient(120% 90% at 30% 50%,transparent 0,transparent 35%,var(--bg) 115%)}
-main,.bar,.rail,.hud{position:relative;z-index:1}
+main,.rail,.hud{position:relative;z-index:1}
 button{font:inherit;color:inherit;cursor:pointer;background:none;border:1px solid var(--line);border-radius:999px;padding:.5rem 1.05rem;line-height:1.4;transition:background .25s,border-color .25s,color .25s,transform .25s}
 button:hover{border-color:var(--ink)}
 button[aria-pressed=true]{background:var(--ink);color:var(--bg);border-color:var(--ink)}
@@ -30,12 +30,9 @@ strong{font-weight:700;color:var(--ink)}
 [hidden]{display:none!important}
 
 /* 頂列 */
-.bar{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;gap:1.2rem;padding:1rem 1.6rem;z-index:5;font-size:.8rem}
-.mark{font-family:var(--mono);font-weight:700;letter-spacing:.14em;text-decoration:none}
-.mark i{font-style:normal;margin:0 .35em;background:linear-gradient(90deg,var(--bull),var(--bear));-webkit-background-clip:text;background-clip:text;color:transparent}
 .where{font-family:var(--mono);color:var(--dim);letter-spacing:.06em}
 .tools{margin-left:auto;display:flex;gap:.5rem}
-.tools button{padding:.35rem .9rem;background:var(--panel);backdrop-filter:blur(8px)}
+.tools button{padding:2px 10px;line-height:18px;background:var(--panel);backdrop-filter:blur(8px)}
 .tools .go{background:var(--ink);color:var(--bg);border-color:var(--ink);font-weight:700}
 .tools .go:hover{transform:translateY(-1px)}
 
@@ -301,12 +298,87 @@ html.deck .notes:not([hidden]){display:block;position:fixed;right:1.6rem;bottom:
   html:not(.deck) .arms{grid-template-columns:1fr}
   html:not(.deck) .seg.col{flex-direction:row;flex-wrap:wrap;border-radius:1.2rem}
   html:not(.deck) .bet-q{writing-mode:horizontal-tb;border:0;width:100%}
-  .tools button:not(.go){padding:.35rem .7rem}
-  .bar{padding:.8rem 1rem;gap:.6rem}
 }
-@media (max-width:520px){html:not(.deck) .facts,html:not(.deck) .cards,html:not(.deck) .done{grid-template-columns:1fr}html:not(.deck) .facts dt{font-size:3rem}.mark{font-size:.7rem}}
+@media (max-width:520px){html:not(.deck) .facts,html:not(.deck) .cards,html:not(.deck) .done{grid-template-columns:1fr}html:not(.deck) .facts dt{font-size:3rem}}
 @media (prefers-reduced-motion:reduce){
   html{scroll-behavior:auto}
   *,*::before,*::after{transition:none!important;animation:none!important}
   .js .scene .in>*{opacity:1;transform:none}
 }
+
+/* research-plan additions */
+.cards.three{grid-template-columns:repeat(3,1fr)}
+.cards.pair{grid-template-columns:1fr 1fr}
+.cards.three .q,.cards.pair .q{min-height:0}
+.cards.pair p,.cards.three p{font-size:.95rem;line-height:1.7}
+.refs{margin:0;padding-left:1.4rem;columns:2;column-gap:2.4rem;font-size:.74rem;line-height:1.55;color:var(--dim)}
+.refs li{break-inside:avoid;margin:0 0 .45rem}
+@media (max-width:900px){html:not(.deck) .cards.three,html:not(.deck) .cards.pair{grid-template-columns:1fr}html:not(.deck) .refs{columns:1}}
+html{scrollbar-gutter:stable}
+html,body{background:#06080c;color:#ece6d8;color-scheme:dark}
+:root[data-theme=light],:root[data-theme=light] body{background:#f2ede2;color:#12161d;color-scheme:light}
+.sitenav{position:sticky;top:0;z-index:100;display:flex;align-items:center;gap:0 18px;height:48px;padding:0 24px;margin:0;background:rgba(10,13,19,.88);backdrop-filter:blur(12px);border-bottom:1px solid rgba(236,230,216,.16);font:400 13px/20px "Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;box-sizing:border-box}
+.sitenav a{color:rgba(236,230,216,.66);text-decoration:none;border-bottom:2px solid transparent;padding:2px 0;white-space:nowrap}
+.sitenav a:hover{color:#ece6d8}
+.sitenav .sitenav-brand{font:700 12px/20px "JetBrains Mono",Consolas,monospace;letter-spacing:.14em;color:#ece6d8;margin-right:6px;width:144px;flex:none}
+.sitenav a[aria-current=page]{color:#ece6d8;border-bottom-color:#d4f250;font-weight:700}
+:root[data-theme=light] .sitenav{background:rgba(250,247,240,.92);border-bottom-color:rgba(18,22,29,.18)}
+:root[data-theme=light] .sitenav a{color:rgba(18,22,29,.72)}
+:root[data-theme=light] .sitenav .sitenav-brand,:root[data-theme=light] .sitenav a:hover,:root[data-theme=light] .sitenav a[aria-current=page]{color:#12161d}
+:root[data-theme=light] .sitenav a[aria-current=page]{border-bottom-color:#5d7400}
+@view-transition{navigation:auto}
+.sitenav{view-transition-name:sitenav}
+::view-transition-old(root),::view-transition-new(root){animation-duration:180ms;animation-timing-function:ease}
+@media(prefers-reduced-motion:reduce){
+  @view-transition{navigation:none}
+  ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}
+}
+html.deck .sitenav a:not(.sitenav-brand){display:none}
+
+
+/* calmer background: full strength only on scenes with data-level="1" */
+#field{opacity:.7;transition:opacity .8s}
+:root[data-fl=dim] .veil{background:radial-gradient(120% 90% at 30% 50%,color-mix(in srgb,var(--bg) 62%,transparent) 0,color-mix(in srgb,var(--bg) 78%,transparent) 50%,var(--bg) 115%)}
+.veil{transition:background .8s}
+.nofield #field{display:none}
+/* basis chips */
+.basis{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center;margin:1rem 0 0;font-size:.8rem;color:var(--dim);max-width:none;text-shadow:none}
+.basis>span{font-family:var(--mono);letter-spacing:.14em;font-size:.72rem;margin-right:.3rem}
+.basis cite{font-style:normal;border:1px solid var(--line);border-radius:999px;padding:.22rem .85rem;background:var(--panel);backdrop-filter:blur(8px)}
+.basis cite b{color:var(--ink);font-weight:500;margin-right:.5rem}
+/* research-question tree */
+.tree{display:grid;grid-template-columns:.75fr 2.25fr;gap:3rem;align-items:center}
+.tree .root{border:1px solid var(--line);border-radius:1.2rem;padding:1.4rem;background:var(--panel);backdrop-filter:blur(10px)}
+.tree .root span{font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;color:var(--dim)}
+.tree .root b{display:block;font-family:var(--serif);font-size:1.6rem;line-height:1.35;margin:.4rem 0}
+.tree .root p{margin:0;font-size:.88rem;text-shadow:none}
+.branches{list-style:none;margin:0;padding:0;display:grid;gap:.9rem}
+.branch{position:relative;display:grid;grid-template-columns:8.5rem 1fr auto;align-items:center;gap:1.4rem;border:1px solid var(--line);border-radius:1.1rem;padding:1.05rem 1.4rem;background:var(--panel);backdrop-filter:blur(10px)}
+.branch::before{content:"";position:absolute;left:-3rem;top:50%;width:3rem;border-top:1px dashed var(--faint)}
+.branch .how{font-family:var(--serif);font-size:1.9rem;line-height:1.1;color:var(--d)}
+.branch .how small{display:block;font-family:var(--mono);font-size:.72rem;letter-spacing:.14em;color:var(--dim);margin-bottom:.25rem}
+.branch .ask{font-size:1.12rem}
+/* clash chart */
+.split{display:grid;grid-template-columns:1fr 1.05fr;gap:2.6rem;align-items:center;margin:0 0 1.3rem}
+.facts.duo{grid-template-columns:1fr 1fr;margin:0}
+.plot.mini{padding:1rem 1rem .7rem}
+.plot .grid{stroke:var(--line);stroke-width:1;stroke-dasharray:3 5}
+.plot .bc{fill:var(--c)}.plot .bd{fill:var(--d)}
+.plot .val text{fill:var(--ink);font-size:15px;font-weight:700}
+.plot .key{display:inline-block;width:.7rem;height:.7rem;border-radius:.15rem;margin-right:.35rem;vertical-align:-.05rem}
+.plot .kc{background:var(--c)}.plot .kd{background:var(--d)}
+/* scenario table */
+.scen{list-style:none;margin:.9rem 0 0;padding:0;display:grid;gap:.5rem;font-size:.92rem;color:var(--dim)}
+.scen li{display:grid;grid-template-columns:13.5rem 1fr;gap:.9rem;align-items:baseline}
+.scen i{font-style:normal;font-size:.82rem;border:1px solid var(--line);border-radius:.5rem;padding:.2rem .6rem;color:var(--ink);background:var(--panel2)}
+.sealed .bet{margin:1.4rem 0 1rem}
+@media (max-width:900px){
+  html:not(.deck) .tree,html:not(.deck) .split{grid-template-columns:1fr;gap:1.4rem}
+  html:not(.deck) .branch{grid-template-columns:1fr;gap:.4rem}
+  html:not(.deck) .branch::before{display:none}
+  html:not(.deck) .scen li{grid-template-columns:1fr;gap:.2rem}
+}
+.cards .scen li{counter-increment:none;border:0;border-radius:0;padding:0;background:none;backdrop-filter:none}
+.cards .scen li::before{content:none}
+.cards .basis{margin-top:.8rem}
+.cards .basis cite b{display:inline;font-family:var(--sans);font-size:.8rem;line-height:1.4;color:var(--ink);font-weight:500;margin:0 .5rem 0 0}
