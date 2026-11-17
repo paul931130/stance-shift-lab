@@ -397,3 +397,10 @@ html.deck .sitenav{display:none}
 .where{white-space:nowrap}
 @media (max-width:1100px){html:not(.deck) .where{display:none}}
 .rail button::before{flex:none}
+
+/* 簡報內容保留底部控制列空間 */
+html.deck #clash .split{gap:2rem;margin-bottom:.9rem}
+html.deck #clash .plot svg{max-height:12rem}
+html.deck #clash .bundle{padding:1rem 1.3rem}
+html.deck #clash .fine{max-width:none;margin:.7rem 0 0}
+html.deck #end .next-step{max-width:none;margin:.8rem 0 0;font-size:1rem}
