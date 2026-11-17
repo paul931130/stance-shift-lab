@@ -12,6 +12,7 @@
 - 連線用實驗室 GPU：新增 `scripts/check_lab_ollama.py`（核對遠端 Ollama 的模型與權重 digest，可選每個模型一個極短請求）與 `docs/rq-prep/lab-start.md`；`scripts/lab_bundle.py` 供日後把程式搬到實驗室時打包 RQ1 快照。
 - `scripts/check_pilot.py`：自動檢查三案 pilot 輸出（操作單第 3 節的七項），唯讀開啟資料庫，輸出通過／不通過表與 180 案時間估計；`lab-run.ps1` 在 pilot 後自動執行。`lab-run.ps1` 另加 `-Resume`（跳過已成功步驟、失敗步驟改 `-tryN` 重跑、程式變動時拒絕）、`-SshTarget`（自動開通道與重連）與執行期間防止睡眠。`run_design_pilot.py` 失敗時把完整 traceback 寫到輸出旁的 `.error.txt`。
 - `scripts/lab-run.ps1`：開好 SSH 通道後一個指令依序跑連線與權重檢查、A／B 記憶探針與 canary、RQ2／RQ3 三案 pilot；每次輸出新資料夾與 summary.json，失敗即停，不登記也不排正式案例。`-Offline` 不呼叫模型。
+- `check_pilot.py`（2026-11-05，Gemini Flash 試跑後）：保留在紀錄裡的未對應來源數字（`accepted_as_output`、`unsupported_numbers`）原本一出現就判失敗，但這是協議允許的結果（RQ1 快照有 30.3% 的呼叫如此），改成新的 `unbound_numbers_recorded` 項，只報比例與 RQ1 參考值、不判失敗；刪改數字（`numeric_redaction` 等）仍判失敗。同一次試跑也發現 RQ3 C_budget 彙整提示約 9,968 tokens（Gemini 計），超過 8192 上下文扣掉輸出保留的 6144，實驗室上可能截斷，待正式登記前決定。
 - 依賴升級（模型資格檢查前，2026-11-05）：`litellm` 1.99.0 → 1.100.4、`langgraph` 1.2.11 → 1.2.14（連帶 `langgraph-sdk` 0.4.4 → 0.4.12），修補 Dependabot 安全公告。兩個公告的功能（LiteLLM Proxy、LangGraph SDK 串流）本專案都沒有使用；升級在資格檢查與 pilot 之前完成，正式凍結時記錄這兩個版本。
 - 報告 v11：RQ1 不再寫成「回答立場交換本身」，改為比較整套立場交換流程與固定立場流程（D 同時改變立場交換、隔離對手、強制引用與驗證重試）；RQ2 的比較量同樣改述為 D−C 差異。README 與網站現在指向同一份 PDF。
 
