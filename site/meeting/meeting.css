@@ -239,9 +239,9 @@ p{margin:.9rem 0;color:var(--dim);max-width:38rem;text-shadow:0 0 .35rem var(--b
 .track li small{display:block;font-weight:400;color:var(--dim);font-size:.72rem;margin-top:.2rem}
 
 /* 11 */
-.asks{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:1fr 1fr;gap:1rem;counter-reset:a}
+.asks{list-style:none;padding:0;margin:0;display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;counter-reset:a}
 .asks li{counter-increment:a;display:grid;grid-template-columns:2.6rem 1fr;border:1px solid var(--line);border-radius:1.2rem;padding:1.2rem 1.4rem;background:var(--panel);backdrop-filter:blur(10px)}
-.asks li::before{content:"?" ;grid-row:1/span 2;font-family:var(--serif);font-weight:900;font-size:2.2rem;line-height:1;color:var(--bear)}
+.asks li::before{content:counter(a);grid-row:1/span 2;font-family:var(--serif);font-weight:900;font-size:2.2rem;line-height:1;color:var(--bear)}
 .asks li:nth-child(odd)::before{color:var(--bull)}
 .asks b{font-size:1.08rem}
 .asks p{grid-column:2;margin:.3rem 0 0;font-size:.88rem;max-width:none;text-shadow:none}
@@ -259,14 +259,17 @@ html.deck .rail,html.deck .tools .go{display:none}
 html.deck .scene{position:fixed;inset:0;min-height:0;height:100vh;padding:5rem 7rem 5.2rem;opacity:0;visibility:hidden;transition:opacity .6s,visibility 0s .6s;overflow:hidden}
 html.deck .scene.on{opacity:1;visibility:visible;transition:opacity .6s}
 html.deck .in{max-width:none}
-html.deck .scene::after{bottom:auto;top:4.2rem;right:6.5rem;font-size:8rem}
+html.deck .scene::after{top:auto;bottom:3.6rem;right:2.4rem;font-size:6rem;opacity:.45}
 html.deck .scene [data-step]:not(.shown){opacity:0;transform:translateY(1rem);pointer-events:none}
 html.deck .scene [data-step]{transition:opacity .6s,transform .6s}
 html.deck .hud{display:flex;position:fixed;left:0;right:0;bottom:0;z-index:6;align-items:center;gap:1rem;padding:.9rem 1.6rem 1.1rem;font-family:var(--mono);font-size:.78rem;color:var(--dim)}
 .hud button{border:0;padding:.1rem .7rem;font-size:1.5rem;line-height:1}
 .hud .clock{font-size:.78rem;border:1px solid var(--line);padding:.2rem .7rem;font-variant-numeric:tabular-nums}
 .hud .count{color:var(--ink);font-weight:700}
-.hud .keys{margin-left:auto;color:var(--faint)}
+.hud .keys{margin-left:auto;display:flex;gap:.35rem;flex:none;white-space:nowrap}
+.hud .keys button{font-family:var(--sans);font-size:.85rem;line-height:1.4;padding:.3rem .65rem;border:1px solid var(--line)}
+.hud .ttl{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.hud .count,.hud .clock,.hud>button{flex:none}
 .hud .prog{position:absolute;left:0;bottom:0;height:3px;width:0;background:linear-gradient(90deg,var(--bull),var(--bear));transition:width .5s}
 html.deck .notes:not([hidden]){display:block;position:fixed;right:1.6rem;bottom:4rem;z-index:6;max-width:26rem;font-size:.85rem;background:var(--panel);border:1px solid var(--d);border-radius:1rem;padding:.9rem 1.2rem;backdrop-filter:blur(12px);color:var(--ink)}
 .over{position:fixed;inset:0;z-index:9;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(14px);display:grid;place-items:center;padding:4rem 6vw;overflow:auto}
@@ -333,7 +336,7 @@ html,body{background:#06080c;color:#ece6d8;color-scheme:dark}
   @view-transition{navigation:none}
   ::view-transition-group(*),::view-transition-old(*),::view-transition-new(*){animation:none!important}
 }
-html.deck .sitenav a:not(.sitenav-brand){display:none}
+html.deck .sitenav{display:none}
 
 
 /* calmer background: full strength only on scenes with data-level="1" */

@@ -210,6 +210,7 @@ function toggleOver(force) {
   el.hidden = !open;
   if (open) $('button[aria-current]', el)?.focus();
 }
+function toggleNotes() { $('#notes').hidden = !$('#notes').hidden; }
 function toggleTheme() {
   const lightNow = root.dataset.theme === 'light';
   if (lightNow) delete root.dataset.theme; else root.dataset.theme = 'light';
@@ -235,6 +236,11 @@ addEventListener('resize', onScroll);
 $('#btn-deck').addEventListener('click', () => setDeck(true));
 $('#btn-over').addEventListener('click', () => toggleOver());
 $('#btn-theme').addEventListener('click', toggleTheme);
+$('#hud-notes').addEventListener('click', toggleNotes);
+$('#hud-over').addEventListener('click', () => toggleOver());
+$('#hud-theme').addEventListener('click', toggleTheme);
+$('#hud-field').addEventListener('click', () => Field.toggle());
+$('#hud-exit').addEventListener('click', () => setDeck(false));
 $('#hud-next').addEventListener('click', next);
 $('#hud-prev').addEventListener('click', back);
 $('#hud-clock').addEventListener('click', () => { state.t0 = Date.now(); tick(); });
@@ -258,7 +264,7 @@ addEventListener('keydown', e => {
   if (k === 'p' || k === 'P') return setDeck(!state.deck);
   if (k === 'f' || k === 'F') { document.fullscreenElement ? document.exitFullscreen?.() : root.requestFullscreen?.().catch(() => {}); return; }
   if (!state.deck || !$('#over').hidden) return;
-  if (k === 'n' || k === 'N') { $('#notes').hidden = !$('#notes').hidden; return; }
+  if (k === 'n' || k === 'N') return toggleNotes();
   // 焦點在按鈕上時，空白鍵與 Enter 留給按鈕
   if ((k === ' ' || k === 'Enter') && (tag === 'BUTTON' || tag === 'A')) return;
   if (k === 'ArrowRight' || k === 'PageDown' || k === ' ' || k === 'ArrowDown' || k === 'Enter') { e.preventDefault(); next(); }
@@ -295,9 +301,9 @@ const ROUND_TEXT = {
     '裁決者讀完整場辯論與報告，逐項核對證據，選擇買進或賣出。'],
   D: ['D：流程與 C 相同，但第 2 輪兩位代理人互換立場，而且只能反駁自己。',
     '第 1 輪：與 C 相同，雙方各自提出論點並引用證據。',
-    '第 2 輪：交換立場。這一輪看不到對手，只看得到自己的第 1 輪；必須引用自己的原文再反駁，引用會被驗證，不合格就重試。',
-    '第 3 輪：換回原立場，整合前兩輪的主張與反駁，說明仍不確定的地方。模型沒有換。',
-    '裁決者讀完整場辯論與報告，逐項核對證據，選擇買進或賣出。同樣是 7 次預定決策呼叫。']
+    '第 2 輪：互換立場且看不到對手，須引用自己第 1 輪原文並反駁，未過驗證則重試。',
+    '第 3 輪：換回原立場，整合前兩輪的主張與反駁，說明仍不確定的地方。',
+    '裁決者讀完整場辯論與報告，逐項核對證據，選擇買進或賣出。']
 };
 const LINKS = { C: ['各自提證據', '⇅ 互相批評', '⇅ 整理論點'], D: ['各自提證據', '✕ 看不到對手', '⇅ 回來整合'] };
 function renderArena(arm = arena.dataset.arm, round = Number(arena.dataset.round)) {
@@ -330,10 +336,10 @@ renderArena('C', 0);
 const METRICS = {
   acc: { c: 58.3, d: 55.0, digits: 1, unit: '%', diff: '−3.3 個百分點', p: 'Holm 校正後 p = 0.42', max: 100,
     rows: [['C 固定立場', 58.3, ''], ['D 立場交換', 55.0, 'd'], ['一律看多', 62.2, 'ref']],
-    note: '180 個季度案例；C 105／180、D 99／180。條紋列「一律看多」（112／180）是看到結果後才加入的事後基準，不屬主要比較，相對 C、D 的事後檢定也未達顯著。' },
+    note: '180 案：C 105／180、D 99／180。條紋列一律看多（112／180）為事後基準，事後檢定亦不顯著。' },
   sharpe: { c: 0.59, d: 0.54, digits: 2, unit: '', diff: '−0.05', p: 'Holm 校正後 p = 0.80', max: 1.2,
     rows: [['C 固定立場', 0.59, ''], ['D 立場交換', 0.54, 'd'], ['買進持有', 1.01, 'ref']],
-    note: '由 180 案形成的 1,219 個交易日日序列計算。條紋列是同配置買進持有的描述性參照，報告沒有檢定它與 C、D 的 Sharpe 差。' }
+    note: '1,219 個交易日日序列。條紋列為同配置買進持有參照（未檢定差異）。' }
 };
 let revealed = false, metric = 'acc';
 function countUp(el, to, digits, unit) {
@@ -371,7 +377,7 @@ function setRevealed(on) {
 }
 $('#reveal').addEventListener('click', () => { if (state.deck) next(); else setRevealed(true); });
 $$('[data-metric]').forEach(b => b.addEventListener('click', () => renderMetric(b.dataset.metric)));
-hooks.results = { count: 1, apply: k => setRevealed(k >= 1) };
+hooks.results = { count: 2, apply: k => { setRevealed(k >= 1); if (k >= 1) renderMetric(k === 2 ? 'sharpe' : 'acc'); } };
 
 /* ───────── 05 分歧地圖 ─────────
    16 個 C／D 方向不同的案例，取自 ../story-cases.json（180 案凍結證據包的靜態匯出）。
@@ -443,7 +449,7 @@ renderCell('AA');
 
 /* ───────── 08 RQ3 ───────── */
 const ARMS = {
-  C_domain: ['領域分工辯論', '每案 29 次呼叫', '四個領域各自多空辯論三輪（24 次），每個領域一次 View 裁決（4 次），最後由 Final Aggregator 整合（1 次）。這是 RQ3 要檢驗的架構。'],
+  C_domain: ['領域分工辯論', '每案 29 次呼叫', '四領域各辯三輪（24 次）＋領域裁決（4 次）＋總整合（1 次）。'],
   C: ['通才辯論', '每案 7 次呼叫', '與 RQ1 的 C 相同：看多、看空讀同一份整合報告辯三輪。C_domain 對 C 回答的是整套架構的差，包含算力差。'],
   C_budget: ['同算力的通才', '每案 29 次呼叫', '28 次獨立提案加 1 次裁決，資訊不切分。C_domain 對 C_budget 用來排除「只是多跑了幾次」。時間不夠時優先保留這一組。'],
   C_partition: ['切資訊但不辯論', '每案 1 次呼叫', '證據照四個領域切好，直接裁決一次。C_domain 對 C_partition 比較分工辯論與直接裁決的整體差異（兩者呼叫數不同）。']
